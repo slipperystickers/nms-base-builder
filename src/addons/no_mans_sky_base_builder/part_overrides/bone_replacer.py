@@ -30,7 +30,7 @@ class BONE_REPLACER(part.Part):
         part = super(BONE_REPLACER, cls).deserialise_from_data(data, *args, **kwargs)
         part.message = data.get("Message", "")
         if part.message:
-            part.swap_object()
+            return part.swap_object()
         return part
 
     def swap_object(self):
@@ -43,11 +43,22 @@ class BONE_REPLACER(part.Part):
         # bone is built on the default palette and every fossil comes out the
         # same colour
         user_data = self.object.get("UserData", 0)
+        time_stamp = self.time_stamp
+        order = self.order
+        belongs_to_preset = self.belongs_to_preset
         bone_id = self.message
-        blend_utils.delete(self.object)
         # the bone id is in the override table too, so this lands on BONE, which
         # builds it out of the high res library
         bone_part = builder_v2.add_part(
-            bone_id, user_data=user_data, builder_object=self.builder
+            bone_id, user_data=user_data, builder_object=self.builder,
+            build_rigs=self.build_rigs,
         )
         bone_part.object.matrix_world = matrix
+        bone_part.time_stamp = time_stamp
+        bone_part.order = order
+        bone_part.belongs_to_preset = belongs_to_preset
+        # Clipboard, Save Manager and prefab import all use the returned Part.
+        # Keep both wrappers live after replacing the temporary placeholder.
+        blend_utils.delete(self.object)
+        self.object = bone_part.object
+        return bone_part

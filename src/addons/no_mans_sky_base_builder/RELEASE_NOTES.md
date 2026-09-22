@@ -1,3 +1,31 @@
+# Community update 18.0.4
+
+- Fixed fossil imports returning a deleted placeholder object. Clipboard,
+  Save Manager, Open Base and prefab import now receive the replacement object.
+  Fossil transforms, palette data, timestamps and ordering are retained.
+- Regression coverage includes all 143 fossil variants with repeated placements,
+  and a 424-part Corvette containing a FOS_SKULL / FOS_HEAD_HD fossil.
+- Compatibility audit against installed game executable 179666 (September 22,
+  2026): current saves decode and round-trip through private copies; all 2,124
+  build-object IDs and 1,344 part IDs remain present. Building globals are
+  byte-identical to the previous audit.
+- The game changed some placement flags, freighter styles/palettes and station
+  scene definitions. The bundled model/reference library is retained in this
+  bug-fix release; visual parity with every updated scene and in-game placement
+  have not been revalidated. See GAME_UPDATE_COMPATIBILITY.md.
+
+# Community update 18.0.3
+
+- Added a separate **Vanilla Hidden Station Parts > Interior** Asset Browser
+  category for audited native game assets that are valid station build objects
+  but hidden from the normal construction menu.
+- Restored `GAMETABLE` as **Holo-Arena Game Table**. The current 7.01 game table
+  marks it placeable in station interiors and back sections and retains its
+  native model, scaling and 3-D rotation. This update claims visible placement,
+  not automatic initialization of the multiplayer game interaction.
+- Re-audited the 7.01 build tables against Cosmos 7.0: no station ObjectID,
+  part-model mapping or station placement flag changed in the hotfix.
+
 # Community update 18.0.2
 
 - Import from Clipboard and Open Base (.json) now automatically load the station

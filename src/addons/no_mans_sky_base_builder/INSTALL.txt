@@ -1,4 +1,4 @@
-NO MAN'S SKY BASE BUILDER - COMMUNITY UPDATE 18.0.2
+NO MAN'S SKY BASE BUILDER - COMMUNITY UPDATE 18.0.4
 Based on Kuma's 18.0.0 release; original creator and branding: DjMonkey.
 
 REQUIREMENTS
@@ -7,6 +7,13 @@ The station reference library was saved with Blender 5.1. This combined build
 does not claim the Blender 4.2 compatibility of Kuma's original ZIP.
 Models, textures, settlement icons and Python dependency wheels are included.
 No separate model download, NMSDK, external Python or pip command is required.
+
+HIDDEN VANILLA STATION PARTS
+The Asset Browser includes a separate Vanilla Hidden Station Parts category.
+These entries have current native game ObjectIDs and models but are omitted from
+the normal in-game construction menu. GAMETABLE is available under Interior as
+the Holo-Arena Game Table. Its visible placement is supported; interactive game
+setup is not claimed and still needs an in-game test.
 
 INSTALL / UPDATE
 1. Save your Blender work. Keep this ZIP intact.

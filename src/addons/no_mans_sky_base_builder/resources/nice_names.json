@@ -1555,6 +1555,7 @@
     "F_WALL_WIN2": "TWIN ALLOY WINDOWS",
     "F_WALL_WIN3": "HORIZONTAL ALLOY WINDOW",
     "F_WALL_WINDOW": "ALLOY WINDOW",
+    "GAMETABLE": "HOLO-ARENA GAME TABLE",
     "GARAGE_B": "PILGRIM GEOBAY",
     "GARAGE_FLOAT": "NAUTILON PLATFORM",
     "GARAGE_FREIGHT": "ORBITAL EXOCRAFT MATERIALISER",
@@ -1670,6 +1671,9 @@
     "SERVERSTACK": "SERVER",
     "SET_BYTEBEAT": "SET_BYTEBEAT",
     "SET_B_MONU": "Settlement Builders Monument",
+    "SET_CLASS_A": "Settlement Class A Marker",
+    "SET_CLASS_B": "Settlement Class B Marker",
+    "SET_CLASS_S": "Settlement Class S Marker",
     "SET_CONSTRUCT": "Settlement Construction Terminal",
     "SET_FISHPOND": "Settlement Fish Pond",
     "SET_F_MONU": "Fibreglass Settlement Monument",
@@ -2255,8 +2259,5 @@
     "W_WALL_H": "THIN WOODEN WALL",
     "W_WALL_Q": "SMALL WOODEN WALL",
     "W_WALL_Q_H": "SHORT WOODEN WALL",
-    "W_WALL_WINDOW": "WOODEN WINDOW PANEL",
-    "SET_CLASS_A": "Settlement Class A Marker",
-    "SET_CLASS_B": "Settlement Class B Marker",
-    "SET_CLASS_S": "Settlement Class S Marker"
+    "W_WALL_WINDOW": "WOODEN WINDOW PANEL"
 }
