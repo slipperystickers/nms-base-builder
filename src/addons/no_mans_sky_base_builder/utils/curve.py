@@ -614,6 +614,11 @@ def mirror_curve(build_tool,curve_obj, axis = "Z", center = None, auto_duplicate
         mirror_part_exist =  mirror_obj_id in nice_name_dictionary.keys()
         if mirror_part_exist:
             new_curve_obj[Curve.PROP_DUP_OBJECT_ID] = mirror_obj_id
+            # An in-place mirror reuses the existing follower objects. Updating
+            # only the curve's seed ID left their mesh and exported IDs stale.
+            if not auto_duplicate:
+                for follower in get_all_curve_children(new_curve_obj):
+                    BUILDER.mirror_part(follower)
     
     # syncing curves will make objects duplicating on them have identical transformations
     sync_curves(new_curve_obj, curve_obj, True, axis, from_mirror= True)

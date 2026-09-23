@@ -2501,15 +2501,13 @@
   "is_variant": false,
   "nice_name": "REINFORCED HULL LINK",
   "category": "Corvette",
-  "variants": [],
-  "mirror_part_id": "B_CON2_1"
+  "variants": []
  },
  "B_CON2_1": {
   "is_variant": false,
   "nice_name": "INDUSTRIAL CARGO LINK",
   "category": "Corvette",
-  "variants": [],
-  "mirror_part_id": "B_CON2_0"
+  "variants": []
  },
  "B_CON2_2": {
   "is_variant": false,
@@ -2596,7 +2594,7 @@
   "variants": [
    "B_CON_R_0"
   ],
-  "mirror_part_id": "B_CON_L_1"
+  "mirror_part_id": "B_CON_R_0"
  },
  "B_CON_L_1": {
   "is_variant": false,
@@ -2605,7 +2603,7 @@
   "variants": [
    "B_CON_R_1"
   ],
-  "mirror_part_id": "B_CON_L_0"
+  "mirror_part_id": "B_CON_R_1"
  },
  "B_CON_L_2": {
   "is_variant": false,
@@ -2613,7 +2611,8 @@
   "category": "Corvette",
   "variants": [
    "B_CON_R_2"
-  ]
+  ],
+  "mirror_part_id": "B_CON_R_2"
  },
  "B_CON_L_3": {
   "is_variant": false,
@@ -2621,7 +2620,8 @@
   "category": "Corvette",
   "variants": [
    "B_CON_R_3"
-  ]
+  ],
+  "mirror_part_id": "B_CON_R_3"
  },
  "B_CON_R_0": {
   "is_variant": true,
@@ -2632,7 +2632,7 @@
   "pattern": "mirror_x",
   "residual": 0.00029,
   "reproducible": true,
-  "mirror_part_id": "B_CON_R_1",
+  "mirror_part_id": "B_CON_L_0",
   "suffix_relation": null
  },
  "B_CON_R_1": {
@@ -2644,7 +2644,7 @@
   "pattern": "mirror_x",
   "residual": 0.00135,
   "reproducible": true,
-  "mirror_part_id": "B_CON_R_0",
+  "mirror_part_id": "B_CON_L_1",
   "suffix_relation": null
  },
  "B_CON_R_2": {
@@ -2656,7 +2656,8 @@
   "pattern": "mirror_x",
   "residual": 0.00103,
   "reproducible": true,
-  "suffix_relation": null
+  "suffix_relation": null,
+  "mirror_part_id": "B_CON_L_2"
  },
  "B_CON_R_3": {
   "is_variant": true,
@@ -2667,7 +2668,8 @@
   "pattern": "mirror_x",
   "residual": 0.00018,
   "reproducible": true,
-  "suffix_relation": null
+  "suffix_relation": null,
+  "mirror_part_id": "B_CON_L_3"
  },
  "B_DECO_A": {
   "is_variant": false,
@@ -3039,15 +3041,13 @@
   "is_variant": false,
   "nice_name": "ZENITH-CLASS REACTOR",
   "category": "Corvette",
-  "variants": [],
-  "mirror_part_id": "B_GEN_1"
+  "variants": []
  },
  "B_GEN_1": {
   "is_variant": false,
   "nice_name": "MEDUSA-CLASS REACTOR",
   "category": "Corvette",
-  "variants": [],
-  "mirror_part_id": "B_GEN_0"
+  "variants": []
  },
  "B_GEN_2": {
   "is_variant": false,
@@ -11375,7 +11375,8 @@
   "category": "Corvette",
   "variants": [
    "B_WNG_E_R"
-  ]
+  ],
+  "mirror_part_id": "B_WNG_E_R"
  },
  "B_WNG_E_R": {
   "is_variant": true,
@@ -11578,7 +11579,8 @@
   "category": "Corvette",
   "variants": [
    "B_WNG_N_R"
-  ]
+  ],
+  "mirror_part_id": "B_WNG_N_R"
  },
  "B_WNG_N_R": {
   "is_variant": true,
@@ -11604,7 +11606,7 @@
   "variants": [
    "B_WNG_O_0_R"
   ],
-  "mirror_part_id": "B_WNG_O_1"
+  "mirror_part_id": "B_WNG_O_0_R"
  },
  "B_WNG_O_0_R": {
   "is_variant": true,
@@ -11630,7 +11632,7 @@
   "variants": [
    "B_WNG_O_1_R"
   ],
-  "mirror_part_id": "B_WNG_O_0"
+  "mirror_part_id": "B_WNG_O_1_R"
  },
  "B_WNG_O_1_R": {
   "is_variant": true,

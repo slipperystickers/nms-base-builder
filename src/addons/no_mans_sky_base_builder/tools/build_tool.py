@@ -120,7 +120,7 @@ class BuildTool(bpy.types.PropertyGroup):
                     # object at the twin's own library mesh, which is meant to be
                     # shared, or flips a private copy. Copying again here would
                     # give every mirrored part its own duplicate of the library.
-                    new_item = BUILDER.mirror_part(target)
+                    new_item = BUILDER.mirror_part(new_item)
                      
                 if not change_orientation:
                     mirrored_matrix_world = mirror_utils.mirror_matrix_world_universal(

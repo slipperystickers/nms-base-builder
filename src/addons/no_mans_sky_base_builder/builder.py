@@ -227,6 +227,8 @@ class Builder(object):
     def mirror_part(self, part_object):
         object_id = part_object["ObjectID"]
         new_object_id = part.Part.get_mirror_part_id(object_id)
+        if new_object_id is None:
+            return part_object
         self._swap_mesh_for_twin(part_object, new_object_id, (1, 0, 0))
         # Update ObjectID and name
         part_object["ObjectID"] = new_object_id

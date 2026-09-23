@@ -21,6 +21,14 @@ class Part(object):
 
     SNAP_MATRIX_DICTIONARY = python_utils.load_dictionary(SNAP_MATRIX_JSON)
     SNAP_PAIR_DICTIONARY = python_utils.load_dictionary(SNAP_PAIR_JSON)
+    # Explicit native counterparts. Numbered designs are not orientations.
+    MIRROR_PART_IDS = {
+        source: target
+        for pair in python_utils.load_dictionary(
+            os.path.join(FILE_PATH, "resources", "mirror_pairs.json")
+        )["pairs"]
+        for source, target in (pair, pair[::-1])
+    }
     
     """parts property names."""
     PROP_OBJECT_ID = "ObjectID"
@@ -419,7 +427,6 @@ class Part(object):
             ("_NETB3", "_NWTB3"),
             ("_E", "_W"),
             ("_N", "_S"),
-            ("_0", "_1"),
         ]
     
     FLIP_COMPASS_IDS = [
@@ -448,26 +455,8 @@ class Part(object):
     # Static Methods ---
     @staticmethod
     def get_mirror_part_id(object_id):
-        # Handle Compass
-        for compass_pairs in Part.SUFFIX_COMPASS_ID_PAIRS:
-            east_str = compass_pairs[0]
-            west_str = compass_pairs[1]
-            is_east = object_id.endswith(east_str)
-            is_west = object_id.endswith(west_str)
-            if is_east:
-                return object_id[: -(len(east_str))] + west_str
-            elif is_west:
-                return object_id[: -(len(west_str))] + east_str
-        
-        # Handle Winged
-        if object_id.startswith("B_WNG"):
-            if object_id == "B_WNG_R" or object_id == "B_WNG_R_R":
-                #Exception case, Default Aeron Wing's object ID ends with R and mirror part's ID ends with R_R
-                return "B_WNG_R_R" if object_id == "B_WNG_R" else "B_WNG_R"
-            elif object_id.endswith("_R"):
-                return object_id[:-2]
-            else:
-                return object_id + "_R"
+        """Return a known native counterpart, never guess from a design suffix."""
+        return Part.MIRROR_PART_IDS.get(object_id.lstrip("^"))
 
     @staticmethod
     def get_flip_part_id(object_id):

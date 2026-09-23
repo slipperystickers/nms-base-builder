@@ -1,3 +1,24 @@
+# Community update 18.0.6
+
+- Replaced guessed mirror suffixes with an explicit registry of 266 native
+  Corvette counterpart pairs. Unknown/unpaired IDs keep their original design.
+- Reactors B_GEN_0 through B_GEN_3 no longer change design when mirrored.
+  Numbered B_CON2 hull links also retain their design.
+- Corrected the four B_CON_L_n / B_CON_R_n connector pairs; restored the Osprey,
+  Arcadia heavy booster and both numbered Rockhopper wing counterpart mappings.
+  Kept genuine numbered Streamlined Trim Cap and Aeron Diffuser pairs.
+- Updated mirror metadata to match the registry. This also fixes the shared
+  counterpart resolver used by groups and curves, not just the sidebar button.
+- Auto-duplicate and mirror now changes the new copy, leaving the original
+  object and mesh unchanged. In-place curve mirrors update follower meshes and
+  exported part IDs, not only the curve's seed ID.
+- Regression checks cover all 266 pairs in both directions, exported IDs,
+  positive object transforms, double-mirror restoration, all four reactors,
+  hull-link designs, groups and curve followers. No in-game test claimed.
+- Restart Blender after updating. Parts already changed to the wrong design
+  are not automatically identifiable; restore those from an unaffected build
+  or manually select the intended original part.
+
 # Community update 18.0.5
 
 - Fixed Builder Tools > Duplicate passing a Part wrapper to Blender's selection
