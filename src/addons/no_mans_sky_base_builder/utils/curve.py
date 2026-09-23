@@ -124,7 +124,9 @@ def update_curves(updated_curves, children_by_curve=None):
             else:
                 # Weight changed (no UI count change), dynamically calculate new object count to maintain spacing
                 density_step = curve_obj[Curve.PROP_DENSITY_STEP]
-                if density_step > 0:
+                # One follower has no spacing interval. Do not turn the
+                # denominator fallback above into an unwanted second object.
+                if density_step > 0 and current_count > 1:
                     new_number_of_objects = max(1, int(round((total_density / density_step) + 1)))
                     # Update UI property so it doesn't get out of sync if this is the active curve
                     if bpy.context.active_object == curve_obj:
@@ -198,7 +200,10 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
             
 
 def duplicate_along_curve( bpy_object, curve, number_of_duplicates=10, radius_multiplier=1.0, existing_objs=None):
-    
+    # Persist the requested count before a depsgraph update can rebuild this
+    # curve. Without it the update handler treats a new curve as zero objects.
+    curve[Curve.PROP_OBJECTS_COUNT] = number_of_duplicates
+
     if curve.get(Curve.PROP_HAS_LINKED_OBJECTS, False):
         curve_utils.normalise_curve_scale(curve)
     

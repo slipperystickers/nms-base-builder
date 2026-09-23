@@ -1,3 +1,21 @@
+# Community update 18.0.5
+
+- Fixed Builder Tools > Duplicate passing a Part wrapper to Blender's selection
+  API. Part, prefab and curve duplicates now return selectable Blender objects.
+- Duplicate Along Curve now stores the requested quantity before update handlers
+  run and synchronizes the curve controls. A count of one stays one instead of
+  growing to two during the spacing refresh.
+- Removed the launch buttons from Workspace and Parts & Prefabs. The NMS Asset
+  Browser sidebar remains available; existing browser operators are retained.
+- Rebuilt CUBEROOM and CUBEGLASS from native standalone placement rules and
+  Part_* locators, with matching high-resolution and legacy FBX geometry.
+  Preserved native UVs, normals and existing high-resolution materials/textures.
+  Only the highest-detail shell is included, not stacked LODs, invisible proxy
+  volumes or animated power overlays. Adjacent-room wall removal is not simulated.
+- Restart Blender and re-import the affected rooms to replace cached old meshes.
+  Existing open scenes are not automatically rewritten. No save-data transforms
+  or in-game files are changed by this fix.
+
 # Community update 18.0.4
 
 - Fixed fossil imports returning a deleted placeholder object. Clipboard,

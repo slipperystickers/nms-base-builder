@@ -321,11 +321,11 @@ class BuildTool(bpy.types.PropertyGroup):
             curve_object[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
             curve_object["parent_selected"] = True
             curve_object.show_in_front = True
-            self.selected_curve_object_is_parent = True
-            self.active_curve_radius_multiplier = radius_multiplier
-            self.active_curve_number_of_objects = number_of_objects
-            self.active_curve_name = curve_object.name
-            self.show_gap_edit_field = True
+            properties = bpy.context.scene.nms_properties
+            properties.active_curve_radius_multiplier = radius_multiplier
+            properties.prev_curve_radius_multiplier = radius_multiplier
+            properties.active_curve_number_of_objects = number_of_objects
+            properties.prev_curve_number_of_objects = number_of_objects
             
             print("duplicating along curve")
             # Perform duplication along curve.
@@ -396,12 +396,12 @@ class BuildTool(bpy.types.PropertyGroup):
                     new_item = builder_v2.add_part(
                         object_id, user_data=user_data, builder_object=BUILDER
                     )
-                    duplicates.append(new_item)
+                    duplicates.append(new_item.object)
                 elif "PresetID" in target:
                     preset_id = target["PresetID"]
                     # Build Item.
                     new_item = BUILDER.add_preset(preset_id)
-                    duplicates.append(new_item)
+                    duplicates.append(new_item.control)
                 else:
                     new_item = None
 

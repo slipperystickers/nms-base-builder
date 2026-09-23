@@ -554,7 +554,6 @@ class NMS_PT_hero_panel(Panel):
         workspace_label_row.label(text = "Workspace")
         
         workspace_column_2 = workspace_column.column(align = True)
-        workspace_column_2.operator("object.nms_launch_asset_browser_window", text = "Launch Asset Browser", icon = "ASSET_MANAGER")
         workspace_cleanup_row = workspace_column_2.row(align = True)
         workspace_cleanup_row.enabled = not nms_tool.is_workspace_cleaned
         workspace_cleanup_row.operator("object.nms_cleanup_workspace", text = "Simplify Blender Workspace", icon = "WORKSPACE")
@@ -761,9 +760,6 @@ class NMS_PT_build_panel(Panel):
         
         build_column = layout.column(align = True)
         main_col = build_column.box().column(align = True)
-        col = main_col.column(align=True)
-        col.label(text = "Asset Browser")
-        col.operator("object.nms_launch_asset_browser", icon = "DESKTOP" )# icon="COLLECTION_COLOR_03"
         
         presets_box = main_col.column(align = True)
         presets_box.label(text = "Prefabs")
