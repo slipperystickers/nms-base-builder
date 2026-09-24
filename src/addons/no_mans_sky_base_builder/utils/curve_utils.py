@@ -188,6 +188,19 @@ def build_curve_context(curve_obj):
     )
 
 
+def update_source_transform_constraints(obj):
+    """Keep the path's evaluated rotation/scale equal to the copy's own TRS."""
+    for name, values in (("NMS Source Orientation", obj.rotation_euler),
+                         ("NMS Source Scale", obj.scale)):
+        constraint = obj.constraints.get(name)
+        if constraint is not None:
+            for axis, value in zip('xyz', values):
+                for prefix in ('min_', 'max_'):
+                    attribute = prefix + axis
+                    if abs(getattr(constraint, attribute)-value) > WRITE_EPSILON:
+                        setattr(constraint, attribute, value)
+
+
 def update_obj_transformations(obj, curve_obj, eval_data, total_length, curve_context=None):
     """
     Optimized transformation update with early returns and inline calculations.
@@ -205,6 +218,16 @@ def update_obj_transformations(obj, curve_obj, eval_data, total_length, curve_co
     
     if not parent_selected:
         return
+
+    if "dup_source_transform" in curve_obj:
+        # Position-only copies ignore path tilt/radius/scale. The explicit
+        # Objects Size control is a multiplier of the original three-axis scale.
+        source_scale = obj.get("curve_source_scale", tuple(obj.scale))
+        desired = tuple(value * radius_multiplier for value in source_scale)
+        if any(abs(a-b) > WRITE_EPSILON for a,b in zip(obj.scale, desired)):
+            obj.scale = desired
+        update_source_transform_constraints(obj)
+        return
     
     #if "radius" not in obj or bpy.context.mode in {'EDIT_CURVE'} or not objects_count_changed:
     radius, tilt = get_exact_radius_tilt(eval_data, total_length, factor)
@@ -214,6 +237,16 @@ def update_obj_transformations(obj, curve_obj, eval_data, total_length, curve_co
         #radius = obj["radius"]
     
     # Compute scale once
+    if "dup_curve_start_alignment" in curve_obj:
+        # Keep the normal radius/size/path scaling, relative to the seed at
+        # the first point. Rotation remains Blender's native FOLLOW_PATH.
+        multiplier = radius * radius_multiplier * curve_scale_multiplier
+        source_scale = obj.get("curve_source_scale", (1, 1, 1))
+        desired = tuple(v * max(.00001, multiplier) for v in source_scale)
+        if any(abs(a-b) > WRITE_EPSILON for a,b in zip(obj.scale, desired)):
+            obj.scale = desired
+        return
+
     base_scale = obj.get("base_scale", 1.0)
     scale = radius * radius_multiplier * base_scale * curve_scale_multiplier
     
@@ -565,7 +598,11 @@ def calculate_curve_factors(curve, existing_objs):
         existing_objs[0]["curve_factor"] = 0.0
     else:
         for index, obj in enumerate(existing_objs):
-            position = index / (object_count - 1)
+            # A closed path's endpoint is its start. New position-only arrays
+            # must not stack the last copy on top of the first.
+            cyclic = (("dup_source_transform" in curve or "dup_curve_start_alignment" in curve)
+                      and curve.data.splines[0].use_cyclic_u)
+            position = index / (object_count if cyclic else object_count - 1)
             target_density = position * total_density
             factor = factor_from_density(cumulative_density,sample_factors,target_density)
             if obj.get("curve_factor") != factor:

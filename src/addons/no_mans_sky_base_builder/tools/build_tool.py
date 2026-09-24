@@ -285,7 +285,8 @@ class BuildTool(bpy.types.PropertyGroup):
         blend_utils.select(new_items)
         
     def duplicate_along_curve(self, number_of_objects, radius_multiplier = 1.0):
-        """Snaps one object to another based on selection."""
+        """Follow the curve, calibrated to the selected seed's starting pose."""
+        bpy.context.view_layer.update()
         selected_objects = bpy.context.selected_objects
 
         if len(selected_objects) != 2:
@@ -313,11 +314,15 @@ class BuildTool(bpy.types.PropertyGroup):
             return {"FINISHED"}
         
         if "has_linked_objects" in curve_object:
-            new_curve_object, old_curve_object = curve.replace_curve_object(curve_object, dup_object)
+            new_curve_object, old_curve_object = curve.replace_curve_object(
+                curve_object, dup_object, number_of_objects, radius_multiplier
+            )
             blend_utils.delete(old_curve_object)
             curve_object = new_curve_object
         
         else :
+            alignment = curve.get_source_curve_alignment(curve_object, dup_object)
+            curve.set_source_curve_alignment(curve_object, alignment)
             curve_object[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
             curve_object["parent_selected"] = True
             curve_object.show_in_front = True

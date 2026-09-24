@@ -1,4 +1,4 @@
-NO MAN'S SKY BASE BUILDER - COMMUNITY UPDATE 18.0.6
+NO MAN'S SKY BASE BUILDER - COMMUNITY UPDATE 18.0.8
 Based on Kuma's 18.0.0 release; original creator and branding: DjMonkey.
 
 REQUIREMENTS

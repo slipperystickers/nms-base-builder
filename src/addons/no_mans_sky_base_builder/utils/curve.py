@@ -5,6 +5,7 @@ import uuid
 import random
 
 import bpy
+from mathutils import Matrix, Quaternion
 
 from .. import builder, builder_v2, part
 from . import (blend_utils, collection_utils, curve_utils, material,
@@ -33,6 +34,13 @@ class Curve:
     PROP_IS_INITIALISED = "is_initialised"
     PROP_DENSITY_STEP = "density_step"
     PROP_RADIUS = "radius"
+    # Only newly seeded curves opt in; saved legacy curves keep their layout.
+    PROP_SOURCE_TRANSFORM = "dup_source_transform"
+    PROP_SOURCE_SCALE = "curve_source_scale"
+    ROTATION_CONSTRAINT = "NMS Source Orientation"
+    SCALE_CONSTRAINT = "NMS Source Scale"
+    PROP_START_ALIGNMENT = "dup_curve_start_alignment"
+    PROP_START_SCALE = "dup_curve_start_scale"
 
     # Duplicated object data
     PROP_DUP_OBJECT_ID = f"dup_{Part.PROP_OBJECT_ID}"
@@ -199,6 +207,49 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
             )
             
 
+def remember_source_transform(curve_obj, source_obj):
+    """Snapshot the seed's evaluated world orientation/scale, never its location."""
+    # Do not trigger depsgraph handlers while a curve is partly initialized.
+    matrix = source_obj.matrix_world.copy()
+    matrix.translation = (0, 0, 0)
+    curve_obj[Curve.PROP_SOURCE_TRANSFORM] = [v for row in matrix for v in row]
+
+
+def get_source_curve_alignment(curve_obj, source_obj):
+    """Calibrate the seed against Blender's actual path frame at offset zero.
+
+    Keep following the curve normally. Only replace the old hard-coded pi X
+    rotation with a local offset that makes the first copy face like the seed.
+    Call before adding CurveID/partially initializing a new curve.
+    """
+    source_matrix = source_obj.matrix_world.copy()
+    probe = bpy.data.objects.new("NMS Curve Alignment Probe", None)
+    bpy.context.scene.collection.objects.link(probe)
+    try:
+        constraint = probe.constraints.new(type='FOLLOW_PATH')
+        constraint.target = curve_obj
+        constraint.use_fixed_location = True
+        constraint.use_curve_follow = True
+        constraint.offset_factor = 0.0
+        bpy.context.view_layer.update()
+        frame = probe.matrix_world.to_quaternion().normalized()
+        rotation = frame.inverted() @ source_matrix.to_quaternion().normalized()
+        spline = curve_obj.data.splines[0]
+        points = spline.bezier_points if spline.bezier_points else spline.points
+        start_radius = max(.00001, points[0].radius if points else 1.0)
+        scale = [v / start_radius for v in source_matrix.to_scale()]
+        return list(rotation), scale
+    finally:
+        bpy.data.objects.remove(probe, do_unlink=True)
+
+
+def set_source_curve_alignment(curve_obj, alignment):
+    # Reseeding an 18.0.7 parallel array restores normal path-following.
+    if Curve.PROP_SOURCE_TRANSFORM in curve_obj:
+        del curve_obj[Curve.PROP_SOURCE_TRANSFORM]
+    curve_obj[Curve.PROP_START_ALIGNMENT], curve_obj[Curve.PROP_START_SCALE] = alignment
+
+
 def duplicate_along_curve( bpy_object, curve, number_of_duplicates=10, radius_multiplier=1.0, existing_objs=None):
     # Persist the requested count before a depsgraph update can rebuild this
     # curve. Without it the update handler treats a new curve as zero objects.
@@ -319,11 +370,56 @@ def add_objects_to_curve(number_to_add, curve, existing_objs, bpy_object = None)
             constraint = new_obj.constraints.new(type='FOLLOW_PATH')
             constraint.target = curve
             constraint.use_fixed_location = True
-            constraint.use_curve_follow = True
+            preserve_transform = Curve.PROP_SOURCE_TRANSFORM in curve
+            constraint.use_curve_follow = not preserve_transform
+            if preserve_transform:
+                constraint.use_curve_radius = False
             
             new_obj[Curve.PROP_CURVE_PARENT] = curve.name
             new_obj[Curve.PROP_BASE_SCALE] = 1.0
-            new_obj.rotation_euler = (math.pi,0,0)
+            if preserve_transform:
+                values = curve[Curve.PROP_SOURCE_TRANSFORM]
+                matrix = Matrix([values[i:i+4] for i in range(0, 16, 4)])
+                # The path supplies world positions only. Remove inherited
+                # parenting/delta transforms so they cannot rotate/scale copies.
+                new_obj.parent = None
+                new_obj.delta_location = (0, 0, 0)
+                new_obj.delta_rotation_euler = (0, 0, 0)
+                new_obj.delta_rotation_quaternion = (1, 0, 0, 0)
+                new_obj.delta_scale = (1, 1, 1)
+                new_obj.rotation_mode = 'XYZ'
+                new_obj.matrix_basis = matrix
+                new_obj[Curve.PROP_SOURCE_SCALE] = list(new_obj.scale)
+                # FOLLOW_PATH still inherits the curve object's world rotation
+                # even with use_curve_follow=False. Lock only its evaluated
+                # rotation, in world space, after the path positions the copy.
+                orientation = new_obj.constraints.new(type='LIMIT_ROTATION')
+                orientation.name = Curve.ROTATION_CONSTRAINT
+                orientation.owner_space = 'WORLD'
+                orientation.use_limit_x = orientation.use_limit_y = orientation.use_limit_z = True
+                angles = matrix.to_euler('XYZ')
+                orientation.min_x = orientation.max_x = angles.x
+                orientation.min_y = orientation.max_y = angles.y
+                orientation.min_z = orientation.max_z = angles.z
+                size = new_obj.constraints.new(type='LIMIT_SCALE')
+                size.name = Curve.SCALE_CONSTRAINT
+                size.owner_space = 'WORLD'
+                for axis, value in zip('xyz', new_obj.scale):
+                    setattr(size, 'use_min_'+axis, True)
+                    setattr(size, 'use_max_'+axis, True)
+                    setattr(size, 'min_'+axis, value)
+                    setattr(size, 'max_'+axis, value)
+            elif Curve.PROP_START_ALIGNMENT in curve:
+                new_obj.parent = None
+                new_obj.delta_location = (0, 0, 0)
+                new_obj.delta_rotation_euler = (0, 0, 0)
+                new_obj.delta_rotation_quaternion = (1, 0, 0, 0)
+                new_obj.delta_scale = (1, 1, 1)
+                new_obj.rotation_mode = 'XYZ'
+                new_obj.rotation_euler = Quaternion(curve[Curve.PROP_START_ALIGNMENT]).to_euler('XYZ')
+                new_obj[Curve.PROP_SOURCE_SCALE] = list(curve[Curve.PROP_START_SCALE])
+            else:
+                new_obj.rotation_euler = (math.pi,0,0)
             new_obj.location = (0,0,0)
             new_obj.hide_select = True
             
@@ -368,6 +464,7 @@ def apply_curve_transforms_and_detach(curve):
         Curve.PROP_BASE_SCALE,
         Curve.PROP_CURVE_FACTOR,
         Curve.PROP_RADIUS,
+        Curve.PROP_SOURCE_SCALE,
         Curve.PROP_CURVE_PARENT
     ]
     
@@ -384,6 +481,8 @@ def apply_curve_transforms_and_detach(curve):
             baked_matrix = obj.matrix_world.copy()
             
             constraints_to_remove = [c for c in obj.constraints if c.type == 'FOLLOW_PATH' and c.target == curve]
+            constraints_to_remove += [c for c in obj.constraints if c.name in
+                                      (Curve.ROTATION_CONSTRAINT, Curve.SCALE_CONSTRAINT)]
             if constraints_to_remove:
                 for c in constraints_to_remove:
                     obj.constraints.remove(c)
@@ -407,7 +506,10 @@ def apply_curve_transforms_and_detach(curve):
         Curve.PROP_DUP_USER_DATA,
         Curve.PROP_RADIUS_MULTIPLIER,
         Curve.PROP_OBJECTS_COUNT,
-        Curve.PROP_DENSITY_STEP
+        Curve.PROP_DENSITY_STEP,
+        Curve.PROP_SOURCE_TRANSFORM,
+        Curve.PROP_START_ALIGNMENT,
+        Curve.PROP_START_SCALE,
     ]
     
     for prop in curve_props_to_delete:
@@ -517,14 +619,21 @@ def delete_curve_and_children(curve):
     return deleted_count
 
 # replace curve objects on curve with source object provided
-def replace_curve_object(curve_obj, source_obj):
-    
+def replace_curve_object(curve_obj, source_obj, number_of_objects=None, radius_multiplier=None):
+    alignment = get_source_curve_alignment(curve_obj, source_obj)
     new_curve_obj = curve_obj.copy()
     new_curve_obj.data = curve_obj.data.copy()
     new_curve_obj[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
     
     for collection in curve_obj.users_collection:
         collection.objects.link(new_curve_obj)
+    set_source_curve_alignment(new_curve_obj, alignment)
+    if Curve.PROP_DENSITY_STEP in new_curve_obj:
+        del new_curve_obj[Curve.PROP_DENSITY_STEP]
+    if number_of_objects is not None:
+        new_curve_obj[Curve.PROP_OBJECTS_COUNT] = number_of_objects
+    if radius_multiplier is not None:
+        new_curve_obj[Curve.PROP_RADIUS_MULTIPLIER] = radius_multiplier
     
     
     if Group.PROP_GROUP_ID in source_obj:
@@ -658,7 +767,7 @@ def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from
         target = target_dupe_obejcts[0]
         material.restore_material(target, target["UserData"])
         
-    if Curve.PROP_DUP_USER_DATA in source_curve:
+    if Curve.PROP_DUP_USER_DATA in source_curve and duping_object_source is None:
         apply_color(target_curve, source_curve.get(Curve.PROP_DUP_USER_DATA,0))
         
     
@@ -666,6 +775,9 @@ def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from
     # blender stores bpy.context.scene.objects in sorted order, so duplicated objects will alsmo match that order.
     # objects on same index will have save transformations
     for index,source in enumerate(source_dupe_objects):
+        if duping_object_source is not None:
+            # A new seed replaces old orientation/scale as well as mesh/ID.
+            break
         if index >= len(target_dupe_obejcts):
             break
         
@@ -674,6 +786,8 @@ def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from
         target.scale = source.scale.copy()
         target.location = source.location.copy()
         target[Curve.PROP_BASE_SCALE] = source[Curve.PROP_BASE_SCALE]
+        if Curve.PROP_SOURCE_SCALE in source:
+            target[Curve.PROP_SOURCE_SCALE] = list(source[Curve.PROP_SOURCE_SCALE])
             
         if do_mirror:
             target.location.x = -target.location.x
@@ -683,8 +797,23 @@ def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from
             if axis is not None and axis == "Z" and target_is_group:
                 target.rotation_euler.x += math.pi
                 target.rotation_euler.z += math.pi
+
+        if Curve.PROP_SOURCE_TRANSFORM in target_curve:
+            curve_utils.update_source_transform_constraints(target)
                 
     
+
+    if target_dupe_obejcts and Curve.PROP_SOURCE_TRANSFORM in target_curve:
+        first = target_dupe_obejcts[0]
+        matrix = Matrix.LocRotScale(
+            (0, 0, 0), first.rotation_euler.to_quaternion(),
+            first.get(Curve.PROP_SOURCE_SCALE, tuple(first.scale))
+        )
+        target_curve[Curve.PROP_SOURCE_TRANSFORM] = [v for row in matrix for v in row]
+    if target_dupe_obejcts and Curve.PROP_START_ALIGNMENT in target_curve:
+        first = target_dupe_obejcts[0]
+        target_curve[Curve.PROP_START_ALIGNMENT] = list(first.rotation_euler.to_quaternion())
+        target_curve[Curve.PROP_START_SCALE] = list(first[Curve.PROP_SOURCE_SCALE])
 
     # Refresh evaluation data for the newly synced children
     # update_curve_children(target_curve, radius_multiplier)
@@ -692,6 +821,22 @@ def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from
 # scale of a child object of curve is mix of multiple products
 # base scale is scale of object before getting influenced by curve's points
 def calculate_base_scale(curve, obj):
+    if Curve.PROP_START_ALIGNMENT in curve:
+        multiplier = (curve.scale.x / curve.get("initial_curve_scale", curve.scale.x)
+                      * curve[Curve.PROP_RADIUS_MULTIPLIER] * obj.get("radius", 1.0))
+        scale = tuple(v / max(.00001, multiplier) for v in obj.scale)
+        previous = obj.get(Curve.PROP_SOURCE_SCALE, ())
+        if len(previous) != 3 or any(abs(a-b) > 1e-6 for a,b in zip(previous, scale)):
+            obj[Curve.PROP_SOURCE_SCALE] = scale
+        return 1.0
+    if Curve.PROP_SOURCE_TRANSFORM in curve:
+        multiplier = max(.001, curve.get(Curve.PROP_RADIUS_MULTIPLIER, 1.0))
+        scale = tuple(v / multiplier for v in obj.scale)
+        previous = obj.get(Curve.PROP_SOURCE_SCALE, ())
+        if len(previous) != 3 or any(abs(a-b) > 1e-6 for a,b in zip(previous, scale)):
+            obj[Curve.PROP_SOURCE_SCALE] = scale
+        curve_utils.update_source_transform_constraints(obj)
+        return 1.0
     curve_scale_multiplier = curve.scale.x/curve.get("initial_curve_scale", curve.scale.x)
     radius_multiplier = curve[Curve.PROP_RADIUS_MULTIPLIER]
     point_radius = obj.get("radius",1.0)

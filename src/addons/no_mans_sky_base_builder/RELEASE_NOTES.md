@@ -1,3 +1,38 @@
+# Community update 18.0.8
+
+- Restored normal Duplicate Along Curve rotation: copies turn with the path
+  and form a flower around a circle. Supersedes 18.0.7's parallel-copy behavior.
+- Corrected only the starting alignment: the first copy at the curve's start
+  matches the selected source's orientation, replacing the forced 180-degree
+  X rotation. Following copies keep that relative alignment as the path turns.
+- Retained curve radius, tilt, Objects Size and curve-transform behavior.
+  Part IDs are repeated unchanged; counterpart swaps remain Mirror-only.
+- To repair an array made in 18.0.7, restart Blender, select the original source
+  part plus that curve, then run Duplicate Along Curve again. Reseeding removes
+  the old world-orientation locks. Existing saved layouts are not auto-migrated.
+- Verified five-petal circles, tilted circles, Euler/quaternion sources, open
+  Bezier and NURBS paths, quantity changes, copying/reseeding arrays, save/reopen,
+  export IDs, unlinking, and repair of a saved 18.0.7 array. Visually checked a
+  Blender render using B_STR_J_NE. No in-game test claimed.
+
+# Community update 18.0.7 (curve behavior superseded by 18.0.8)
+
+- New Duplicate Along Curve arrays preserve the source part's world rotation,
+  orientation and scale. The curve supplies positions only: copies do not turn
+  with the path or inherit its tilt, point radius or object scale.
+- The explicit Objects Size control remains available as a multiplier of the
+  original scale. Ordinary duplication never selects a mirrored counterpart.
+- Closed curves place copies around the loop without stacking the last copy
+  over the first. Replacing a curve's source uses the new source's transforms
+  and the requested quantity instead of reusing the old array's values.
+- Existing saved curve arrays retain their previous layout. To use the new
+  behavior on one, select the original source part and that curve, then run
+  Duplicate Along Curve again. Save your work and restart Blender after updating.
+- Mirror counterpart fixes from 18.0.6 are retained. Blender regression checks
+  cover open/circular/NURBS paths, transformed curves, three rotation modes,
+  parent/delta transforms, quantity changes, duplication, export vectors,
+  unlinking, save/reopen and legacy layout compatibility. No in-game test claimed.
+
 # Community update 18.0.6
 
 - Replaced guessed mirror suffixes with an explicit registry of 266 native
