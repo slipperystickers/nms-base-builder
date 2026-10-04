@@ -3,35 +3,70 @@ Based on Kuma's 18.0.0 release; original creator and branding: DjMonkey.
 
 REQUIREMENTS
 64-bit Windows, Blender 5.1 or 5.2 (tested with 5.1.2 and 5.2.2 LTS).
-The station reference library was saved with Blender 5.1. …3061 tokens truncated…jectID,
-  part-model mapping or station placement flag changed in the hotfix.
+The station reference library was saved with Blender 5.1. This combined build
+does not claim the Blender 4.2 compatibility of Kuma's original ZIP.
+Models, textures, settlement icons and Python dependency wheels are included.
+No separate model download, NMSDK, external Python or pip command is required.
 
-# Community update 18.0.2
+HIDDEN VANILLA STATION PARTS
+The Asset Browser includes a separate Vanilla Hidden Station Parts category.
+These entries have current native game ObjectIDs and models but are omitted from
+the normal in-game construction menu. GAMETABLE is available under Interior as
+the Holo-Arena Game Table. Its visible placement is supported; interactive game
+setup is not claimed and still needs an in-game test.
 
-- Import from Clipboard and Open Base (.json) now automatically load the station
-  reference when the imported record identifies a PlayerSpaceStationBase.
-- Those imports expose a collapsed Station Reference section under Import/Export,
-  without requiring Save Manager or access to a local save slot.
-- Parts-only JSON remains a parts-only import. Arrays are accepted as well as
-  Objects dictionaries; station detection never uses a previous import's type.
-- Station records without GalacticAddress load with an isolated appearance key.
-- Checked the real clipboard operator with a 318-part station, JSON-file imports,
-  repeat imports, reference refresh, and ordinary base/Corvette imports.
-
-# Community update 18.0.1
-
-Based on Kuma's 18.0.0 release of DjMonkey's No Man's Sky Base Builder.
-
-- New parts use their default origin and scale when the active object is deselected. Selected-object placement still works across high-res, proxy, and special-part paths.
-- Station imports automatically add the compact reference: all six hull families, large optional attachments, and six interior cutaways. Repeated geometry is shared and cutaways are prebuilt.
-- Station and orbital Space bases have separate Save Manager tabs. Station reference controls appear only under Station.
-- Reference refresh preserves player parts and eye choices. Remembered station visibility and compact Outliner defaults are retained.
-- All 22 custom settlement icons and the three missing settlement class-marker catalog entries are included in both browsers.
-- Mixed special/ordinary parts retain save order on export. Station identity includes its system address. Renaming a station does not rename a ship; Corvette rename accepts valid ship slots.
-- Dependencies are bundled for Windows / Blender 5.1, without first-use pip downloads.
-- DjMonkey's branding and support links are preserved. Contributor credits for Kuma and FuriousFurby are in Preferences and CONTRIBUTORS.txt.
-
-Kuma's high-resolution assets, native movable Asset Browser, favorites and recents, proxy switching, material system, group tools, and Cosmos save translation are retained. The station reference files contain their own geometry; the reference's dimensions and surfaces have not been simplified.
-
+INSTALL / UPDATE
+1. Save your Blender work. Keep this ZIP intact.
+2. Edit > Preferences > Get Extensions > top-right menu > Install from Disk.
+3. Select the ZIP and enable No Man's Sky Base Builder.
+4. Restart Blender after upgrading.
 For habs or the Thunderbird bay already placed in an older saved scene, select
 those parts and switch to Low-Res, then back to High-Res to refresh their meshes.
+This replaces the installed extension with the same ID; do not enable duplicate
+copies of Base Builder at the same time. Keep your previous ZIP for rollback.
+
+STATION WORKFLOW
+In Save Manager, enable the save controls, choose your account and save slot,
+click Station, choose your station, then Import from Save.
+Space remains available for orbital space bases, separately from stations.
+
+Import from Clipboard and Open Base (.json) also load the station reference
+automatically when the JSON includes BaseType.PersistentBaseTypes set to
+PlayerSpaceStationBase. Copy the complete station base record from the editor.
+Objects-only lists do not identify the base type and import only the parts;
+use Save Manager or the complete station base JSON to get the reference.
+
+Station Player Parts contains the editable build. Station Reference contains
+Outside and Inside. Outside has all six hull families and the major optional
+parts. Use the Outliner triangles to expand and the eyes to show/hide them.
+Keep one hull body and compatible attachments visible. See
+resources/station/Station exterior choices.md for the combinations.
+Inside has separate floors/fixtures, roof, and wall cutaways.
+For Save Manager imports, reference controls appear in the Station tab.
+For clipboard/JSON station imports, expand Station Reference under Import/Export.
+These controls do not require Save Manager to be enabled or a save to be selected.
+
+Click Remember Station Visibility to reuse that station's eye settings.
+For an older station scene, Refresh Reference Library replaces the reference
+and preserves player parts and visibility. Save the blend afterwards to retain
+the smaller reference. Imports/refreshes compact the collection lists once;
+opening a saved blend retains its saved layout.
+
+The exterior is matched manually. The saved procedural station seed has not
+been decoded. The reference does not alter the in-game station.
+
+PLACEMENT
+With no active object selected, adding a part uses its normal origin, rotation
+and scale. With an active object selected, the part inherits that transform.
+This applies to both the native Asset Browser and legacy/proxy add paths.
+
+SHARING
+Send this complete ZIP. Recipients use their own saves. Personal saves, test
+scenes, appearance profiles and research tools are not included. The download
+retains Kuma's full high-resolution library, so it is roughly 2 GB even though
+the station reference itself is about 55 MB.
+
+CREDITS
+DjMonkey's name, artwork and support links are unchanged. Additional contributor
+credits for Kuma The Wizard of Cosmos and FuriousFurby appear in extension
+Preferences and CONTRIBUTORS.txt.
