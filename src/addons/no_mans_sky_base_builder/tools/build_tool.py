@@ -13,7 +13,7 @@ from ..utils.curve import Curve
 from mathutils import Vector,Matrix
 
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
-BUILDER = builder.Builder()
+BUILDER = builder.get_builder()
 
 class BuildTool(bpy.types.PropertyGroup):
     

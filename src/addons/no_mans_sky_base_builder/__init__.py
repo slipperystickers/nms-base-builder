@@ -37,6 +37,7 @@ from .tools import asset_browser_presentation
 from .utils import blend_utils, curve, dictionary
 from .utils import material as _material
 from .utils import materials_v2 as _materials_v2
+from .utils import userdata as _userdata
 from .utils import python as python_utils
 from .utils import workspace
 
@@ -47,7 +48,7 @@ USER_PATH = os.path.join(os.path.expanduser("~"), "NoMansSkyBaseBuilder")
 PRESET_PATH = os.path.join(USER_PATH, "presets")
 ASSET_BROWSER_PATH = os.path.join(FILE_PATH, "asset_browser")
 
-BUILDER = builder.Builder()
+BUILDER = builder.get_builder()
 GHOSTED_JSON = os.path.join(FILE_PATH, "resources", "ghosted.json")
 ghosted_reference = python_utils.load_dictionary(GHOSTED_JSON)
 GHOSTED_ITEMS = ghosted_reference["GHOSTED"]
@@ -372,14 +373,24 @@ class NMSMain(PropertyGroup):
             material_index=int(maeterial_index),
         )
 
-        unique_objects = {}
+        painted_meshes = {}
         for obj in selected_objects:
             if "ObjectID" in obj and not _materials_v2.is_high_res(obj):
-                obj_id = obj["ObjectID"]
-                if obj_id not in unique_objects:
+                # Share only copies of the same source mesh and packed colour.
+                # Each placement still needs its own viewport colour/labels;
+                # those properties do not live on the shared mesh.
+                new_userdata = _userdata.update_colour_material(
+                    int(obj.get("UserData", 0)),
+                    colour_index=int(colour_index),
+                    material_index=maeterial_index,
+                )
+                key = (obj.data.as_pointer(), new_userdata)
+                if key not in painted_meshes:
                     obj.data = obj.data.copy()
-                    _material.assign_material(obj, int(colour_index), int(maeterial_index))
-                    unique_objects[obj_id] = obj
+                    painted_meshes[key] = obj.data
+                else:
+                    obj.data = painted_meshes[key]
+                _material.assign_material(obj, int(colour_index), maeterial_index)
 
         for obj in selected_objects:
             # detect if object is nms curve
@@ -390,17 +401,11 @@ class NMSMain(PropertyGroup):
                         obj["dup_UserData"] = child_obj["UserData"]
             elif "GroupID" in obj:
                 _material.assign_material(obj, int(colour_index), int(maeterial_index))
-            # for any other object
-            else :
-                if "ObjectID" in obj:
-                    obj_id = obj["ObjectID"]
-                    if obj_id in unique_objects:
-                        key = unique_objects[obj_id]
-                        obj.data = key.data
-                        obj["UserData"] = key["UserData"]
-
         # Refresh the viewport.
-        bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
 
     def apply_default_colour(self):
         """Gives an item a new colour."""
@@ -476,6 +481,10 @@ class NMSMain(PropertyGroup):
                     if key is not None:
                         obj.data = key.data
                         obj["UserData"] = target_userdata
+                        obj.color = key.color
+                        for name in ("readonly:Colour", "readonly:Material"):
+                            if name in key:
+                                obj[name] = key[name]
                     else:
                         _material.restore_material(obj, target_userdata)
         
@@ -1856,7 +1865,11 @@ def udpates_handler(scene, depsgraph):
     global last_active
     
     
-    active_object = bpy.context.view_layer.objects.active
+    # Blender can invoke persistent depsgraph handlers with a restricted
+    # context while extensions are being enabled. The scene/depsgraph
+    # arguments remain valid, but context.view_layer does not exist yet.
+    view_layer = getattr(bpy.context, "view_layer", None)
+    active_object = view_layer.objects.active if view_layer is not None else None
 
     # keep track of active object to display or hide additional options related to that object
     # only continue when active object actually changes
@@ -1878,7 +1891,7 @@ def udpates_handler(scene, depsgraph):
                 updated_curve_names.add(orig_obj.name)
             elif curve.Curve.PROP_CURVE_PARENT in orig_obj:
                 parent_curve_name = orig_obj[curve.Curve.PROP_CURVE_PARENT]
-                parent_curve = bpy.context.scene.objects.get(parent_curve_name,None)
+                parent_curve = scene.objects.get(parent_curve_name,None)
                 if parent_curve is not None and not parent_curve.get(curve.Curve.PROP_PARENT_SELECTED,True):
                     #store base scale of object 
                     orig_obj[curve.Curve.PROP_BASE_SCALE] = curve.calculate_base_scale(parent_curve, orig_obj)

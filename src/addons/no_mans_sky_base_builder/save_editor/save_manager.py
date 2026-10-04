@@ -5,7 +5,7 @@ from . import save_editor_dependencies
 from . import save_editor_utils, station_reference
 from .save_editor_utils import BaseType, BaseData
 
-BUILDER = builder.Builder()
+BUILDER = builder.get_builder()
 
 #save data to persist within blend files.
 class SaveManager(bpy.types.PropertyGroup):

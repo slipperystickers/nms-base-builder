@@ -10,7 +10,7 @@ from .utils import variant_map
 from .part_overrides import parts_override
 from .utils import python as python_utils
 
-BUILDER = builder.Builder()
+BUILDER = builder.get_builder()
 
 # This is to compensate blender's Z up axis.
 X_ROT_90 = mathutils.Matrix.Rotation(math.radians(90.0), 4, "X")
@@ -44,6 +44,15 @@ STYLE_PRIORITY = ("Builders", "Exterior")
 # colour system - it lives in materials_v2 so the old material code can read it.
 MESH_PREFIX = "NMS_HR_"
 MESH_TAG = materials_v2.MESH_TAG
+
+# These corrected assets must also replace caches embedded in older .blend
+# scenes. Keep occupied old datablocks intact; a quality switch opts each
+# placed object into the corrected mesh without touching its saved record.
+MESH_REVISION_TAG = "nms_asset_revision"
+MESH_REVISIONS = dict.fromkeys(
+    ("B_HAB_A", "B_HAB_B", "B_HAB_C", "B_HAB1_A", "B_HAB1_B", "B_HAB1_C", "B_ALK_C"),
+    "18.0.9",
+)
 
 # Set once per session by get_asset_index().
 _asset_index = None
@@ -101,7 +110,7 @@ def deserialise_from_data(data):
             user_data = part_data.get(Part.PROP_USER_DATA, 0)
 
             # use override classes only when needed, these are left untouched
-            if object_id in classes_dict:
+            if object_id in classes_dict and not getattr(classes_dict[object_id], "HIGH_RES_COMPATIBLE", False):
                 use_class = classes_dict[object_id]
                 imported_part = use_class.deserialise_from_data(
                     part_data, BUILDER, compensate_normal=True
@@ -199,7 +208,7 @@ def add_part(
     # first, because these parts need their class whether or not the caller
     # asked for the high res library.
     classes_dict = parts_override.get_override_classes()
-    if object_id in classes_dict:
+    if object_id in classes_dict and not getattr(classes_dict[object_id], "HIGH_RES_COMPATIBLE", False):
         use_class = classes_dict[object_id]
         item = use_class(
             object_id=object_id,
@@ -245,7 +254,8 @@ def add_part(
     materials_v2.ensure_finish_nodes()
 
     # wrap it so callers get the interface they expect from builder.add_part
-    item = Part(
+    use_class = classes_dict.get(object_id, Part)
+    item = use_class(
         bpy_object=bpy_object, builder_object=builder_object, build_rigs=build_rigs
     )
     item.reset_transforms()
@@ -332,8 +342,11 @@ def load_high_res_mesh(object_id, asset_index=None):
     # survives a new file, a module reload and a scene the user already saved
     mesh_name = MESH_PREFIX + object_id
     cached = bpy.data.meshes.get(mesh_name)
+    revision = MESH_REVISIONS.get(object_id)
     if cached is not None and cached.get(MESH_TAG) == object_id:
-        return cached
+        if revision is None or cached.get(MESH_REVISION_TAG) == revision:
+            return cached
+        cached.name = mesh_name + "_legacy"
 
     # A reproducible variant is built out of the mesh it is a variant of rather
     # than out of its own asset - most of the corvette variants ship the wrong
@@ -366,6 +379,8 @@ def load_high_res_mesh(object_id, asset_index=None):
 
     mesh.name = mesh_name
     mesh[MESH_TAG] = object_id
+    if revision is not None:
+        mesh[MESH_REVISION_TAG] = revision
     if CLEAN_DUPLICATE_FACES:
         blend_utils.remove_duplicate_faces(mesh)
     # The append brought this asset's own copies of its textures and of the

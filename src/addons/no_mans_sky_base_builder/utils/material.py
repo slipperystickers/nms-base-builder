@@ -356,7 +356,7 @@ def optimise_materials():
 
             user_data = obj.get("UserData")
             key = (obj_id, user_data)
-            
+
             if key not in unique_materials:
                 # Ensures that data block is not shared by any other object
                 obj.data = obj.data.copy()
@@ -364,4 +364,124 @@ def optimise_materials():
                 unique_materials[key] = obj.data
             else:
                 # assign data block from cache
-                obj.data = unique_materials[key] 
+                obj.data = unique_materials[key]
+
+
+# Companion-add-on material hook. The original function implementations are
+# retained as the default provider; module-level callers dispatch through the
+# active provider so existing Base Builder code needs no special-case imports.
+_DEFAULT_MATERIAL_FUNCTIONS = {
+    name: globals()[name]
+    for name in (
+        "validate_material",
+        "set_material",
+        "assign_power_material",
+        "assign_portal_material",
+        "assign_pipe_material",
+        "assign_bytebeat_material",
+        "assign_preset_material",
+        "assign_default_material",
+        "get_colour_from_palette_data",
+        "restore_material",
+        "assign_material",
+    )
+}
+
+
+class MaterialProvider(object):
+    def validate_material(self, colour_name, colour_value):
+        return _DEFAULT_MATERIAL_FUNCTIONS["validate_material"](colour_name, colour_value)
+
+    def set_material(self, item, material):
+        return _DEFAULT_MATERIAL_FUNCTIONS["set_material"](item, material)
+
+    def assign_power_material(self, item):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_power_material"](item)
+
+    def assign_portal_material(self, item):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_portal_material"](item)
+
+    def assign_pipe_material(self, item):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_pipe_material"](item)
+
+    def assign_bytebeat_material(self, item):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_bytebeat_material"](item)
+
+    def assign_preset_material(self, item):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_preset_material"](item)
+
+    def assign_default_material(self, item, index=0):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_default_material"](item, index=index)
+
+    def get_colour_from_palette_data(self, colour_index, material_index):
+        return _DEFAULT_MATERIAL_FUNCTIONS["get_colour_from_palette_data"](
+            colour_index, material_index
+        )
+
+    def restore_material(self, item, user_data_value):
+        return _DEFAULT_MATERIAL_FUNCTIONS["restore_material"](item, user_data_value)
+
+    def assign_material(self, item, colour_index=0, material_index=0):
+        return _DEFAULT_MATERIAL_FUNCTIONS["assign_material"](
+            item, colour_index, material_index
+        )
+
+
+_DEFAULT_MATERIAL_PROVIDER = MaterialProvider()
+_ACTIVE_MATERIAL_PROVIDER = _DEFAULT_MATERIAL_PROVIDER
+
+
+def get_material_provider():
+    return _ACTIVE_MATERIAL_PROVIDER
+
+
+def set_material_provider(provider):
+    global _ACTIVE_MATERIAL_PROVIDER
+    if provider is not None and not isinstance(provider, MaterialProvider):
+        raise TypeError("set_material_provider expects a MaterialProvider instance or None")
+    _ACTIVE_MATERIAL_PROVIDER = provider or _DEFAULT_MATERIAL_PROVIDER
+    return _ACTIVE_MATERIAL_PROVIDER
+
+
+def validate_material(colour_name, colour_value):
+    return get_material_provider().validate_material(colour_name, colour_value)
+
+
+def set_material(item, material):
+    return get_material_provider().set_material(item, material)
+
+
+def assign_power_material(item):
+    return get_material_provider().assign_power_material(item)
+
+
+def assign_portal_material(item):
+    return get_material_provider().assign_portal_material(item)
+
+
+def assign_pipe_material(item):
+    return get_material_provider().assign_pipe_material(item)
+
+
+def assign_bytebeat_material(item):
+    return get_material_provider().assign_bytebeat_material(item)
+
+
+def assign_preset_material(item):
+    return get_material_provider().assign_preset_material(item)
+
+
+def assign_default_material(item, index=0):
+    return get_material_provider().assign_default_material(item, index=index)
+
+
+def get_colour_from_palette_data(colour_index, material_index):
+    return get_material_provider().get_colour_from_palette_data(colour_index, material_index)
+
+
+def restore_material(item, user_data_value):
+    return get_material_provider().restore_material(item, user_data_value)
+
+
+def assign_material(item, colour_index=0, material_index=0):
+    return get_material_provider().assign_material(item, colour_index, material_index)

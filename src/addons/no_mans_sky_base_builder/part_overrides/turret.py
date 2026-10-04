@@ -13,6 +13,9 @@ from ..utils import blend_utils
 class TURRET(part.Part):
     """Capture extra "Message" attribute."""
 
+    # The handler works with an existing textured mesh as well as a proxy.
+    HIGH_RES_COMPATIBLE = True
+
     def __init__(self, *args, **kwargs):
         super(TURRET, self).__init__(*args, **kwargs)
         # Trying something here, not quite reliable...

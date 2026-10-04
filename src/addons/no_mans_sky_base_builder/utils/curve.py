@@ -14,7 +14,7 @@ from . import dictionary
 from ..group import Group
 from ..part import Part
 
-BUILDER = builder.Builder()
+BUILDER = builder.get_builder()
 
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
 

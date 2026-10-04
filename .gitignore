@@ -186,3 +186,6 @@ dist/
 !/src/addons/no_mans_sky_base_builder/wheels/lz4-4.4.5-cp313-cp313-win_amd64.whl
 !/src/addons/no_mans_sky_base_builder/wheels/pyside6_essentials-6.11.1-1-cp310-abi3-win_amd64.whl
 !/src/addons/no_mans_sky_base_builder/wheels/shiboken6-6.11.1-cp310-abi3-win_amd64.whl
+
+# Disposable Blender regression output.
+tests/.artifacts/

@@ -1,3 +1,46 @@
+release 18.0.9-station-reference
+-------------
+
+## Fixed
+
+- Selecting multiple repeated parts now colours every selected piece visibly.
+- The colour picker updates every selected copy's viewport colour and labels.
+- Mixed HD/proxy selections preserve their geometry and textures, while
+  unselected parts keep their existing colour.
+- Colour edits preserve part identity, transforms and reserved UserData bits.
+- Extension startup safely handles Blender's temporarily restricted context.
+
+Includes the previously local shared-builder/material/part-handler integration
+hooks, with the built-in implementation used by default. No companion add-on,
+separate model download, NMSDK, external Python or pip command is required.
+
+Retains the reactor and girder mirroring fixes, Duplicate Along Curve behaviour,
+fossil import fixes, corrected cuboid models and station-reference tools from
+18.0.8.
+
+## Installation
+
+1. Download **no_mans_sky_base_builder-18.0.9-station-reference.zip** from Assets.
+2. Save your Blender work.
+3. Open **Edit > Preferences > Get Extensions > Install from Disk** and select
+   the intact ZIP.
+4. Enable **No Man's Sky Base Builder**, then restart Blender.
+
+Windows x64; tested with Blender **5.1.2** and **5.2.2 LTS**. Use the attached
+plugin ZIP for installation. GitHub's Source code archives are for developers.
+Keep the previous installer if you need to roll back. Previously misidentified
+parts are not repaired automatically by upgrading.
+
+## Verification
+
+The final ZIP was extracted into a clean folder and tested for bulk colouring,
+colour picking, mixed HD/proxy parts, exported colour data, duplication, curve
+following, all 266 mirror pairs in both directions, fossil imports, corrected
+cuboid parts, textured Corvette weapons, aligned hab/bay details, both browser icons, UI/assets, station imports and private-copy save round-trips.
+Archive CRCs and every extracted file hash were checked. No live game save was
+modified, and no new in-game test is claimed. SHA256SUMS.txt is attached.
+
+
 release 6.5.2
 -------------
 
@@ -710,3 +753,5 @@ release 0.6.0
 release 0.5.0
 -------------
 * Initial release
+For habs or the Thunderbird bay already placed in an older saved scene, select
+those parts and switch to Low-Res, then back to High-Res to refresh their meshes.

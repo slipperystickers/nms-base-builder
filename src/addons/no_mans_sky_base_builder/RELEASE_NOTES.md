@@ -1,3 +1,32 @@
+# Community update 18.0.9
+
+- Fixed Corvette weapon placement/import using the textured high-resolution
+  models while retaining turret handlers and proxy quality switching.
+- Rebuilt all six hab/walkway high-resolution models and the Thunderbird
+  landing bay with native mesh transforms, correcting detached wall details.
+  The bay retains its native hab-style exterior and floor opening.
+- Replaced B_TUR_F's placeholder with an actual model thumbnail; both asset
+  browsers now resolve the physical icon.
+- Fixed bulk colouring of repeated proxy parts: every selected copy now updates
+  its visible viewport colour and colour/material labels, rather than only the
+  first copy. The colour picker now refreshes every selected copy as well.
+- Mixed high-resolution and proxy selections keep their original geometry and
+  textures. Colouring preserves each part's reserved UserData bits, transforms
+  and selection; unselected parts retain their existing colours.
+- Fixed the update handler during extension startup when Blender temporarily
+  has no active view layer. Colour changes request a normal viewport redraw.
+- Included the previously local shared-builder, material-provider and runtime
+  part-handler integration hooks. They use the built-in implementation by
+  default and do not require a companion add-on.
+- Retained the reactor/girder mirror mappings, curve starting alignment and
+  path-following rotation, fossil imports, cuboid models and station references
+  from 18.0.8. Models, textures and dependency wheels remain bundled.
+- Tested the final package in isolated Blender 5.1.2 and 5.2.2 LTS processes.
+  These are Blender/serialization checks; no new in-game validation is claimed.
+
+Install the attached plugin ZIP through Install from Disk, then restart Blender.
+Parts previously changed to the wrong design must be restored separately.
+
 # Community update 18.0.8
 
 - Restored normal Duplicate Along Curve rotation: copies turn with the path
@@ -126,3 +155,6 @@ Based on Kuma's 18.0.0 release of DjMonkey's No Man's Sky Base Builder.
 - DjMonkey's branding and support links are preserved. Contributor credits for Kuma and FuriousFurby are in Preferences and CONTRIBUTORS.txt.
 
 Kuma's high-resolution assets, native movable Asset Browser, favorites and recents, proxy switching, material system, group tools, and Cosmos save translation are retained. The station reference files contain their own geometry; the reference's dimensions and surfaces have not been simplified.
+
+For habs or the Thunderbird bay already placed in an older saved scene, select
+those parts and switch to Low-Res, then back to High-Res to refresh their meshes.

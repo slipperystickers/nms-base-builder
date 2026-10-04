@@ -5,6 +5,7 @@ import importlib
 import json
 import math
 import os
+import sys
 import time
 from collections import defaultdict
 from copy import copy
@@ -92,13 +93,9 @@ class Builder(object):
             return self.get_builder_object_from_bpy_object(bpy_object)
         # If all fails, return None.
         return None
-
     @classmethod
     def get_part_class(cls, object_id):
-        for class_ref, part_list in cls.override_classes.items():
-            if object_id in part_list:
-                return class_ref
-        return part.Part
+        return parts_override.get_override_class(object_id) or part.Part
 
     def get_builder_object_from_bpy_object(self, bpy_object):
         # Handle Presets.
@@ -528,3 +525,44 @@ class Builder(object):
 
                 # Hide away control.
                 blend_utils.remove_object(control.name)
+
+
+# Public integration hook used by companion add-ons such as Charon Forge.
+# Keep one active builder shared by every Base Builder module rather than
+# requiring helpers to replace private module globals individually.
+_DEFAULT_BUILDER = Builder()
+_ACTIVE_BUILDER = _DEFAULT_BUILDER
+
+
+def get_builder():
+    """Return the builder currently used by Base Builder tools."""
+    return _ACTIVE_BUILDER
+
+
+def _sync_builder_references(active):
+    prefix = __package__ + "."
+    for module_name, module in tuple(sys.modules.items()):
+        if module is None or (module_name != __package__ and not module_name.startswith(prefix)):
+            continue
+        current = getattr(module, "BUILDER", None)
+        if isinstance(current, Builder):
+            setattr(module, "BUILDER", active)
+
+
+def set_builder(builder_object):
+    """Install a Builder subclass instance, or restore the default with None."""
+    global _ACTIVE_BUILDER
+    if builder_object is not None and not isinstance(builder_object, Builder):
+        raise TypeError("set_builder expects a Builder instance or None")
+    _ACTIVE_BUILDER = builder_object or _DEFAULT_BUILDER
+    _sync_builder_references(_ACTIVE_BUILDER)
+    return _ACTIVE_BUILDER
+
+
+# Material hooks live in utils.material but are re-exported here to preserve
+# the established companion-add-on integration surface.
+from .utils.material import (  # noqa: E402
+    MaterialProvider,
+    get_material_provider,
+    set_material_provider,
+)
