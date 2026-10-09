@@ -1,3 +1,4 @@
+from ..furby_errors import report_error
 import bpy
 
 from . import save_editor_utils
@@ -31,7 +32,7 @@ class SelectSaveFolder(bpy.types.Operator):
             self.report({'INFO'}, f"Selected folder is valid NMS save folder")
             print("Selected folder is valid:", prefs.nms_save_folder_path)
         else :
-            self.report({'ERROR'}, f"Selected folder is not a NMS save folder. Please select the correct folder.")
+            report_error(self,{'ERROR'}, f"Selected folder is not a NMS save folder. Please select the correct folder.")
             print("Selected folder is invalid:", self.directory)
         return {'FINISHED'}
 
@@ -55,7 +56,7 @@ class ImportBaseFromSave(bpy.types.Operator):
         if result is not None:
             self.report({'INFO'}, result)
         else:
-            self.report({'ERROR'}, "Error importing base")
+            report_error(self,{'ERROR'}, "Error importing base")
         return {"FINISHED"}
 
 # Button to export base selected from list of bases in save editor section
@@ -89,7 +90,7 @@ class PinBase(bpy.types.Operator):
         if pinned_base is not None:
             base_tool.deserialise_from_data(nms_data = pinned_base, start_new_file = False)
         else:
-            self.report({'ERROR'}, "Base not found")
+            report_error(self,{'ERROR'}, "Base not found")
         
         return {"FINISHED"}
     
@@ -142,7 +143,7 @@ class ExoprtPinnedBase(bpy.types.Operator):
         if result is not None:
             self.report({'INFO'}, result)
         else: 
-            self.report({'ERROR'}, "Update Failed, repinning the base may resolve this issue ")
+            report_error(self,{'ERROR'}, "Update Failed, repinning the base may resolve this issue ")
             print("result is none")
         return {"FINISHED"}
     

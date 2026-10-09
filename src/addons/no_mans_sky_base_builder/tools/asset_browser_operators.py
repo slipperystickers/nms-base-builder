@@ -1,3 +1,4 @@
+from ..furby_errors import report_error
 import bpy
 import json
 import os
@@ -367,7 +368,7 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
             try:
                 new_item = BUILDER.add_preset(item_id)
             except Exception as error:
-                self.report({'ERROR'}, f"Could not add preset {item_id}: {error}")
+                report_error(self,{'ERROR'}, f"Could not add preset {item_id}: {error}")
                 return {'CANCELLED'}
             if new_item:
                 new_item.select()
@@ -386,23 +387,35 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
             context.window_manager.popup_menu(draw_popup)
         else:
             if self.object_id not in dictionary.get_nice_names_diictionary():
-                self.report({'ERROR'}, f"Could not add {self.object_id} to scene")
+                report_error(self,{'ERROR'}, f"Could not add {self.object_id} to scene")
                 return {'CANCELLED'}
 
             # A part can fail to build - a missing asset, or one of the override
             # classes throwing. This used to go straight to item.object and turn
             # that into an unhandled AttributeError in the operator.
+            # Keep the selected target before importing a proxy changes selection.
+            selected_target = context.active_object
+            if selected_target is not None and not selected_target.select_get():
+                selected_target = None
             try:
                 item = builder_v2.add_part(self.object_id, builder_object=BUILDER)
             except Exception as error:
-                self.report({'ERROR'}, f"Could not add {self.object_id}: {error}")
+                report_error(self,{'ERROR'}, f"Could not add {self.object_id}: {error}")
                 return {'CANCELLED'}
 
             bpy_obj = getattr(item, "object", None)
             if bpy_obj is None:
-                self.report({'ERROR'}, f"Could not add {self.object_id} to scene")
+                report_error(self,{'ERROR'}, f"Could not add {self.object_id} to scene")
                 return {'CANCELLED'}
 
+            # Pipe placement uses the same endpoint frames and continuation
+            # history as the sidebar Snap button, rather than copying the origin.
+            pipe_ids = {"PIPE", "PIPESHAPE", "CURVEPIPESHAPE", "BASE_BUBPIPE", "BASE_BUBPIPE_L"}
+            if (self.object_id in pipe_ids and selected_target is not None
+                    and selected_target.get("ObjectID") in pipe_ids):
+                target = BUILDER.get_builder_object_from_bpy_object(selected_target)
+                if target is not None:
+                    item.snap_to(target)
             blend_utils.select(bpy_obj)
             asset_browser.add_to_recents_list(self.object_id)
             self.report({'INFO'}, f"Added {self.object_id} to scene")
@@ -669,7 +682,7 @@ class AssetBrowserBatchReplace(bpy.types.Operator):
         # the id comes from the browser, but the browser can be showing a list
         # built before the part dictionary was reloaded
         if self.object_id not in dictionary.get_nice_names_diictionary():
-            self.report({'ERROR'}, f"{self.object_id} is not a part that can be built")
+            report_error(self,{'ERROR'}, f"{self.object_id} is not a part that can be built")
             return {'CANCELLED'}
 
         replaced = batch_tool.batch_replace_with_object_id(

@@ -1,3 +1,4 @@
+from ..furby_errors import report_error
 import bpy
 from ..utils import blend_utils, curve, dictionary
 from ..utils.mirror_utils import ShowMessageBox
@@ -320,7 +321,7 @@ class CurveDelete(bpy.types.Operator):
             deleted_count = curve.delete_curve_and_children(active_object)
             self.report({'INFO'}, f"Deleted curve and {deleted_count} objects linked to it")
         except TypeError as error_message:
-            self.report({'ERROR'}, str(error_message))
+            report_error(self,{'ERROR'}, str(error_message))
         return {"FINISHED"}
 
 class SelectObjectParentCurve(bpy.types.Operator):

@@ -169,6 +169,9 @@ Right click on a tab to pin it to the left of the tab bar.""",
 
         # --- Add new widgets ---
         for favourite in self.__settings.get_favourites():
+            # Keep saved preferences, but hide the discontinued pipe experiments.
+            if favourite in ('_PIPEL', '_PIPET', '_PIPEX', '_PIPE3CORNER', '_PIPE4CORNER', '_PIPESTARHALF', '_PIPESTAR', '_PIPEBUBBLEL', '_PIPEBUBBLET', '_PIPEBUBBLEX', '_PIPEBUBBLE3CORNER', '_PIPEBUBBLE4CORNER', '_PIPEBUBBLESTARHALF', '_PIPEBUBBLESTAR', 'BASE_BUBPIPE_S', 'BASE_BUBPIPE_T', 'BASE_BUBPIPE_X'):
+                continue
             item_widget = Item(
                 item_id=favourite,
                 label=NICE_NAME_DATA.get(favourite, favourite),
@@ -548,6 +551,7 @@ Right click on a tab to pin it to the left of the tab bar.""",
 
     def send_part_command_to_blender(self, item_id):
         import sys
+        from .. import builder_v2
 
         path = os.path.join(FILE_DIR, "..", "..").replace("\\", "/")
         if path not in sys.path:
@@ -565,7 +569,7 @@ Right click on a tab to pin it to the left of the tab bar.""",
         if item_id in preset.Preset.get_presets():
             new_item = BUILDER.add_preset(item_id)
         else:
-            new_item = BUILDER.add_part(item_id)
+            new_item = builder_v2.add_part(item_id, builder_object=BUILDER)
             if hasattr(new_item, "build_rig"):
                 new_item.build_rig()
 

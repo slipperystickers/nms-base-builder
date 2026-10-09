@@ -529,6 +529,11 @@ class Part(object):
         Args:
             part_id (str): The ID of the building part.
         """
+        # The original bubble-duct FBX is centred on local Z (-1..1),
+        # whereas its high-res native model runs along Y (0..2).
+        # Choose sockets in the mesh actually displayed, without moving it.
+        if self.object_id == "BASE_BUBPIPE" and not materials_v2.is_high_res(self.object):
+            return "BUBBLE_STRAIGHT_LEGACY"
         for group, value in self.SNAP_MATRIX_DICTIONARY.items():
             parts = value["parts"]
             if self.object_id in parts:
@@ -585,11 +590,10 @@ class Part(object):
         if not target_snap_check or not source_snap_check:
             return False
 
-        # First and foremost, just move the source on top of the target.
-        self.matrix_world = copy(target.matrix_world)
-        # Set the snapped to property so it remembers it without selection.
-        self.snapped_to = target.name
-        self.select()
+        # Unsupported pairs must leave the source and its snap history untouched.
+        if self.object == target.object:
+            return False
+        target_key = source_key = None
 
         # Get Pairing options.
         snap_pairing_options = self.get_snap_pair_options(target)
@@ -639,13 +643,13 @@ class Part(object):
 
             # If the source and target are the same, the source key can be
             # the opposite of target.
-            if self.snap_id == target.snap_id:
+            if self.get_snap_group() == target.get_snap_group():
                 default_source_key = target_local_matrix_datas[target_key].get(
                     "opposite", default_source_key
                 )
 
             # Get the source key from the item reference, or use the default.
-            if (self.snap_id == target.snap_id) and (prev_target or next_target):
+            if (self.get_snap_group() == target.get_snap_group()) and (prev_target or next_target):
                 source_key = target_local_matrix_datas[target_key].get(
                     "opposite", default_source_key
                 )
@@ -670,52 +674,20 @@ class Part(object):
                 )
 
         # If no keys were found, don't snap.
-        if not source_key and not target_key:
+        if (not source_key or not target_key
+                or source_key not in (source_local_matrix_datas or {})
+                or target_key not in (target_local_matrix_datas or {})):
             return False
 
-        # Snap-point to snap-point matrix maths.
-        # As I've defined X to be always outward facing, we snap the rotated
-        # matrix to the point.
-        # s = source, t = target, o = local snap matrix.
-        # [(s.so)^-1 * (t.to)] * [(s.so) * 180 rot-matrix * (s.so)^-1]
-
-        # First Create a Flipped Y Matrix based on local offset.
-        start_matrix = copy(self.matrix_world)
-        start_matrix_inv = copy(self.matrix_world)
-        start_matrix_inv.invert()
-        offset_matrix = mathutils.Matrix(
-            source_local_matrix_datas[source_key]["matrix"]
-        )
-
-        # Target Matrix
-        target_matrix = copy(target.matrix_world)
-        target_offset_matrix = mathutils.Matrix(
-            target_local_matrix_datas[target_key]["matrix"]
-        )
-
-        # Calculate the location of the target matrix.
-        target_snap_matrix = target_matrix @ target_offset_matrix
-
-        # Calculate snap position.
-        snap_matrix = start_matrix @ offset_matrix
-        snap_matrix_inv = copy(snap_matrix)
-        snap_matrix_inv.invert()
-
-        # Rotate by 180 around Y at the origin.
-        origin_matrix = snap_matrix_inv @ snap_matrix
-        rotation_matrix = mathutils.Matrix.Rotation(math.radians(180.0), 4, "Y")
-        origin_flipped_matrix = rotation_matrix @ origin_matrix
-        flipped_snap_matrix = snap_matrix @ origin_flipped_matrix
-
-        flipped_local_offset = start_matrix_inv @ flipped_snap_matrix
-
-        # Diff between the two.
-        flipped_local_offset.invert()
-        target_location = target_snap_matrix @ flipped_local_offset
-
-        # Set matrix, and then re-apply radian rotation for better accuracy.
-        self.matrix_world = target_location
-        self.rotation = target_location.to_euler()
+        # Both frames point outward along local X. Mate their origins and
+        # oppose their normals. Work in target space; never temporarily stack
+        # objects, which used to also leave unsupported pairs superimposed.
+        source_frame = mathutils.Matrix(source_local_matrix_datas[source_key]["matrix"])
+        target_frame = mathutils.Matrix(target_local_matrix_datas[target_key]["matrix"])
+        turn = mathutils.Matrix.Rotation(math.pi, 4, "Y")
+        self.matrix_world = target.matrix_world @ target_frame @ turn @ source_frame.inverted()
+        self.snapped_to = target.name
+        self.select()
 
         # Find the opposite source key and set it.
         next_target_key = target_key

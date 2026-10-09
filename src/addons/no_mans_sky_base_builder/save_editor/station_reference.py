@@ -3,6 +3,7 @@
 PlayerSpaceStationBase has no resolved descriptor choices. Profiles are manually
 matched and never represented as decoded game seeds. This module never writes saves.
 """
+from ..furby_errors import report_error
 from pathlib import Path
 from functools import lru_cache
 import json
@@ -288,7 +289,7 @@ class ApplyStationReference(bpy.types.Operator):
     def execute(self,context):
         manager=context.scene.nms_save_data
         if not manager.station_key:
-            self.report({'ERROR'},'Import a station first'); return {'CANCELLED'}
+            report_error(self,{'ERROR'},'Import a station first'); return {'CANCELLED'}
         try:
             choices=current_choices(manager)
             assemble(context,choices)
@@ -296,7 +297,7 @@ class ApplyStationReference(bpy.types.Operator):
             remember_profile(manager.station_key,choices,capture(context))
             manager.station_status='Reference ready - use the Outliner eyes'
         except Exception as exc:
-            self.report({'ERROR'},str(exc)); return {'CANCELLED'}
+            report_error(self,{'ERROR'},str(exc)); return {'CANCELLED'}
         self.report({'INFO'},'Reference updated; player parts kept in place')
         return {'FINISHED'}
 

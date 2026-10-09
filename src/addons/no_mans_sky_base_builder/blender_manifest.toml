@@ -3,8 +3,8 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "no_mans_sky_base_builder"
-version = "18.0.9"
-name = "No Man's Sky Base Builder"
+version = "18.0.18"
+name = "Base Builder Extended"
 tagline = "A tool to assist with base building in No Mans Sky"
 maintainer = "DjMonkey <@djmonkeyuk>"
 # Supported types: "add-on", "theme"
@@ -36,6 +36,10 @@ license = [
 
 # # Optional: advanced build settings.
 # # https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
+[permissions]
+network = "Check official releases and download a verified installer when enabled"
+files = "Read game assets and save user bases, prefabs, update downloads and support reports"
+
 [build]
 # # These are the default build excluded patterns.
 # # You only need to edit them if you want different options.

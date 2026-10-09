@@ -1,3 +1,80 @@
+# Base Builder Extended 18.0.18
+
+- Adding a pipe or bubble duct from the native asset browser now mates real
+  endpoints with the selected pipe, using the sidebar Snap continuation history.
+- Added the textured high-resolution Curved Bubble Duct under its existing
+  BASE_BUBPIPE_L ID, preserving the low-proxy origin, orientation and sockets.
+- The alternate Qt asset browser now uses the high-resolution asset loader too.
+- Existing curved bubble ducts can be upgraded with Builder > High-res Proxies.
+  No saved scene or game IDs are automatically changed.
+
+Save and restart all Blender windows after installing.
+
+# Base Builder Extended 18.0.17
+
+- Removed the 14 internal-ID junction experiments and alternate straight/T/X
+  bubble entries from the browser after the user's standalone-placement test.
+- Kept the established PIPE, PIPESHAPE, CURVEPIPESHAPE, BASE_BUBPIPE and
+  BASE_BUBPIPE_L entries. Curved Bubble Duct is back in Structural Adornments
+  without an experimental label. Existing snapping and mirror fixes remain.
+- Retained model assets, IDs and snap data for loading existing Blender scenes.
+  The standalone-junction test files remain available for future investigation.
+- This cleanup does not establish new in-game compatibility for any part.
+
+Save and restart all Blender windows after installing.
+
+# Base Builder Extended 18.0.16
+
+- Added all 14 native regular-pipe and bubble-duct junction models under
+  Decoration > Pipe Junction Tests: elbow, T, cross, 3-way corner, 4-way corner,
+  5-way and 6-way. Each exports its exact internal part ID for user testing.
+- Added sockets at every opening, compatibility with existing pipes, and local
+  reflection rules for the new geometry. Both mesh quality settings are included.
+- Relabelled the previous four bubble variants as Alternate ID Test parts and
+  grouped them separately. The ordinary Bubble Duct remains the default straight.
+- Native junction models are verified in Blender. Standalone in-game placement
+  is deliberately unverified; these entries are for the user's requested tests.
+
+Save and restart all Blender windows after installing.
+
+# Base Builder Extended 18.0.15
+
+- Restored curved (L), straight (S), T and X bubble ducts in both asset browsers,
+  with their bundled models and thumbnails, labelled as legacy variants.
+- Added end-to-end sockets for every restored shape, including all T/X branches,
+  source/target cycling, mixed bubble/ordinary-pipe connections, and rotated parts.
+- Corrected low-resolution BASE_BUBPIPE snapping: its centred Z-axis FBX needs
+  different sockets from the high-resolution Y-axis native mesh.
+- Preserved original object IDs and existing scene geometry. Legacy variant IDs
+  are absent from the locally audited current-game object table; Blender snapping
+  and serialization do not establish that these IDs work in an unmodified game.
+- Retained the user-confirmed 18.0.14 mirror and ordinary-pipe fixes.
+
+Save your work and restart all Blender windows after installing.
+
+# Base Builder Extended 18.0.14
+
+- Replaced Euler mirror guesses with full world/local reflection matrices.
+  Audited 779 IDs and supplied geometry-based relations for 695 IDs, including
+  native Corvette counterparts, diagonal walls, triangular floors and curved
+  walls. Variant rotations and off-centre origins are included. Native detailing
+  is retained; intrinsically asymmetric parts still cannot become exact mirror
+  images through NMS rotation/Up/At alone and retain legacy handling.
+- Mirror keeps native part identity, synchronizes SnapID after counterpart swaps,
+  preserves proxy quality and shared source meshes, and supports all three axes.
+- Added missing PIPE snap membership, end-to-end defaults for curved/straight
+  pipes, and cross-ID pipe matching. Unsupported snaps leave objects in place.
+- Sidebar now shows Base Builder Extended and the installed manifest version.
+  Base Builder credit remains prominent for DjMonkey; Extended credit is
+  Furiousfurby. Original guides, Patreon, Discord and Steam Games remain.
+- Updates & Support has a small blue header icon within Blender's normal theme.
+- Automated Blender 5.1.2 and 5.2.2 checks cover export roundtrips, double mirrors,
+  oblique transforms, actual high/low meshes and physical pipe socket alignment.
+  In-game validation remains separate.
+
+Save your work and restart Blender after updating. Existing mirrored placements
+are not automatically rewritten; mirror the original parts again to repair them.
+
 # Community update 18.0.9
 
 - Fixed Corvette weapon placement/import using the textured high-resolution

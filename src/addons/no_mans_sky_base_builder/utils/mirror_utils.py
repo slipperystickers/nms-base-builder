@@ -31,33 +31,12 @@ def ShowMessageBox(message="", title="Message Box", icon="INFO"):
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
-#This function mirrors matrix world across x axis
 def mirror_matrix_world(object_id, old_matrix_world, across_x=True):
-
-    #extract location,rotation and scale values from matrix world
-    location, rotation_quaternion, scale = old_matrix_world.decompose()
-
-    #mirror location  if across x is selected
-    new_location = -location.x if across_x else location.x
-    position_values = (new_location, location.y, location.z)
-    position_matrix = Matrix.Translation(Vector(position_values))
-
-    #mirror rotation across x axis
-    current_euler = rotation_quaternion.to_euler("XYZ")
-    rotation_values = (current_euler.x, -current_euler.y, -current_euler.z)
-    rotation_euler = Euler(rotation_values, "XYZ")
-    rotation_matrix = rotation_euler.to_matrix().to_4x4()
-
-    #creating scale matrix
-    scale_matrix = Matrix.Scale(scale.x, 4)
-
-    #multiplying all the matrix
-    matrix_world = position_matrix @ rotation_matrix @ scale_matrix
-
-    #correct anomalies in mirroring
-    matrix_world = mirror_correction(object_id, matrix_world)
-
-    return matrix_world
+    """Compatibility entry point using the same geometry-aware reflection."""
+    center = Vector((0, 0, 0))
+    if not across_x:
+        center.x = old_matrix_world.translation.x
+    return mirror_matrix_world_universal(object_id, old_matrix_world, "X", center)
 
 def reflect_point_across(source,origin):
     return (2 * origin) - source
@@ -82,41 +61,49 @@ def reflect_point(source,origin, axis):
     z = reflect_point_across(source.z, origin.z) if axis == "Z" else source.z
     return Vector((x,y,z))
 
-# This function mirrors matrix world according to parameters passed
-# Axis has three possible string values : X, Y and Z
-# Center is a point across which mirroring will take place, it is a 3d Vector
-def mirror_matrix_world_universal(object_id, old_matrix_world, axis = None, center = None, mirror_part_exist = False):
+# Each entry maps the target native mesh back to the reflected source mesh.
+# Generated and checked against actual asset surfaces, including variant offsets.
+with open(Path(__file__).resolve().parents[1] / "resources" / "mirror_geometry.json",
+          encoding="utf-8") as _stream:
+    GEOMETRY_RELATIONS = json.load(_stream)
 
-    #extract location,rotation and scale values from matrix world
-    location, rotation_quaternion, scale = old_matrix_world.decompose()
 
-    # mirror location according to axis
-    position_vector = reflect_point(location,center,axis)
-    position_matrix = Matrix.Translation(position_vector)
+def mirror_matrix_world_universal(object_id, old_matrix_world, axis=None,
+                                  center=None, mirror_part_exist=False):
+    """Reflect the world placement and compensate the native mesh's handedness.
 
-    # mirror rotation according to axis
-    current_euler = rotation_quaternion.to_euler("XYZ")
-    if axis == "X":
-        rotation_values = (current_euler.x, -current_euler.y, -current_euler.z)
-    elif axis == "Y":
-        rotation_values = (current_euler.x, -current_euler.y, -current_euler.z + math.pi)
-    else:# axis == "Z"
-        rotation_values = (current_euler.x + math.pi, current_euler.y , current_euler.z + math.pi)
-        
-    rotation_euler = Euler(rotation_values, "XYZ")
-    rotation_matrix = rotation_euler.to_matrix().to_4x4()
+    S_world @ placement @ source_to_target_reflection keeps object transforms
+    right-handed, so the result survives NMS Position/Up/At serialization.
+    Euler sign changes only cover a mesh symmetric about local X; that was
+    wrong for angled walls, rotated native variants, and off-centre meshes.
+    """
+    if axis not in {"X", "Y", "Z"} or center is None:
+        return old_matrix_world.copy()
+    relation = native_geometry_reflection(object_id, mirror_part_exist)
+    if relation is None:
+        # Preserve legacy part-specific corrections for unaudited/asymmetric
+        # assets. Full matrices also preserve all scale axes and avoid Euler
+        # singularities for every world reflection plane.
+        relation = Matrix.Diagonal((-1.0, 1.0, 1.0, 1.0))
+        if object_id:
+            relation = relation @ mirror_correction(object_id, Matrix.Identity(4))
+    world = Matrix.Identity(4)
+    index = "XYZ".index(axis)
+    world[index][index] = -1.0
+    world[index][3] = 2.0 * center[index]
+    return world @ old_matrix_world @ relation
 
-    #creating scale matrix
-    scale_matrix = Matrix.Scale(scale.x, 4)
 
-    #multiplying all the matrix
-    matrix_world = position_matrix @ rotation_matrix @ scale_matrix
-    
-    #correct anomalies in mirroring
-    if object_id is not None:
-        matrix_world = mirror_correction(object_id, matrix_world)
-
-    return matrix_world
+def native_geometry_reflection(object_id, mirror_part_exist=False):
+    identity = str(object_id or "").lstrip("^")
+    record = GEOMETRY_RELATIONS.get(identity)
+    if record is None:
+        return None
+    # A counterpart relation must only be used when its mesh is also swapped.
+    expected_target = record["target"]
+    if expected_target != identity and not mirror_part_exist:
+        return None
+    return Matrix(record["matrix"])
 
 
 def mirror_matrix_world_universal_2(object_id, old_matrix_world, axis=None, center=None, mirror_part_exist = False):

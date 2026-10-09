@@ -600,8 +600,9 @@ class Group:
         )
         new_origin_inverted = new_origin.inverted()
 
-        # build_tool.mirror is only ever handed X or Z for the parts themselves
-        tool_axis = "Z" if axis == "Z" else "X"
+        # Keep the selected world plane for every cached child. Mapping Y to
+        # X reflected the origin and its parts across different planes.
+        tool_axis = axis
 
         new_child_cache = {}
         for child_name, cache_data in cached_child_data.items():

@@ -1,5 +1,6 @@
-NO MAN'S SKY BASE BUILDER - COMMUNITY UPDATE 18.0.9
-Based on Kuma's 18.0.0 release; original creator and branding: DjMonkey.
+BASE BUILDER EXTENDED 18.0.18
+Base Builder by DjMonkey; Extended by Furiousfurby.
+Based on Kuma's 18.0.0 release.
 
 REQUIREMENTS
 64-bit Windows, Blender 5.1 or 5.2 (tested with 5.1.2 and 5.2.2 LTS).
@@ -18,8 +19,11 @@ setup is not claimed and still needs an in-game test.
 INSTALL / UPDATE
 1. Save your Blender work. Keep this ZIP intact.
 2. Edit > Preferences > Get Extensions > top-right menu > Install from Disk.
-3. Select the ZIP and enable No Man's Sky Base Builder.
-4. Restart Blender after upgrading.
+3. Select the ZIP and enable Base Builder Extended.
+4. Restart all Blender windows after upgrading.
+For existing low-resolution curved bubble ducts, use Builder > High-res Proxies.
+New pipes and bubble ducts added from the Asset Browser automatically join an
+endpoint of the selected pipe or bubble duct. Use Snap controls to cycle ends.
 For habs or the Thunderbird bay already placed in an older saved scene, select
 those parts and switch to Low-Res, then back to High-Res to refresh their meshes.
 This replaces the installed extension with the same ID; do not enable duplicate

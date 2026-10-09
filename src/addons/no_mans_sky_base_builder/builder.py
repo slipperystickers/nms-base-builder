@@ -211,6 +211,13 @@ class Builder(object):
             flip_axis (tuple): Axis to scale by -1 when there is no twin model.
         """
         from . import builder_v2
+        from .utils import materials_v2
+
+        if not materials_v2.is_high_res(part_object):
+            if builder_v2.apply_proxy_mesh(
+                part_object, twin_id, part_object.get("UserData", 0)
+            ):
+                return
 
         twin_mesh = builder_v2.load_high_res_mesh(twin_id)
         if twin_mesh is not None:
@@ -229,6 +236,7 @@ class Builder(object):
         self._swap_mesh_for_twin(part_object, new_object_id, (1, 0, 0))
         # Update ObjectID and name
         part_object["ObjectID"] = new_object_id
+        part_object["SnapID"] = new_object_id
         part_object.name = new_object_id
         # Update cache
         if object_id in self.__part_cache:

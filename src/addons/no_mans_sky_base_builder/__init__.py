@@ -55,6 +55,10 @@ GHOSTED_ITEMS = ghosted_reference["GHOSTED"]
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
 
 ADDON_ID = __package__
+# Use the installed manifest for both sidebar and updater version labels.
+import tomllib
+with open(Path(FILE_PATH) / "blender_manifest.toml", "rb") as _manifest_stream:
+    ADDON_VERSION = tomllib.load(_manifest_stream)["version"]
 
 
 # Setting Support Methods ---
@@ -501,7 +505,7 @@ class NMSMain(PropertyGroup):
 # File Buttons Panel ---
 class NMS_PT_hero_panel(Panel):
     bl_idname = "NMS_PT_hero_panel"
-    bl_label = "No Man's Sky Base Builder"
+    bl_label = "Base Builder Extended"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "No Mans Sky Base Builder"
@@ -524,7 +528,7 @@ class NMS_PT_hero_panel(Panel):
         online_icon = pcoll["online"]
         
         icon_row = layout.row(align = True)
-        icon_split = icon_row.split(factor = 0.35)
+        icon_split = icon_row.split(factor = 0.24)
         icon_holder = icon_split.column(align = True)
         icon_holder.scale_y = 0.8
         icon_holder.template_icon(
@@ -533,26 +537,28 @@ class NMS_PT_hero_panel(Panel):
         )
         
         icon_text_column = icon_split.column(align = True)
-        icon_text_column.scale_y = 0.6
+        icon_text_column.scale_y = 0.85
         icon_text_column.label(text = "")
         icon_text_column.label(text = "No Man's Sky")
-        icon_text_column.label(text = "Base and Corvette Builder")
+        icon_text_column.label(text = "Base Builder Extended")
+        icon_text_column.label(text = "Version " + ADDON_VERSION)
         icon_text_column.separator()
         icon_text_sec = icon_text_column.column(align = True)
         icon_text_sec.alert = True
         #icon_text_sec.scale_y = 0.4
-        icon_text_sec.label(text = "🐵 by DjMonkey")
+        icon_text_sec.label(text = "Base Builder: DjMonkey")
+        icon_text_column.label(text = "Extended: Furiousfurby")
         
         community_row = layout.row(align=True)
         communuity_box = community_row.box()
         third_column = communuity_box.column(align=True)
-        third_column.label(text="Commmunity")
+        third_column.label(text="Community")
         third_column.operator("object.nms_visit_guides", icon_value = online_icon.icon_id)
         third_column.operator("object.nms_visit_community", icon_value = discord_icon.icon_id)
         
         support_box = community_row.box()
         fourth_column = support_box.column(align = True)
-        fourth_column.label(text = "Support Me")
+        fourth_column.label(text = "Support DjMonkey")
         fourth_column.operator("object.nms_visit_patreon", text = "Patreon", icon_value = pateron_icon.icon_id)
         fourth_column.operator("object.nms_visit_steam_games", text = "Steam Games", icon_value = steam_icon.icon_id)
         
@@ -2067,6 +2073,9 @@ classes = classes  + save_editor_operators.classes + station_reference.classes +
 
 def register():
 
+    from . import release_updates
+    release_updates.register('bbe', ADDON_VERSION, 'No Mans Sky Base Builder')
+
     # Ensure User data folder structure exists
     for data_path in [USER_PATH, PRESET_PATH]:
         if not os.path.exists(data_path):
@@ -2115,6 +2124,8 @@ def register():
     bpy.app.timers.register(viewport_overlay.register_draw, first_interval=0.01)
 
 def unregister():
+    from . import release_updates
+    release_updates.unregister()
     for pcoll in preview_collections.values():
         bpy.utils.previews.remove(pcoll)
     preview_collections.clear()
