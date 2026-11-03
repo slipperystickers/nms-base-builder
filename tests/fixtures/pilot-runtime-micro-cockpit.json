@@ -1,0 +1,195 @@
+{
+  "status": "validated read-only runtime sample; current modified duplicate, not original U.S.O. screenshot",
+  "sample_utc": "2026-11-02T00:20:39.761271+00:00",
+  "coordinate_frame": "native first cockpit, unit axes, Y up. Positions reconstructed in float64 from float32 local matrices; not subtracted from coarse world coordinates.",
+  "source_runtime_json": "runtime_local_ship_pose_nodes.json",
+  "source_runtime_sha256": "083032357a8bc7ded58172090032fbb96c33066737fd171e1ba19dc07204bec2",
+  "exe_sha256": "d393c6782d29e1915854c0d5cf42505c8093740c05dc53705dbed7e0d1d4ac37",
+  "process_id": 62088,
+  "access": "PROCESS_VM_READ only; no process writes/hooks/debugger/game input",
+  "live_build_root": "PlayerShipBase6",
+  "supplied_blend": {
+    "path": "pilottesttt.blend",
+    "sha256": "7087b5cad2d7ab833a876b6d8d58c8ffc1223133ff185d9fe477ef54ff83a4e9",
+    "mtime_utc": "2026-11-02T00:20:15.859498+00:00",
+    "relationship": "user-supplied current variant; file fingerprint does not independently establish save identity"
+  },
+  "cockpit_handle": "0xcb3a3f",
+  "cockpit_part_handle": "0xcb3a3b",
+  "cockpit_scale_xyz": [
+    0.0007690902475925676,
+    0.0007690902376826542,
+    0.0007690901583982952
+  ],
+  "playerposition_handle": "0xcb3af1",
+  "runtime_playerposition_unscaled_cockpit_xyz": [
+    0.0,
+    0.00030023360159248114,
+    0.0015011547657195479
+  ],
+  "player_model_handle": "0xcc06d0",
+  "runtime_player_model_unscaled_cockpit_xyz": [
+    -7.1006943471729755e-06,
+    0.000298006838420406,
+    0.001525473577203229
+  ],
+  "player_model_minus_playerposition_xyz": [
+    -7.1006943471729755e-06,
+    -2.2267631720751524e-06,
+    2.4318811483681202e-05
+  ],
+  "player_model_minus_playerposition_norm_m": 2.5431927304380788e-05,
+  "native_pose": "CKPIT_SIT_LOOP with ASTRO armoured morphs; no root alignment applied",
+  "validation_tolerance_m": 0.0002,
+  "landmarks": {
+    "player01_ROOTSHJnt": {
+      "runtime_handle": "0xcc06d2",
+      "runtime_position_unscaled_cockpit_xyz": [
+        -0.010384501714725047,
+        0.5421271908271592,
+        -0.01796095207100734
+      ],
+      "native_ckpit_y180_xyz": [
+        -0.010354901663959026,
+        0.5418287515640259,
+        -0.01950935646891594
+      ],
+      "difference_from_native_pose_plus_live_playerposition_xyz": [
+        -2.9600050766021013e-05,
+        -1.794338459149003e-06,
+        4.724963218905032e-05
+      ],
+      "error_norm_m": 5.578449962003372e-05,
+      "complete_parent_chain": [
+        "player01_TrajectorySHJnt",
+        "MODELS/COMMON/PLAYER/PLAYERCHARACTER/PLAYERCHARACTER.SCENE.MBIN",
+        "Player",
+        "Simulation-Root",
+        "RootNode"
+      ]
+    },
+    "player01_l_leg_HipSHJnt": {
+      "runtime_handle": "0xcc06d3",
+      "runtime_position_unscaled_cockpit_xyz": [
+        -0.1310100148548372,
+        0.44708794142934494,
+        -0.003929602011339739
+      ],
+      "native_ckpit_y180_xyz": [
+        -0.13098998367786407,
+        0.44680333137512207,
+        -0.005466238129884005
+      ],
+      "difference_from_native_pose_plus_live_playerposition_xyz": [
+        -2.003117697313428e-05,
+        -1.5623547369614244e-05,
+        3.548135282471776e-05
+      ],
+      "error_norm_m": 4.3637938558228345e-05,
+      "complete_parent_chain": [
+        "player01_ROOTSHJnt",
+        "player01_TrajectorySHJnt",
+        "MODELS/COMMON/PLAYER/PLAYERCHARACTER/PLAYERCHARACTER.SCENE.MBIN",
+        "Player",
+        "Simulation-Root",
+        "RootNode"
+      ]
+    },
+    "player01_r_leg_HipSHJnt": {
+      "runtime_handle": "0xcc06db",
+      "runtime_position_unscaled_cockpit_xyz": [
+        0.11337320948950946,
+        0.4512016215012409,
+        -0.0039458771352656186
+      ],
+      "native_ckpit_y180_xyz": [
+        0.11339371651411057,
+        0.4508918821811676,
+        -0.005487005226314068
+      ],
+      "difference_from_native_pose_plus_live_playerposition_xyz": [
+        -2.0507024601101875e-05,
+        9.505718480795622e-06,
+        3.997332532890141e-05
+      ],
+      "error_norm_m": 4.592127480456665e-05,
+      "complete_parent_chain": [
+        "player01_ROOTSHJnt",
+        "player01_TrajectorySHJnt",
+        "MODELS/COMMON/PLAYER/PLAYERCHARACTER/PLAYERCHARACTER.SCENE.MBIN",
+        "Player",
+        "Simulation-Root",
+        "RootNode"
+      ]
+    },
+    "player01_l_arm_WristSHJnt": {
+      "runtime_handle": "0xcc06e9",
+      "runtime_position_unscaled_cockpit_xyz": [
+        -0.22596799448365346,
+        0.7345442633668426,
+        0.36170024288003333
+      ],
+      "native_ckpit_y180_xyz": [
+        -0.22582288086414337,
+        0.73423171043396,
+        0.3601607084274292
+      ],
+      "difference_from_native_pose_plus_live_playerposition_xyz": [
+        -0.0001451136195100844,
+        1.2319331290200353e-05,
+        3.837968688458204e-05
+      ],
+      "error_norm_m": 0.00015060786452278583,
+      "complete_parent_chain": [
+        "player01_l_arm_ElbowSHJnt",
+        "player01_l_arm_ShoulderSHJnt",
+        "player01_l_arm_ClavicleSHJnt",
+        "player01_spine_TopSHJnt",
+        "player01_spine_02SHJnt",
+        "player01_spine_01SHJnt",
+        "player01_ROOTSHJnt",
+        "player01_TrajectorySHJnt",
+        "MODELS/COMMON/PLAYER/PLAYERCHARACTER/PLAYERCHARACTER.SCENE.MBIN",
+        "Player",
+        "Simulation-Root",
+        "RootNode"
+      ]
+    },
+    "player01_r_arm_WristSHJnt": {
+      "runtime_handle": "0xcc0704",
+      "runtime_position_unscaled_cockpit_xyz": [
+        0.22030954534420744,
+        0.7598521881445777,
+        0.3008161737816408
+      ],
+      "native_ckpit_y180_xyz": [
+        0.22039750218391418,
+        0.7595422863960266,
+        0.29924479126930237
+      ],
+      "difference_from_native_pose_plus_live_playerposition_xyz": [
+        -8.795683970674872e-05,
+        9.668146958574653e-06,
+        7.022774661891162e-05
+      ],
+      "error_norm_m": 0.000112968203986703,
+      "complete_parent_chain": [
+        "player01_r_arm_ElbowSHJnt",
+        "player01_r_arm_ShoulderSHJnt",
+        "player01_r_arm_ClavicleSHJnt",
+        "player01_spine_TopSHJnt",
+        "player01_spine_02SHJnt",
+        "player01_spine_01SHJnt",
+        "player01_ROOTSHJnt",
+        "player01_TrajectorySHJnt",
+        "MODELS/COMMON/PLAYER/PLAYERCHARACTER/PLAYERCHARACTER.SCENE.MBIN",
+        "Player",
+        "Simulation-Root",
+        "RootNode"
+      ]
+    }
+  },
+  "maximum_valid_landmark_error_m": 0.00015060786452278583,
+  "excluded": "All other joints, especially finger entries with ancestor lists truncated by the 12-level cap, are excluded and cannot support this validation.",
+  "capture_stability": "First COCKPITPOS handle and world matrix matched earlier 00:18:43 UTC locator sample. Follow-up sampling later rejected stale handle after game scene changed; no new pose inferred."
+}
