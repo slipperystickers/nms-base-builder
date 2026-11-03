@@ -6,9 +6,14 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+import sys
+import types
 
 MODULE = Path(__file__).parents[1] / 'src/addons/no_mans_sky_base_builder/interchange.py'
-spec = importlib.util.spec_from_file_location('bbe_interchange', MODULE)
+package = types.ModuleType('bbe_interchange_test')
+package.__path__ = [str(MODULE.parent)]
+sys.modules[package.__name__] = package
+spec = importlib.util.spec_from_file_location('bbe_interchange_test.interchange', MODULE)
 interchange = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(interchange)
 

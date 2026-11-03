@@ -51,6 +51,49 @@ class LibraryTests(unittest.TestCase):
             resource.write_text(json.dumps({'id': 'updated-manifest'}))
             self.assertEqual(hd.specification()['id'], 'updated-manifest')
 
+    def test_compatible_additions_remain_visible_until_update_installed(self):
+        old_root = hd.install_archive(self.zip, self.spec)
+        new_spec = dict(self.spec, id='updated-additions', content_sha256='updated-content',
+                        compatible_previous=[self.spec])
+        with patch.object(hd, 'additions_specification', return_value=new_spec), \
+                patch.object(hd, 'ADDON', self.root / 'empty-addon'):
+            self.assertEqual(hd.additions_root(), old_root)
+            self.assertIsNone(hd.additions_root(allow_previous=False))
+            with patch.object(hd, 'available', return_value=True), \
+                    patch.object(hd, 'scenes_root', return_value=old_root), \
+                    patch.object(hd, 'characters_root', return_value=old_root):
+                self.assertEqual(hd.pending_specs(), [new_spec])
+                self.assertFalse(hd.ready())
+            new_root = hd.install_archive(self.zip, new_spec)
+            self.assertEqual(hd.additions_root(), new_root)
+            self.assertEqual(hd.additions_root(allow_previous=False), new_root)
+
+    def test_unverified_or_removing_previous_additions_are_rejected(self):
+        old_root = hd.install_archive(self.zip, self.spec)
+        new_spec = dict(self.spec, id='updated-additions', content_sha256='updated-content',
+                        compatible_previous=[self.spec])
+        with patch.object(hd, 'additions_specification', return_value=new_spec), \
+                patch.object(hd, 'ADDON', self.root / 'empty-addon'):
+            for receipt in ({'id': self.spec['id'], 'content_sha256': 'wrong'},
+                            dict(self.spec, removing=True)):
+                (old_root / 'installed.json').write_text(json.dumps(receipt))
+                self.assertIsNone(hd.additions_root())
+
+    def test_remove_hd_also_removes_compatible_fallback(self):
+        old_root = hd.install_archive(self.zip, self.spec)
+        main_spec = dict(self.spec, id='main-library', content_sha256='main-content')
+        main_root = hd.install_archive(self.zip, main_spec)
+        new_spec = dict(self.spec, id='updated-additions', content_sha256='updated-content',
+                        compatible_previous=[self.spec])
+        unrelated = hd.storage() / 'unrelated'
+        unrelated.mkdir()
+        with patch.object(hd, 'specification', return_value=main_spec), \
+                patch.object(hd, 'additions_specification', return_value=new_spec):
+            hd.remove_installed(main_root)
+        self.assertFalse(old_root.exists())
+        self.assertFalse(main_root.exists())
+        self.assertTrue(unrelated.exists())
+
 
     def test_bad_archive_hash(self):
         self.zip.write_bytes(b'wrong download')

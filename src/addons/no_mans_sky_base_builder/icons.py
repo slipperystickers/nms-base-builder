@@ -143,6 +143,15 @@ def load_asset_icons():
     for filename in os.listdir(directory_path):
         if filename.lower().endswith(".png"):
             filepath = os.path.join(directory_path, filename)
+            # Settlement catalog PNGs can be refreshed from the game's shared
+            # construction-board placeholder. The bundled settlement artwork
+            # is specific to each part and must take precedence in both menus.
+            if filename.startswith(("SET_", "S_TOWER")):
+                settlement_icon = os.path.join(
+                    os.path.dirname(__file__), "asset_browser", "icons", filename
+                )
+                if os.path.isfile(settlement_icon):
+                    filepath = settlement_icon
             
             # Use the filename without the .png extension as the icon identifier
             icon_name = os.path.splitext(filename)[0]

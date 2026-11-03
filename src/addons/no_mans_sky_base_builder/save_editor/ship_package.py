@@ -40,12 +40,19 @@ def from_save(root, context, base_index):
     if not isinstance(custom, list) or len(custom) <= slot or not isinstance(custom[slot], dict):
         raise ValueError('The saved ship appearance is unavailable; choose a complete .nmsship template.')
     appearance = core.translate(custom[slot])
+    legacy = core.get(core.player(root, context), 'ShipUsesLegacyColours', [])
+    state = {}
+    if isinstance(legacy, list) and len(legacy) > index and type(legacy[index]) is bool:
+        state['ShipUsesLegacyColours'] = legacy[index]
     ship_repair.validate_payload(dict(ship=ship, objects=objects, custom=appearance), 'FULL')
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, value in (('objects.json', objects), ('so.json', ship), ('ccd.json', appearance),
                             (build_metadata.PACKAGE_ENTRY, build_metadata.package_metadata(core.translate(base)))):
             archive.writestr(name, _encode(value))
+        if state:
+            archive.writestr(build_metadata.SHIP_STATE_ENTRY, _encode(
+                {'format': 'bbe-ship-state', 'version': 1, 'state': state}))
     return BuildFile.from_bytes(stream.getvalue(), '.nmsship')
 
 

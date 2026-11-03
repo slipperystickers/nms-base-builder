@@ -6,6 +6,7 @@ PART_KEYS = {'Objects', 'objects', 'Prefab', 'Presets'}
 OWNER_FIELDS = {'USN': 'string_usn', 'UID': 'string_uid', 'LID': 'string_lid',
                 'PTK': 'string_ptk', 'TS': 'string_ts'}
 PACKAGE_ENTRY = 'bbe-build-metadata.json'
+SHIP_STATE_ENTRY = 'bbe-ship-state.json'
 _approved_owners = {}
 
 
@@ -142,5 +143,55 @@ def read_package_metadata(value):
             or value.get('version') != 1 or not isinstance(value.get('metadata'), dict)):
         raise ValueError('Unsupported BBE build metadata in ship package')
     return wrapper(value['metadata'])
+
+
+def export_package_metadata(props, source):
+    """Keep template/save metadata unless the project supplied or edited it."""
+    result = wrapper(source.document)
+    current = props.serialise()
+    authored = json.loads(props.metadata_source_json) if props.metadata_source_json else {}
+    baseline = json.loads(props.metadata_baseline_json) if props.metadata_baseline_json else {}
+    for key, value in current.items():
+        if key in authored or key not in result or value != baseline.get(key, value):
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def ownership_sources(root):
+    """Read unambiguous Corvette owners, including blank names, without mutations."""
+    from .save_editor import ship_core as core
+    result = {}
+    for context in core.contexts(root):
+        ships = core.ships(root, context)
+        bases = core.get(core.player(root, context), 'PersistentPlayerBases', [])
+        counts = {}
+        for base in bases:
+            if core.kind(base) == 'PlayerShipBase':
+                index = core.get(base, 'UserData')
+                if type(index) is int:
+                    counts[index] = counts.get(index, 0) + 1
+        for number, base in enumerate(bases):
+            index = core.get(base, 'UserData')
+            if (core.kind(base) != 'PlayerShipBase' or type(index) is not int
+                    or not 0 <= index < len(ships) or counts.get(index) != 1
+                    or not core.corvette(ships[index])):
+                continue
+            owner = core.translate(core.get(base, 'Owner'))
+            if not isinstance(owner, dict) or not owner:
+                continue
+            name = core.get(base, 'Name') or core.get(ships[index], 'Name') or 'Unnamed Corvette'
+            label = f'{context} / Ship {index + 1}: {name}'
+            result[f'{context}:{number}'] = (label, copy.deepcopy(owner))
+    return result
+
+
+def read_ship_state(value):
+    if (not isinstance(value, dict) or value.get('format') != 'bbe-ship-state'
+            or value.get('version') != 1 or not isinstance(value.get('state'), dict)):
+        raise ValueError('Unsupported BBE ship state in ship package')
+    state = value['state']
+    if 'ShipUsesLegacyColours' in state and type(state['ShipUsesLegacyColours']) is not bool:
+        raise ValueError('Ship legacy-colour flag must be true or false')
+    return copy.deepcopy(state)
 
 

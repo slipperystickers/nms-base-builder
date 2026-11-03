@@ -47,6 +47,20 @@ class Group:
     PROP_IS_MIRROR = "is_mirror"
     
     PROP_MATRIX_LOCAL = "matrix_local"
+    PROP_DISPLAY_PIVOT_CACHE = 'bbe_display_pivot_cache_v1'
+
+    @staticmethod
+    def display_child_cache(cache_data):
+        """Convert old native local matrices to the displayed mesh frame."""
+        from .utils import mirror_pivot
+        for entry in cache_data.values():
+            identity = entry.get(Group.PROP_OBJECT_ID)
+            local = entry.get(Group.PROP_MATRIX_LOCAL)
+            if local and mirror_pivot.has_pivot(identity):
+                matrix = mathutils.Matrix(local) @ mathutils.Matrix.Translation(
+                    -mirror_pivot.pivot(identity))
+                entry[Group.PROP_MATRIX_LOCAL] = [list(row) for row in matrix]
+        return cache_data
 
     def __init__(self):
         """Initialize the Groups manager."""
@@ -109,6 +123,10 @@ class Group:
 
         try:
             cache_child_data = json.loads(parent_obj[Group.PROP_CHILD_CACHE])
+            if not parent_obj.get(Group.PROP_DISPLAY_PIVOT_CACHE):
+                Group.display_child_cache(cache_child_data)
+                parent_obj[Group.PROP_CHILD_CACHE] = json.dumps(cache_child_data)
+                parent_obj[Group.PROP_DISPLAY_PIVOT_CACHE] = True
             origin_matrix_str = parent_obj.get(Group.PROP_ORIGIN_MATRIX)
             origin_matrix = Group.str_to_matrix(origin_matrix_str) if origin_matrix_str else None
             return cache_child_data, origin_matrix
@@ -193,6 +211,7 @@ class Group:
         #child_cache[Group.PROP_ORIGIN_MATRIX] = target_matrix_cache
         number_of_objects_grouped = len(objects_list)
         merged_object[Group.PROP_CHILD_CACHE] = child_cache
+        merged_object[Group.PROP_DISPLAY_PIVOT_CACHE] = True
         merged_object[Group.PROP_GROUP_ID] = str(uuid.uuid4())
         merged_object[Group.PROP_PART_COUNT] = number_of_objects_grouped
         merged_object[Group.PROP_IS_MIRROR] = False
@@ -347,6 +366,7 @@ class Group:
         """
         from .forge_compat import export_cache
         cached_child_data = export_cache(parent_obj)
+        normalized_cache = cached_child_data is None
         if cached_child_data is None:
             cached_child_data, origin_matrix = Group.extract_cached_data(parent_obj)
         if not cached_child_data:
@@ -369,6 +389,9 @@ class Group:
             matrix_world = Group.restore_matrix_world(parent_obj, cache_data)
             if matrix_world is None:
                 continue
+            if normalized_cache:
+                from .utils import mirror_pivot
+                matrix_world = mirror_pivot.native_matrix(matrix_world, object_id)
             for field, axis, column in (('Up', 'Y', 1), ('At', 'Z', 2)):
                 if field == 'At' and object_id in ('U_POWERLINE', 'U_PIPELINE', 'U_PORTALLINE', 'U_BYTEBEATLINE'):
                     continue  # A coincident cable can have a zero At direction.

@@ -116,6 +116,12 @@ def read_replacement(path, mode):
         payload['ship'] = core.translate(_decode(build.entries['so.json'], 'so.json'))
         payload['custom'] = (core.translate(_decode(build.entries['ccd.json'], 'ccd.json'))
                              if 'ccd.json' in build.entries else None)
+        from .. import build_metadata
+        if build_metadata.SHIP_STATE_ENTRY in build.entries:
+            state = build_metadata.read_ship_state(_decode(
+                build.entries[build_metadata.SHIP_STATE_ENTRY], build_metadata.SHIP_STATE_ENTRY))
+            if 'ShipUsesLegacyColours' in state:
+                payload['legacy_colours'] = state['ShipUsesLegacyColours']
         validate_payload(payload, mode)
     elif mode != 'OBJECTS':
         raise ValueError('Choose a supported replacement mode.')

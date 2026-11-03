@@ -112,6 +112,9 @@ class BuildTool(bpy.types.PropertyGroup):
             if "ObjectID" in target :
                 object_id = target["ObjectID"]
                 mirror_id = part.Part.get_mirror_part_id(object_id)
+                if not change_orientation:
+                    from ..utils import mirror_pivot
+                    mirror_pivot.ensure_object(target)
                 
                 if auto_duplicate and not change_orientation:
                     new_item = blend_utils.duplicate_part(target)
@@ -128,12 +131,16 @@ class BuildTool(bpy.types.PropertyGroup):
                     new_item = BUILDER.mirror_part(new_item)
                      
                 if not change_orientation:
+                    old_world = new_item.matrix_world.copy()
                     mirrored_matrix_world = mirror_utils.mirror_matrix_world_universal(
                         object_id, 
                         new_item.matrix_world.copy(), 
                         axis,center, 
                         mirror_part_exist = mirror_part_exist
                     )
+                    if object_id == 'BASE_BUBPIPE':
+                        from .. import bubble_preview
+                        bubble_preview.mirror_openings(new_item, old_world, mirrored_matrix_world, axis)
                     new_item.matrix_world = mirrored_matrix_world
                 else :
                     mirrored_matrix_world = mirror_utils.change_orientation(object_id,new_item.matrix_world.copy(), axis, mirror_part_exist)
@@ -500,6 +507,12 @@ class BuildTool(bpy.types.PropertyGroup):
                 prev_target=prev_target,
             )
             if snapped is not False:
+                if len(selected_objects) == 2 and not any((next_source, prev_source, next_target, prev_target)):
+                    from .. import snap_markers
+                    source.object.select_set(True)
+                    target.object.select_set(True)
+                    bpy.context.view_layer.objects.active = target.object
+                    snap_markers.start(bpy.context, source.object, target.object)
                 return {"FINISHED"}
         ShowMessageBox(
             message="These parts do not have a compatible BBE snap connection.",

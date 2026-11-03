@@ -1,3 +1,44 @@
+# 18.2.43
+
+- Restore native geometry, default orientation and textured detailed models for the new Corvette parts. Vantage includes all three rear connection openings and changes the displayed walls when connections are used.
+- Add clickable Corvette snap targets in the viewport for the selected target part, alongside the existing connection controls.
+- Correct sign/table mirroring and mirrored bubble-tube previews; improve junction checks and continued editing of mirrored tube systems.
+- Keep U_PARAGON visible and movable so builders can adjust its exported position for the ship's third-person view.
+- Align character pilot references with the shared cockpit placement calculation. Add selectable standing and seated character scale references, excluded from ship exports, with colored thumbnails and an optional textured HD character pack.
+- Expand Advanced account unlock tools beyond buildable items, including expedition rewards, common names and item IDs, categories, and currency editing.
+- Add the Advanced Raw Save JSON editor with a default Quick View, named and categorized bases, separate Main/Expedition trees and an adjacent JSON editor. Include game-running protection, changed-file detection, backup-backed saves, unsaved-change prompts and a green enabled Save button.
+- Support pasting clipboard images and text into chat. Restore missing settlement icons and freighter-window previews.
+- Reduce placement overhead and standardize new-part texture sizes against the existing HD library. Preserve full detailed meshes; prepare duplicate-face cleanup before distribution. The additions download is 251.5 MB, previously 408.2 MB.
+- Keep base models and all asset-browser icons in the base download. Detailed models/textures and HD characters remain separate downloads managed by Detailed Proxies. Preserve the verified compatible additions pack while its replacement update is pending.
+
+# 18.2.42
+
+- Restore the pilot reference's earlier forward position for very small cockpits such as U.S.O. Keep the height adjustment from 18.2.41; the backward shift did not match the in-game view.
+- Refresh pilot previews saved by older versions when a Blender project opens. The reference remains visual only and is excluded from game exports.
+
+# 18.2.41
+
+- Align the full-size pilot preview with the Corvette cockpit's chair locator and player offset, including very small cockpits such as U.S.O. The character still follows the first cockpit and remains excluded from game exports.
+- Update older saved pilot previews when their Blender project is reopened. Placement is ready for comparison against in-game seating.
+
+# 18.2.40
+
+- Preview Light Fissure beams in their red/orange in-game colour rather than the green extracted texture mask. Correct already-saved HD previews on load without changing part placement or export data.
+- Replace the Holo-Arena Game Table's misleading sail icon with a transparent render of its native table model.
+
+# 18.2.39
+
+- Reduce the base download by about 352 MB (34%) by moving detailed addition models and textures into the optional High Detail Proxy pack. Geometry, textures and icon resolution are unchanged. The pack is stored outside the extension so updates keep it installed.
+- Download and install verified updates automatically when the update checkbox is enabled. Manual Download and install also completes installation. Wait for editing, dialogs and renders to finish, briefly pause the Asset Browser, and reload the updated extension.
+- Show update failures in Updates & Support and verify archive identity, version, minimum Blender version and SHA-256 before installation.
+
+# 18.2.38
+
+- Copy a saved Corvette's complete Owner record from Advanced Build Metadata. Review the copied fields before applying; the donor ship is never changed, and writing ownership to the destination save remains a separate opt-in.
+- Explain empty USN fields without inventing a username from an account ID. Reject ownership copies if the source save changes during review.
+- Retain ownership and placement from third-party .nmsship packages that wrap their parts in build metadata. Keep selected-save/template metadata when a parts-only project has no corresponding metadata of its own.
+- Preserve the full ship record, technology/cargo contents and slot positions, supercharged slots, appearance, legacy-colour flag, build placement and unknown package entries through .nmsship export and project reload. Save replacement continues to keep the destination ship's world placement.
+
 # 18.2.37
 
 - Fix unwanted horizontal scrolling in mini chat. Fit message bubbles to the window, wrap long names, filenames and URLs, and shorten attachment/reply button captions without changing the text being copied or sent.

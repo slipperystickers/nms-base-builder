@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 from . import builder, preset, hd_library, simple_library
 from .part import Part
-from .utils import blend_utils, material, materials_v2, collection_utils
+from .utils import blend_utils, material, materials_v2, collection_utils, mirror_pivot
 from .utils import variant_map
 from .part_overrides import parts_override
 from .part_overrides.fossil_models import BASE_IDS as FOSSIL_BASE_IDS, resolve_model_id
@@ -78,6 +78,9 @@ MESH_REVISIONS.update(dict.fromkeys(CABLE_CORRECTIONS, '18.1.20'))
 MESH_REVISIONS['BUILDTERMINAL_WALL'] = '18.1.52-wall'
 FORSAKEN_PARTS = {r['id'] for r in json.loads((Path(FILE_PATH) / 'resources/forsaken_assets.json').read_text())['assets']}
 MESH_REVISIONS.update(dict.fromkeys(FORSAKEN_PARTS, '18.2.34'))
+MESH_REVISIONS['B_COK_E'] = '7.13-vantage-closed'
+NEW_COCKPITS = {f'B_COK_C{i}' for i in range(1, 10)} | {'B_COK_E'}
+COCKPIT_BASE_REVISION = 3
 CORRECTED_LEGACY_PARTS = {r['id'] for r in json.loads((Path(FILE_PATH) / 'resources/native_asset_corrections.json').read_text())['assets']}
 MESH_REVISIONS.update(dict.fromkeys(CORRECTED_LEGACY_PARTS, '18.2.36'))
 BYTEBEAT_PARTS = {'BYTEBEAT', 'BYTEBEATSWITCH', 'HOLO_DISCO_0', 'U_BYTEBEATLINE'}
@@ -185,7 +188,13 @@ def _deserialise_from_data(data, progress):
 
             # restore matrix world
             restore_params(bpy_object, part_data, object_id)
-            bpy_object.matrix_world = deserialise_matrix_world(part_data)
+            native_world = deserialise_matrix_world(part_data)
+            normalized = (bpy_object.type == 'MESH' and
+                          bpy_object.data.get(mirror_pivot.MESH_TAG) == object_id)
+            bpy_object.matrix_world = (mirror_pivot.display_matrix(native_world, object_id)
+                                       if normalized else native_world)
+            if normalized:
+                bpy_object[mirror_pivot.OBJECT_TAG] = object_id
 
             # provide order
             bpy_object[Part.PROP_ORDER] = order
@@ -223,6 +232,16 @@ def _deserialise_from_data(data, progress):
     progress.update(1.0, 'Import complete')
 
 
+def placement_from_target(object_id, target):
+    if target is None or not target.select_get():
+        return None
+    matrix = target.matrix_world.copy()
+    if object_id in FORSAKEN_PARTS and not str(target.get('ObjectID', '')).startswith('B_'):
+        location, rotation, scale = matrix.decompose()
+        return mathutils.Matrix.Translation(location) @ X_ROT_90 @ mathutils.Matrix.Diagonal((*scale, 1.0))
+    return matrix
+
+
 def add_part(
     object_id, user_data=None, build_rigs=True, high_res=True, builder_object=None
 ):
@@ -251,8 +270,7 @@ def add_part(
     # matched before the part exists, same as the old builder, so a new part
     # lands on whatever was selected rather than on itself
     active_object = bpy.context.active_object
-    placement_matrix = (active_object.matrix_world.copy()
-                        if active_object is not None and active_object.select_get() else None)
+    placement_matrix = placement_from_target(object_id, active_object)
 
     # Use these only when an object requires special steps to be imported.
     # Same override table deserialise_from_data reads, so a part built here and
@@ -321,11 +339,11 @@ def get_asset_index(rebuild=False):
     root = hd_library.library_root()
     high_res_path = str(root / "assets") if root else ""
 
-    if _asset_index is not None and not rebuild and (high_res_path, str(hd_library.scenes_root())) == _asset_root:
+    if _asset_index is not None and not rebuild and (high_res_path, str(hd_library.scenes_root()), str(hd_library.additions_root())) == _asset_root:
         return _asset_index
 
     _asset_index = {}
-    _asset_root = (high_res_path, str(hd_library.scenes_root()))
+    _asset_root = (high_res_path, str(hd_library.scenes_root()), str(hd_library.additions_root()))
     if not os.path.isdir(high_res_path):
         return _asset_index
 
@@ -359,10 +377,10 @@ def get_asset_index(rebuild=False):
     for cable in CABLE_CORRECTIONS:
         _asset_index[cable] = os.path.join(FILE_PATH, 'resources', 'hd_corrections', cable + '.blend')
 
-    # Native additions ship with the extension; existing HD-pack receipts stay
-    # valid and users need not download the entire base library after an update.
-    additions = Path(FILE_PATH) / 'resources' / 'hd_additions' / 'assets'
-    if additions.is_dir():
+    # Native additions are a separate, verified component of Detailed Proxies.
+    additions_root = hd_library.additions_root()
+    additions = additions_root / 'assets' if additions_root else None
+    if additions is not None and additions.is_dir():
         _asset_index.update({path.stem: str(path) for path in additions.glob('*.blend')})
 
     # Core corrections do not replace or invalidate the persistent HD pack.
@@ -404,7 +422,28 @@ def new_high_res_object(object_id, asset_index=None):
 
 def refresh_forsaken_proxies(scene):
     """Replace known flat-shaded display caches, retaining part transforms/data."""
-    if not getattr(scene, 'bbe_detailed_proxies', True):
+    detailed = getattr(scene, 'bbe_detailed_proxies', True)
+    coloured = []
+    for obj in list(scene.objects):
+        pid = obj.get('ObjectID')
+        if (obj.type != 'MESH' or pid not in FORSAKEN_PARTS
+                or (obj.data.get(PROXY_MESH_TAG) != pid and
+                    not str(obj.data.get(PROXY_PLACEMENT_TAG, '')).startswith(pid + '/'))):
+            continue
+        old = obj.data
+        mesh = load_high_res_mesh(pid) if detailed else None
+        if mesh is not None:
+            obj.data = mesh
+            coloured.append((obj, obj.get('UserData', Part.DEFAULT_USER_DATA)))
+        elif (not detailed and pid in NEW_COCKPITS
+              and old.get('bbe_forsaken_revision') != COCKPIT_BASE_REVISION):
+            apply_proxy_mesh(obj, pid, obj.get('UserData', Part.DEFAULT_USER_DATA))
+        if obj.data != old:
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+    if coloured:
+        materials_v2.apply_many(coloured)
+    if not detailed:
         return
     for obj in list(scene.objects):
         pid = obj.get('ObjectID')
@@ -446,9 +485,10 @@ def refresh_bytebeat_proxies(scene):
 # get the shared mesh datablock for an object id, appending it on first use
 def correct_hd_display(mesh, object_id):
     """Upgrade HD display data only; placement and export records stay intact."""
-    from .utils import room_glass, roof_alignment
+    from .utils import room_glass, roof_alignment, light_fissure
     room_glass.correct(mesh, object_id)
     roof_alignment.correct(mesh, object_id)
+    light_fissure.correct(mesh, object_id)
     if object_id == 'U_BYTEBEATLINE' and not mesh.get('bbe_beat_glow_revision'):
         # Native crossed ribbons already span local Z=0..1. Feather their
         # width in local coordinates so cable length and endpoints stay exact.
@@ -581,7 +621,9 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     if object_id in {'SET_CLASS_A', 'SET_CLASS_B', 'SET_CLASS_S'} and hd_library.scenes_root() is None:
         revision += '-base'
     if cached is not None and cached.get(MESH_TAG) == object_id:
-        if revision is None or cached.get(MESH_REVISION_TAG) == revision:
+        if (revision is None or cached.get(MESH_REVISION_TAG) == revision) and (
+                not mirror_pivot.has_pivot(object_id) or
+                cached.get(mirror_pivot.MESH_TAG) == object_id):
             correct_hd_display(cached, object_id)
             return cached if _relink_mesh_textures(cached) else None
         cached.name = mesh_name + "_legacy"
@@ -618,10 +660,11 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
         return None
 
     mesh.name = mesh_name
+    mirror_pivot.normalize_mesh(mesh, object_id)
     mesh[MESH_TAG] = object_id
     if revision is not None:
         mesh[MESH_REVISION_TAG] = revision
-    if CLEAN_DUPLICATE_FACES:
+    if CLEAN_DUPLICATE_FACES and mesh.get('bbe_duplicate_faces_prepared') != 1:
         blend_utils.remove_duplicate_faces(mesh)
     # The append brought this asset's own copies of its textures and of the
     # colourise node group with it. A caller inside a deferred block is not
@@ -699,8 +742,14 @@ def rebuild_variant_mesh(object_id, asset_index=None):
 
     # Materials come across with the copy as references, so the variant paints
     # from the root's and the palette properties still work.
-    mesh = transformed_copy(root_mesh, matrix)
+    mesh = transformed_copy(root_mesh,
+        mathutils.Matrix.Translation(mirror_pivot.pivot(object_id)) @ matrix @
+        mathutils.Matrix.Translation(-mirror_pivot.pivot(root_id)))
     mesh.name = MESH_PREFIX + object_id
+    if mirror_pivot.has_pivot(object_id):
+        mesh[mirror_pivot.MESH_TAG] = object_id
+    elif mirror_pivot.MESH_TAG in mesh:
+        del mesh[mirror_pivot.MESH_TAG]
     mesh[MESH_TAG] = object_id
     if object_id in MESH_REVISIONS:
         mesh[MESH_REVISION_TAG] = MESH_REVISIONS[object_id]
@@ -768,7 +817,9 @@ def load_proxy_mesh(object_id):
     cached = bpy.data.meshes.get(mesh_name)
     if cached is not None and cached.get(PROXY_MESH_TAG) == object_id:
         revision = MESH_REVISIONS.get(object_id)
-        if revision is None or cached.get(MESH_REVISION_TAG) == revision:
+        if (revision is None or cached.get(MESH_REVISION_TAG) == revision) and (
+                not mirror_pivot.has_pivot(object_id) or
+                cached.get(mirror_pivot.MESH_TAG) == object_id):
             return cached
         cached.name = mesh_name + "_legacy"
 
@@ -785,6 +836,7 @@ def load_proxy_mesh(object_id):
     mesh = simple_library.load_mesh(object_id)
     if mesh is not None:
         mesh.name = mesh_name
+        mirror_pivot.normalize_mesh(mesh, object_id)
         mesh[PROXY_MESH_TAG] = object_id
         if object_id in MESH_REVISIONS:
             mesh[MESH_REVISION_TAG] = MESH_REVISIONS[object_id]
@@ -811,6 +863,7 @@ def load_proxy_mesh(object_id):
         return None
 
     mesh.name = mesh_name
+    mirror_pivot.normalize_mesh(mesh, object_id)
     mesh[PROXY_MESH_TAG] = object_id
     if object_id in MESH_REVISIONS:
         mesh[MESH_REVISION_TAG] = MESH_REVISIONS[object_id]
@@ -844,8 +897,14 @@ def rebuild_variant_proxy_mesh(object_id):
     if root_mesh is None:
         return None
 
-    mesh = transformed_copy(root_mesh, matrix)
+    mesh = transformed_copy(root_mesh,
+        mathutils.Matrix.Translation(mirror_pivot.pivot(object_id)) @ matrix @
+        mathutils.Matrix.Translation(-mirror_pivot.pivot(root_id)))
     mesh.name = PROXY_MESH_PREFIX + object_id
+    if mirror_pivot.has_pivot(object_id):
+        mesh[mirror_pivot.MESH_TAG] = object_id
+    elif mirror_pivot.MESH_TAG in mesh:
+        del mesh[mirror_pivot.MESH_TAG]
     mesh[PROXY_MESH_TAG] = object_id
     if object_id in MESH_REVISIONS:
         mesh[MESH_REVISION_TAG] = MESH_REVISIONS[object_id]
@@ -878,7 +937,11 @@ def _find_proxy_placement_mesh(key):
     mesh = bpy.data.meshes.get("%s_%s" % key)
     if mesh is not None and mesh.get(PROXY_PLACEMENT_TAG) == "%s/%s" % key:
         revision = MESH_REVISIONS.get(key[0])
-        if revision is not None and mesh.get(MESH_REVISION_TAG) != revision:
+        if ((revision is not None and mesh.get(MESH_REVISION_TAG) != revision) or
+                (key[0] in NEW_COCKPITS and
+                 mesh.get('bbe_forsaken_revision') != COCKPIT_BASE_REVISION) or
+                (mirror_pivot.has_pivot(key[0]) and
+                 mesh.get(mirror_pivot.MESH_TAG) != key[0])):
             mesh.name += "_legacy"
             return None
         return mesh

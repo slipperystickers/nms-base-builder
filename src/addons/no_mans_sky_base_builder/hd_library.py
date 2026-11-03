@@ -83,14 +83,17 @@ def relink_texture_images(images=None):
     unrelated user textures and packed images must keep their own content.
     """
     root = library_root()
-    if root is None:
-        return 0
     if images is None:
         import bpy
         images = bpy.data.images
+    from . import pilot_reference, character_references
+    if root is None:
+        return pilot_reference.relink_texture_images(images) + character_references.relink_texture_images(images)
     spec = specification()
     known = _texture_names(spec['id'], spec['content_sha256'])
     changed = 0
+    additions = None
+    additions_checked = False
     # The pack ID also covers a custom BBE_ASSET_LIBRARY_ROOT on another PC.
     markers = ('/models-high-res/textures/', '/' + spec['id'].casefold() + '/textures/')
     for image in images:
@@ -98,7 +101,16 @@ def relink_texture_images(images=None):
             continue
         native_texture = image.get('bbe_native_texture')
         if isinstance(native_texture, str) and Path(native_texture).name == native_texture:
-            target = ADDON / 'resources' / 'hd_additions' / 'textures' / native_texture
+            if not additions_checked:
+                additions = additions_root()
+                additions_checked = True
+            if additions is None:
+                continue
+            target = additions / 'textures' / native_texture
+            # Saved scenes from the PNG additions pack use the same native
+            # texture identity; the prepared HD pack stores it as WebP.
+            if not target.is_file() and target.suffix.lower() == '.png':
+                target = target.with_suffix('.webp')
             if target.is_file():
                 if image.filepath != str(target):
                     image.filepath = str(target)
@@ -120,7 +132,7 @@ def relink_texture_images(images=None):
             image.filepath = str(target)
             image.reload()
             changed += 1
-    return changed
+    return changed + pilot_reference.relink_texture_images(images) + character_references.relink_texture_images(images)
 
 
 def scenes_specification():
@@ -144,13 +156,69 @@ def scenes_root():
 
 
 def ready():
-    return available() and scenes_root() is not None
+    return (available() and scenes_root() is not None and additions_root(allow_previous=False) is not None
+            and characters_root() is not None)
+
+
+def characters_specification():
+    path = ADDON / 'resources/hd_characters.json'
+    info = path.stat()
+    return _read_specification(path, info.st_mtime_ns, info.st_size)
+
+
+def characters_root():
+    """Separate, optional character download; independent of the ship HD assets."""
+    spec = characters_specification()
+    root = storage() / spec['id']
+    try:
+        receipt = json.loads((root / 'installed.json').read_text(encoding='utf-8'))
+        if (not receipt.get('removing') and receipt.get('id') == spec['id']
+                and receipt.get('content_sha256') == spec['content_sha256']
+                and all((root / name).is_file() for name in spec['files'])):
+            return root
+    except (OSError, ValueError):
+        pass
+    bundled = ADDON / 'resources/hd_additions'
+    return bundled if all((bundled / name).is_file() for name in spec['files']) else None
+
+
+def additions_specification():
+    path = ADDON / 'resources/hd_additions.json'
+    info = path.stat()
+    return _read_specification(path, info.st_mtime_ns, info.st_size)
+
+
+def additions_root(*, allow_previous=True):
+    spec = additions_specification()
+    candidates = [spec]
+    if allow_previous:
+        # Only explicitly reviewed compatible packs may bridge an add-on update.
+        # A new manifest must not replace a working HD preview with a base mesh
+        # merely because its separate replacement download is not installed yet.
+        candidates.extend(spec.get('compatible_previous', []))
+    for candidate in candidates:
+        root = storage() / candidate['id']
+        try:
+            receipt = json.loads((root / 'installed.json').read_text(encoding='utf-8'))
+            if (receipt.get('content_sha256') == candidate['content_sha256']
+                    and receipt.get('id') == candidate['id'] and not receipt.get('removing')
+                    and (root / 'assets').is_dir() and (root / 'textures').is_dir()):
+                return root
+        except (OSError, ValueError):
+            pass
+    # Source checkouts and older full installations remain usable.
+    bundled = ADDON / 'resources/hd_additions'
+    return bundled if (bundled / 'assets').is_dir() else None
 
 
 def pending_specs():
     result = [] if available() else [specification()]
     if scenes_root() is None:
         result.append(scenes_specification())
+    if additions_root(allow_previous=False) is None:
+        result.append(additions_specification())
+    if characters_root() is None:
+        result.append(characters_specification())
     return result
 
 
@@ -179,16 +247,19 @@ def remove_installed(expected_root):
     # Validate the entire tree before deletion: junctions/symlinks must never
     # turn this operation into a recursive deletion outside the managed pack.
     packs = [(root, specification())]
-    extra = scenes_specification()
-    extra_root = storage() / extra['id']
-    if extra_root.exists():
-        if extra_root.resolve().parent != storage().resolve():
-            raise ValueError('The HD scenes are outside their managed library folder.')
-        receipt = json.loads((extra_root / 'installed.json').read_text(encoding='utf-8'))
-        if receipt.get('id') != extra['id'] or receipt.get('content_sha256') != extra['content_sha256']:
-            raise ValueError('The HD scenes changed. Nothing was deleted.')
-        packs.insert(0, (extra_root, extra))
-    # Validate BOTH components before deleting either one.
+    additions = additions_specification()
+    extras = [scenes_specification(), additions, characters_specification()]
+    extras.extend(additions.get('compatible_previous', []))
+    for extra in extras:
+        extra_root = storage() / extra['id']
+        if extra_root.exists():
+            if extra_root.resolve().parent != storage().resolve():
+                raise ValueError('An HD component is outside its managed library folder.')
+            receipt = json.loads((extra_root / 'installed.json').read_text(encoding='utf-8'))
+            if receipt.get('id') != extra['id'] or receipt.get('content_sha256') != extra['content_sha256']:
+                raise ValueError('An HD component changed. Nothing was deleted.')
+            packs.insert(0, (extra_root, extra))
+    # Validate all components before deleting either one.
     for pack_root, pack_spec in packs:
         allowed = set(pack_spec['files']) | {'installed.json'}
         for directory, folders, files in os.walk(pack_root, followlinks=False):
@@ -337,7 +408,7 @@ def start(archive=None):
         try:
             if archive:
                 digest = _hash(archive)
-                spec = next((s for s in (specification(), scenes_specification()) if digest in s['archives']), None)
+                spec = next((s for s in (specification(), scenes_specification(), additions_specification(), characters_specification()) if digest in s['archives']), None)
                 if spec is None:
                     raise ValueError('This ZIP is not a verified HD library component.')
                 install_archive(archive, spec)
@@ -351,14 +422,14 @@ def start(archive=None):
                     download_and_install(spec)
                     offset += spec['download_bytes']
             complete = ready()
-            STATE.update(message='Detailed models and scenes installed.' if complete else
+            STATE.update(message='Detailed models, scenes and characters installed.' if complete else
                          'HD component installed. Install the remaining component or click Detailed Proxies to download it.',
                          progress=1.0, result='installed' if complete else 'partial')
         except InterruptedError:
             STATE.update(message="Download cancelled.", error="", result="cancelled")
         except Exception as exc:
             models_installed = available()
-            STATE.update(message="Detailed models installed; HD scenes/effects need a retry."
+            STATE.update(message="Detailed models installed; another HD component needs a retry."
                          if models_installed else "Detailed models were not installed.",
                          error=str(exc), result="partial" if models_installed else "failed")
         finally:

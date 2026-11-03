@@ -330,7 +330,8 @@ class BBE_OT_asset_grid(bpy.types.Operator):
         object_id, data = tile[4:]
         def menu(menu, _context):
             layout = menu.layout
-            op = layout.operator('object.nms_asset_browser_object_selected', text='Place Part', icon='ADD')
+            op = layout.operator('object.nms_asset_browser_object_selected',
+                                 text='Place Reference' if data.get('is_reference') else 'Place Part', icon='ADD')
             op.object_id, op.is_preset = object_id, bool(data.get('is_preset'))
             if data.get('variants'):
                 op = layout.operator('object.nms_asset_browser_object_selected', text='Choose Variant', icon='PAUSE')
@@ -341,8 +342,9 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                 op = layout.operator('object.nms_asset_browser_object_favourite', icon='HEART',
                     text='Remove from Favourites' if data.get('is_fav') else 'Add to Favourites')
                 op.object_id = object_id
-                op = layout.operator('object.nms_asset_browser_batch_replace', text='Replace Selected Objects')
-                op.object_id = object_id
+                if not data.get('is_reference'):
+                    op = layout.operator('object.nms_asset_browser_batch_replace', text='Replace Selected Objects')
+                    op.object_id = object_id
         context.window_manager.popup_menu(menu, title=data['name'])
 
     def rectangle(self, x, y, w, h, color):

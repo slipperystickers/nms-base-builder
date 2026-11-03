@@ -330,7 +330,8 @@ class NMSMain(PropertyGroup):
         if source.kind != 'ship':
             raise ValueError('Ship template must be a complete .nmsship package')
         payload = source.ship_bytes(data, bpy.context.scene.nms_base_tool.string_base,
-                                    metadata=bpy.context.scene.nms_base_tool.serialise())
+                                    metadata=build_metadata.export_package_metadata(
+                                        bpy.context.scene.nms_base_tool, source))
         from .save_editor.ship_repair import cockpit_warning
         if warnings is not None and cockpit_warning(data):
             warnings.append(cockpit_warning(data))
@@ -2443,14 +2444,26 @@ def register_core():
     from .save_editor import function_help
     from . import bubble_preview
     bubble_preview.register()
+    from . import snap_markers
+    snap_markers.register()
+    from . import habitat_preview
+    habitat_preview.register()
     from . import decal_controls
     decal_controls.register()
+    from . import pilot_reference
+    pilot_reference.register()
+    from . import character_references
+    character_references.register()
     from . import wire_selection
     wire_selection.register()
     function_help.register()
     corvette_optimizer.register()
     from .save_editor import ship_management
     ship_management.register()
+    from .save_editor import buildable_unlocks_ui
+    buildable_unlocks_ui.register()
+    from .save_editor import raw_json_launcher
+    raw_json_launcher.register()
     from .save_editor import corvette_io
     corvette_io.register()
     from .save_editor import corvette_actions
@@ -2492,16 +2505,28 @@ def unregister():
     corvette_actions.unregister()
     corvette_io.unregister()
     ship_management.unregister()
+    from .save_editor import raw_json_launcher
+    raw_json_launcher.unregister()
+    from .save_editor import buildable_unlocks_ui
+    buildable_unlocks_ui.unregister()
     from .save_editor import corvette_optimizer
     corvette_optimizer.unregister()
     from .save_editor import function_help
     function_help.unregister()
     from . import bubble_preview
     from . import decal_controls
+    from . import pilot_reference
+    pilot_reference.unregister()
+    from . import character_references
+    character_references.unregister()
     decal_controls.unregister()
     from . import wire_selection
     wire_selection.unregister()
     bubble_preview.unregister()
+    from . import snap_markers
+    snap_markers.unregister()
+    from . import habitat_preview
+    habitat_preview.unregister()
     from . import release_updates
     release_updates.unregister()
     from . import hd_library_ui, stages, decals, hab_windows

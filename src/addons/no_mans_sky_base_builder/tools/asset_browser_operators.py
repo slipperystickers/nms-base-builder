@@ -9,6 +9,7 @@ from ..utils import asset_browser_utils
 from ..utils.asset_browser_utils import get_preferences
 import ctypes
 from contextlib import nullcontext
+from mathutils import Matrix
 
 try:
     from ctypes import wintypes
@@ -417,6 +418,10 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     
     @classmethod
     def description(cls, context, properties):
+        from .. import character_references
+        reference = character_references.decode(properties.object_id)
+        if reference:
+            return f"Add a movable {reference[2]} {reference[1].lower()} scale reference at the cursor. Excluded from game exports."
         if properties.object_id == 'BASE_BUBPIPE_L':
             return ('DRAFT ELBOW: Keep it selected and add a tube to its free end. '
                     'Grey-blue bands disappear when both ends connect correctly. '
@@ -429,6 +434,18 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     
     
     def execute(self, context):
+        from .. import character_references
+        if character_references.decode(self.object_id):
+            try:
+                with placement_view(context):
+                    model = character_references.add(bpy.context, self.object_id)
+                context.scene.nms_asset_browser.add_to_recents_list(self.object_id)
+                warning = model.get('bbe_character_asset_warning')
+                self.report({'WARNING'} if warning else {'INFO'}, warning or 'Character scale reference added; excluded from game exports')
+                return {'FINISHED'}
+            except Exception as error:
+                report_error(self, {'ERROR'}, f'Could not add character reference: {error}')
+                return {'CANCELLED'}
         if not self.is_preset:
             from ..utils import new_assets
             if new_assets.mark_viewed(self.object_id):
@@ -505,8 +522,7 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                         problem = bubble_preview.placement_error(selected_target, context.scene)
                         if problem:
                             raise ValueError(problem)
-                    placement_matrix = (selected_target.matrix_world.copy()
-                                        if selected_target is not None else None)
+                    placement_matrix = builder_v2.placement_from_target(self.object_id, selected_target)
                     item = builder_v2.add_part(self.object_id, builder_object=BUILDER)
                     if self.object_id == 'BASE_BUBPIPE':
                         item.object['bbe_bubble_shape'] = 'STRAIGHT:Y'
@@ -574,6 +590,9 @@ class AssetBrowserObjectMoreOptions(bpy.types.Operator):
             fav_button_icon = "FUND" if is_fav else "HEART"
             fav_button = layout.operator("object.nms_asset_browser_object_favourite", text = fav_button_label, icon = fav_button_icon)
             fav_button.object_id = object_id
+            from .. import character_references
+            if character_references.decode(object_id):
+                return
             
             replace_button_label = f"Replace Selected Objects"
             replace_button = layout.operator("object.nms_asset_browser_batch_replace", text = replace_button_label, icon = "GROUP_VERTEX")

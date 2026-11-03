@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 from mathutils import Matrix, Euler, Vector
+from . import mirror_pivot
 
 MIRROR_CORRECTIONS_PATH = (
     Path(__file__).resolve().parents[1] / "resources" / "mirror_corrections.json"
@@ -87,6 +88,7 @@ def mirror_matrix_world_universal(object_id, old_matrix_world, axis=None,
         relation = Matrix.Diagonal((-1.0, 1.0, 1.0, 1.0))
         if object_id:
             relation = relation @ mirror_correction(object_id, Matrix.Identity(4))
+        relation = mirror_pivot.display_relation(relation, object_id, object_id)
     world = Matrix.Identity(4)
     index = "XYZ".index(axis)
     world[index][index] = -1.0
@@ -103,7 +105,8 @@ def native_geometry_reflection(object_id, mirror_part_exist=False):
     expected_target = record["target"]
     if expected_target != identity and not mirror_part_exist:
         return None
-    return Matrix(record["matrix"])
+    return mirror_pivot.display_relation(
+        Matrix(record["matrix"]), identity, expected_target)
 
 
 def mirror_matrix_world_universal_2(object_id, old_matrix_world, axis=None, center=None, mirror_part_exist = False):

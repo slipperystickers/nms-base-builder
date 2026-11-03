@@ -1,0 +1,421 @@
+{
+  "schema": "bbe_character_references_v1",
+  "scope": "Fixed scale references; no cockpit locator, collision correction or game export identity.",
+  "standing_source": "Player entity default 0H_IDLE_WEIGHT_SHIFT_HEADS, frame 0, appearance morphs applied.",
+  "grounding": "Translate mesh vertically by minus its lowest visible vertex; retain native horizontal origin and scale.",
+  "models": [
+    {
+      "race": "ASTRO_DEFAULT",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.40538695148456766,
+          -0.5071146916605604,
+          -0.002344972957190828
+        ],
+        [
+          0.41280817012279475,
+          0.21925228260235813,
+          1.9840687287527796
+        ]
+      ],
+      "ground_offset_m": 0.002344972957190828,
+      "detailed_vertices": 29600,
+      "detailed_triangles": 44816,
+      "light_vertices": 10442,
+      "light_triangles": 12000,
+      "raw_native_bounds": [
+        [
+          -0.40538695148456766,
+          -0.002344972957190828,
+          -0.21925228260235813
+        ],
+        [
+          0.41280817012279475,
+          1.9840687287527796,
+          0.5071146916605604
+        ]
+      ],
+      "native_y_extent_m": 1.9864137017099706
+    },
+    {
+      "race": "ASTRO_DEFAULT",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.32724788784980774,
+          -0.4673923850059509,
+          -0.1721373200416565
+        ],
+        [
+          0.3692311942577362,
+          0.5593604445457458,
+          1.4126545190811157
+        ]
+      ],
+      "ground_offset_m": 0.1721373200416565,
+      "detailed_vertices": 29600,
+      "detailed_triangles": 44816,
+      "light_vertices": 10436,
+      "light_triangles": 12000
+    },
+    {
+      "race": "GEK_DEFAULT",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.39605748434883503,
+          -0.5071146916605604,
+          0.1252595949149647
+        ],
+        [
+          0.3988076829745171,
+          0.4072142301528747,
+          1.5710935378946442
+        ]
+      ],
+      "ground_offset_m": -0.1252595949149647,
+      "detailed_vertices": 38999,
+      "detailed_triangles": 57833,
+      "light_vertices": 11633,
+      "light_triangles": 12000,
+      "raw_native_bounds": [
+        [
+          -0.39605748434883503,
+          0.1252595949149647,
+          -0.4072142301528747
+        ],
+        [
+          0.3988076829745171,
+          1.5710935378946442,
+          0.5071146916605604
+        ]
+      ],
+      "native_y_extent_m": 1.4458339429796796
+    },
+    {
+      "race": "GEK_DEFAULT",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop_gek",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.3167072534561157,
+          -0.3923933804035187,
+          0.030781039968132973
+        ],
+        [
+          0.33796441555023193,
+          0.5105051398277283,
+          1.2809597253799438
+        ]
+      ],
+      "ground_offset_m": -0.030781039968132973,
+      "detailed_vertices": 38999,
+      "detailed_triangles": 57833,
+      "light_vertices": 11646,
+      "light_triangles": 11999
+    },
+    {
+      "race": "KORVAX_DEFAULT",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.3978997346125624,
+          -0.5071146916605604,
+          -0.003194777513337264
+        ],
+        [
+          0.41027623007767666,
+          0.2624588395778527,
+          1.9565225251758716
+        ]
+      ],
+      "ground_offset_m": 0.003194777513337264,
+      "detailed_vertices": 35532,
+      "detailed_triangles": 50730,
+      "light_vertices": 11851,
+      "light_triangles": 12000,
+      "raw_native_bounds": [
+        [
+          -0.3978997346125624,
+          -0.003194777513337264,
+          -0.2624588395778527
+        ],
+        [
+          0.41027623007767666,
+          1.9565225251758716,
+          0.5071146916605604
+        ]
+      ],
+      "native_y_extent_m": 1.9597173026892087
+    },
+    {
+      "race": "KORVAX_DEFAULT",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.32724788784980774,
+          -0.4673923850059509,
+          -0.18187572062015533
+        ],
+        [
+          0.3667573034763336,
+          0.5706497430801392,
+          1.3853849172592163
+        ]
+      ],
+      "ground_offset_m": 0.18187572062015533,
+      "detailed_vertices": 35532,
+      "detailed_triangles": 50730,
+      "light_vertices": 11845,
+      "light_triangles": 11999
+    },
+    {
+      "race": "VYKEEN_DEFAULT",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.4376897021133542,
+          -0.5578261682771971,
+          -0.003514235284005408
+        ],
+        [
+          0.4513038709668377,
+          0.4429191680875584,
+          2.0621219434589606
+        ]
+      ],
+      "ground_offset_m": 0.003514235284005408,
+      "detailed_vertices": 36740,
+      "detailed_triangles": 57730,
+      "light_vertices": 10496,
+      "light_triangles": 12000,
+      "raw_native_bounds": [
+        [
+          -0.4376897021133542,
+          -0.003514235284005408,
+          -0.4429191680875584
+        ],
+        [
+          0.4513038709668377,
+          2.0621219434589606,
+          0.5578261682771971
+        ]
+      ],
+      "native_y_extent_m": 2.0656361787429662
+    },
+    {
+      "race": "VYKEEN_DEFAULT",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.38034918904304504,
+          -0.5141316056251526,
+          -0.2000633180141449
+        ],
+        [
+          0.40343302488327026,
+          0.6277146935462952,
+          1.4425694942474365
+        ]
+      ],
+      "ground_offset_m": 0.2000633180141449,
+      "detailed_vertices": 36740,
+      "detailed_triangles": 57730,
+      "light_vertices": 10477,
+      "light_triangles": 12000
+    },
+    {
+      "race": "FOURTH_DEFAULT",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.3923337345699603,
+          -0.5071146916605604,
+          -0.004093560781662578
+        ],
+        [
+          0.40196551156013544,
+          0.23013738090318936,
+          1.9475684716269246
+        ]
+      ],
+      "ground_offset_m": 0.004093560781662578,
+      "detailed_vertices": 35639,
+      "detailed_triangles": 53818,
+      "light_vertices": 11119,
+      "light_triangles": 11999,
+      "raw_native_bounds": [
+        [
+          -0.3923337345699603,
+          -0.004093560781662578,
+          -0.23013738090318936
+        ],
+        [
+          0.40196551156013544,
+          1.9475684716269246,
+          0.5071146916605604
+        ]
+      ],
+      "native_y_extent_m": 1.9516620324085872
+    },
+    {
+      "race": "FOURTH_DEFAULT",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.32724788784980774,
+          -0.4673923850059509,
+          -0.17528823018074036
+        ],
+        [
+          0.3585077226161957,
+          0.5653131604194641,
+          1.3728415966033936
+        ]
+      ],
+      "ground_offset_m": 0.17528823018074036,
+      "detailed_vertices": 35639,
+      "detailed_triangles": 53818,
+      "light_vertices": 11088,
+      "light_triangles": 12000
+    },
+    {
+      "race": "BUI_DEFAULT",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.41337668211484774,
+          -0.5071146916605604,
+          -0.0006211594083301319
+        ],
+        [
+          0.420644641160398,
+          0.40932472895570426,
+          1.9537967035644512
+        ]
+      ],
+      "ground_offset_m": 0.0006211594083301319,
+      "detailed_vertices": 164968,
+      "detailed_triangles": 179099,
+      "light_vertices": 41890,
+      "light_triangles": 12000,
+      "raw_native_bounds": [
+        [
+          -0.41337668211484774,
+          -0.0006211594083301319,
+          -0.40932472895570426
+        ],
+        [
+          0.420644641160398,
+          1.9537967035644512,
+          0.5071146916605604
+        ]
+      ],
+      "native_y_extent_m": 1.9544178629727813
+    },
+    {
+      "race": "BUI_DEFAULT",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.3745092451572418,
+          -0.4673923850059509,
+          -0.1804671436548233
+        ],
+        [
+          0.3714123070240021,
+          0.6037614941596985,
+          1.3823801279067993
+        ]
+      ],
+      "ground_offset_m": 0.1804671436548233,
+      "detailed_vertices": 164968,
+      "detailed_triangles": 179099,
+      "light_vertices": 41858,
+      "light_triangles": 12000
+    },
+    {
+      "race": "ASTRO_ARMOURED",
+      "pose": "STANDING",
+      "native_animation": "idles/0h_idle_weight_shift_heads.anim.MXML",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.4299798874639675,
+          -0.47510343695527446,
+          -0.014458798683774976
+        ],
+        [
+          0.46626145725124485,
+          0.29682115098259965,
+          1.9645292357414559
+        ]
+      ],
+      "ground_offset_m": 0.014458798683774976,
+      "detailed_vertices": 85487,
+      "detailed_triangles": 131550,
+      "light_vertices": 12810,
+      "light_triangles": 12000,
+      "raw_native_bounds": [
+        [
+          -0.4299798874639675,
+          -0.014458798683774976,
+          -0.29682115098259965
+        ],
+        [
+          0.46626145725124485,
+          1.9645292357414559,
+          0.47510343695527446
+        ]
+      ],
+      "native_y_extent_m": 1.9789880344252309
+    },
+    {
+      "race": "ASTRO_ARMOURED",
+      "pose": "SEATED",
+      "native_animation": "cockpit_sit_loop",
+      "frame": 0,
+      "raw_blender_bounds": [
+        [
+          -0.39940276741981506,
+          -0.43244674801826477,
+          -0.21787342429161072
+        ],
+        [
+          0.46082839369773865,
+          0.6819557547569275,
+          1.3931256532669067
+        ]
+      ],
+      "ground_offset_m": 0.21787342429161072,
+      "detailed_vertices": 85487,
+      "detailed_triangles": 131550,
+      "light_vertices": 12822,
+      "light_triangles": 12000
+    }
+  ]
+}

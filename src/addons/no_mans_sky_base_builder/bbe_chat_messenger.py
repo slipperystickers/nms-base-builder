@@ -56,6 +56,38 @@ class Task(QtCore.QRunnable):
 
 class Composer(QtWidgets.QTextEdit):
     send_requested = QtCore.Signal()
+    image_pasted = QtCore.Signal(QtGui.QImage)
+    image_file_pasted = QtCore.Signal(object)
+
+    def canInsertFromMimeData(self, source):
+        return source.hasImage() or source.hasFormat('image/png') or source.hasUrls() or source.hasText()
+
+    def insertFromMimeData(self, source):
+        # Prefer a copied local image file over an optional bitmap preview so
+        # its original type (including animated GIF) is retained.
+        if source.hasUrls() and len(source.urls()) == 1:
+            url = source.urls()[0]
+            if url.isLocalFile():
+                path = Path(url.toLocalFile())
+                if path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif', '.webp'}:
+                    self.image_file_pasted.emit(path)
+                    return
+        # QTextEdit's default image paste embeds an image in its rich-text
+        # document; toPlainText() cannot send that image. Queue it through the
+        # normal attachment path instead, including Windows screenshot/DIB data.
+        if source.hasImage():
+            data = source.imageData()
+            image = data.toImage() if isinstance(data, QtGui.QPixmap) else QtGui.QImage(data)
+            if not image.isNull():
+                self.image_pasted.emit(image)
+                return
+        if source.hasFormat('image/png'):
+            image = QtGui.QImage.fromData(source.data('image/png'), 'PNG')
+            if not image.isNull():
+                self.image_pasted.emit(image)
+                return
+        if source.hasText():
+            self.insertPlainText(source.text())
 
     def keyPressEvent(self, event):
         if event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and not (event.modifiers() & QtCore.Qt.ShiftModifier):
@@ -221,6 +253,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self.reply_to = None
         self._follow_latest = True
         self.pending_owned = False
+        self.pending_preserve_alpha = False
         self.snapshot_id = None
         self.snapshot_at = 0
         self.syncing = False
@@ -411,8 +444,12 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         m.addWidget(self.preview)
         self.composer = Composer()
         self.composer.setPlaceholderText('Write a message. Enter sends; Shift+Enter makes a new line.')
+        self.composer.setAcceptRichText(False)
+        self.composer.setToolTip('Ctrl+V pastes text or queues an image attachment. Enter sends; Shift+Enter adds a new line.')
         self.composer.setFixedHeight(75)
         self.composer.send_requested.connect(self.send)
+        self.composer.image_pasted.connect(self._paste_image)
+        self.composer.image_file_pasted.connect(lambda path: self._stage(path, owned=False))
         self.composer_row = QtWidgets.QWidget(objectName='composerRow')
         composer_layout = QtWidgets.QHBoxLayout(self.composer_row)
         composer_layout.setContentsMargins(0, 0, 0, 0)
@@ -1184,7 +1221,29 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         if path:
             self._stage(Path(path), owned=False)
 
-    def _stage(self, path, owned):
+    def _paste_image(self, image):
+        """Keep clipboard pixels in an owned PNG draft; never send on paste."""
+        if self.sending:
+            self.status.setText('Wait for the current send, or cancel it in chat options.')
+            return
+        if image.isNull():
+            self.status.setText('The clipboard image could not be read.')
+            return
+        path = Path(tempfile.gettempdir()) / ('bbe-chat-paste-' + secrets.token_hex(12) + '.png')
+        try:
+            if not image.save(str(path), 'PNG'):
+                raise OSError('The clipboard image could not be saved.')
+            self._stage(path, owned=True, preserve_alpha=True)
+        except OSError as error:
+            self.status.setText(str(error))
+        finally:
+            if self.pending != path:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def _stage(self, path, owned, preserve_alpha=False):
         if self.sending:
             self.status.setText("Wait for the current send, or cancel it in chat options.")
             return
@@ -1204,6 +1263,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self._collapse(False)
         self.clear_attachment()
         self.pending, self.pending_owned = path, owned
+        self.pending_preserve_alpha = preserve_alpha
         self.preview.setText(f'Ready: {path.name} ({path.stat().st_size / 1024 / 1024:.1f} MB)' + (' · expires after 2 hours' if path.suffix.lower() not in MEDIA_SUFFIXES else ''))
         self.preview.setWordWrap(True)
         self.preview.show()
@@ -1220,6 +1280,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
             except OSError:
                 pass
         self.pending, self.pending_owned = None, False
+        self.pending_preserve_alpha = False
         self.preview.hide()
         self.remove_button.hide()
 
@@ -1303,6 +1364,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self.status.setText('Sending...' if not self.pending else 'Optimizing and uploading in the background...')
         pending = self.pending
         pending_owned = self.pending_owned
+        preserve_alpha = self.pending_preserve_alpha
         target, persona = self.target, self.persona
         received = chat_state.latest_received(self._notifications, target) if target else None
         optimize = self.optimize.isChecked()
@@ -1314,7 +1376,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
             try:
                 path = pending
                 if path and optimize and path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp'):
-                    path, made = self._small_image(path, force_jpeg=pending_owned)
+                    path, made = self._small_image(path, force_jpeg=pending_owned and not preserve_alpha)
                     optimized = path if made else None
                 return helper.run('send', {'secret': self.secret, 'as': persona, 'to': target or '',
                                            'text': wire_text, 'file': str(path) if path else '', **transfer})
@@ -1412,6 +1474,8 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         self.cancel_transfer()
+        if not self.sending:
+            self.clear_attachment()
         self._closing = True
         self.compact_timer.stop()
         self.drawer.hide()

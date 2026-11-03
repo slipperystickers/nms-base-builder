@@ -436,6 +436,8 @@ def build_category_tree(favourite_ids=None, nice_names=None):
             parent.setdefault("is_fav", varaint_of in favourite_ids)
             parent.setdefault("variants", []).append(object_id)
 
+    from .. import character_references
+    categories_list['Character References'] = character_references.category_entries(favourite_ids)
     return categories_list
 
 

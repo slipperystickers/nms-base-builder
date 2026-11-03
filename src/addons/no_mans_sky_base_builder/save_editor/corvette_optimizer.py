@@ -165,6 +165,8 @@ class BBE_OT_swap_corvette_cockpits(bpy.types.Operator):
             obj['order'] = index
         left, right = objects[first], objects[second]
         left['order'], right['order'] = right['order'], left['order']
+        from .. import pilot_reference
+        pilot_reference.sync_flight_reference(context)
         self.report({'INFO'}, f'Swapped cockpit #{first + 1} and #{second + 1} in Blender export order')
         return {'FINISHED'}
 
@@ -390,7 +392,8 @@ class BBE_OT_optimizer_export(bpy.types.Operator):
         except Exception as exc:
             report_error(self, {'ERROR'}, str(exc))
             return {'CANCELLED'}
-        return context.window_manager.invoke_props_dialog(self, width=540, confirm_text='Optimize & Export')
+        return context.window_manager.invoke_props_dialog(
+            self, width=540, confirm_text='Optimize & Export')
 
     def draw(self, context):
         identifier, links, name, ordered, counts, signature = self._plan

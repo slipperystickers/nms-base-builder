@@ -122,6 +122,8 @@ def _switch_scene_parts(context, target_high_res, proxy_cache, progress=None):
         object_id = source_object[Part.PROP_OBJECT_ID]
         model_id = resolve_model_id(source_object)
         user_data = source_object.get(Part.PROP_USER_DATA, Part.DEFAULT_USER_DATA)
+        from ..utils import mirror_pivot
+        mirror_pivot.ensure_object(source_object)
 
         if target_high_res or (object_id == 'BUILDTERMINAL' and source_object.get('bbe_trade_terminal_wall_model')):
             new_mesh = (builder_v2.load_trade_terminal_wall_mesh()
@@ -198,6 +200,14 @@ def _switch_scene_proxies_with_progress(context, target_high_res, progress):
                 context, builder_v2.BUILDER, target_high_res,
                 proxy_cache=proxy_cache,
             )
+            from .. import pilot_reference
+            pilots, pilot_missing = pilot_reference.sync_scene_quality(context.scene, target_high_res)
+            parts += pilots
+            missing += pilot_missing
+            from .. import character_references
+            references, reference_missing = character_references.sync_scene_quality(context.scene, target_high_res)
+            parts += references
+            missing += reference_missing
 
         if target_high_res and (parts or groups):
             # Solid shading colours by MATERIAL out of the box and high res

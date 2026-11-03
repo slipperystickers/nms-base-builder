@@ -3,6 +3,16 @@
   "policy": "Use native game icons by default; explicitly reviewed replacements for missing, marked or incorrect artwork only.",
   "renderStyle": "Native geometry and textures; neutral studio paint and lighting; transparent background.",
   "icons": {
+    "GAMETABLE": {
+      "kind": "native-model-render",
+      "reason": "Game product icon shows a small sail/projector instead of the Holo-Arena table",
+      "renderRoot": "GAMETABLE",
+      "sourceModelSha256": "9be618a1891e2d4ba7ed77c8837bb8d5d6201f843f3f1e112c54c3ea4c6e469c",
+      "pngSha256": "9796db440cf1def893db49bf7aab2ed778b36b4a08c028c5963e8730af007a9f",
+      "size": [512, 512],
+      "nativeIcon": "textures/ui/frontend/icons/buildable/builders.sail_0.dds",
+      "cameraDirection": [0.539163866, -0.539163866, 0.6470]
+    },
     "B_WNG_Y": {
       "kind": "native-model-render",
       "reason": "Game icon has a red X over a usable part",

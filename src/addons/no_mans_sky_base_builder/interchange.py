@@ -91,10 +91,16 @@ class BuildFile:
                 raise ValueError('so.json must contain a ship record')
             if 'ccd.json' in entries and not isinstance(_decode(entries['ccd.json'], 'ccd.json'), dict):
                 raise ValueError('ccd.json must contain an appearance record')
+            if build_metadata.SHIP_STATE_ENTRY in entries:
+                build_metadata.read_ship_state(_decode(entries[build_metadata.SHIP_STATE_ENTRY], build_metadata.SHIP_STATE_ENTRY))
             objects = _decode(entries['objects.json'], 'objects.json')
             _objects(objects)
-            metadata = (build_metadata.read_package_metadata(_decode(entries[build_metadata.PACKAGE_ENTRY], build_metadata.PACKAGE_ENTRY))
-                        if build_metadata.PACKAGE_ENTRY in entries else {})
+            # Third-party packages can retain the base wrapper in objects.json.
+            # The BBE sidecar takes precedence, but must not discard those fields.
+            metadata = build_metadata.wrapper(objects) if isinstance(objects, dict) else {}
+            if build_metadata.PACKAGE_ENTRY in entries:
+                metadata.update(build_metadata.read_package_metadata(
+                    _decode(entries[build_metadata.PACKAGE_ENTRY], build_metadata.PACKAGE_ENTRY)))
             document = dict(metadata)
             base_type = copy.deepcopy(metadata.get('BaseType', {}))
             if not isinstance(base_type, dict):
@@ -157,13 +163,20 @@ class BuildFile:
         _objects(objects)
         entries = dict(self.entries)
         if metadata is not None:
-            entries[build_metadata.PACKAGE_ENTRY] = _encode(build_metadata.package_metadata(metadata))
+            preserved = build_metadata.wrapper(self.document)
+            preserved.update(build_metadata.wrapper(metadata))
+            entries[build_metadata.PACKAGE_ENTRY] = _encode(build_metadata.package_metadata(preserved))
         old_doc = _decode(entries['objects.json'], 'objects.json')
         if isinstance(old_doc, list):
             new_doc = objects
         else:
             new_doc = copy.deepcopy(old_doc)
-            new_doc['Objects' if 'Objects' in new_doc else 'objects'] = objects
+            if metadata is not None:
+                for key, value in build_metadata.wrapper(metadata).items():
+                    if key in new_doc:
+                        new_doc[key] = copy.deepcopy(value)
+            parts_key = next(k for k in ('Objects', 'objects', 'Prefab') if k in new_doc)
+            new_doc[parts_key] = objects
         if new_doc != old_doc:
             entries['objects.json'] = _encode(new_doc)
         if name and name.strip():

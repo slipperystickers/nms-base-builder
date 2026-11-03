@@ -6,7 +6,7 @@ from copy import copy
 import bpy
 import mathutils
 
-from .utils import blend_utils, material, materials_v2
+from .utils import blend_utils, material, materials_v2, mirror_pivot
 from .utils import python as python_utils
 
 z_compensate = mathutils.Matrix.Rotation(math.radians(-90.0), 4, "X")
@@ -226,6 +226,11 @@ class Part(object):
         self.location = [0.0, 0.0, 0.0]
         self.rotation = [1.5708, 0.0, 0.0]
         self.scale = [1.0, 1.0, 1.0]
+        if (self.__object.type == 'MESH' and
+                self.__object.data.get(mirror_pivot.MESH_TAG) == self.object_id):
+            self.__object.matrix_world = mirror_pivot.display_matrix(
+                self.__object.matrix_world, self.object_id)
+            self.__object[mirror_pivot.OBJECT_TAG] = self.object_id
 
     def remove_constraints(self):
         # Remove any constraints from the duplication.
@@ -369,7 +374,9 @@ class Part(object):
         """
         
         # Get Matrix Data
-        world_matrix = self.matrix_world
+        world_matrix = mirror_pivot.native_matrix(
+            self.matrix_world, self.object_id,
+            normalized=mirror_pivot.is_normalized(self.object))
         for field, axis, column in (('Up', 'Y', 1), ('At', 'Z', 2)):
             if field == 'At' and self.object_id in _CABLE_IDS:
                 continue  # A coincident cable's endpoint displacement can be zero.
@@ -434,7 +441,12 @@ class Part(object):
         at = data.get("At", [0.0, 0.0, 0.0])
         # Set part position.
         world_matrix = cls.create_matrix_from_vectors(pos, up, at)
-        part.matrix_world = world_matrix
+        if (part.object.type == 'MESH' and
+                part.object.data.get(mirror_pivot.MESH_TAG) == object_id):
+            part.matrix_world = mirror_pivot.display_matrix(world_matrix, object_id)
+            part.object[mirror_pivot.OBJECT_TAG] = object_id
+        else:
+            part.matrix_world = world_matrix
         part.rotation = world_matrix.to_euler()
         # Apply metadata
         part.time_stamp = str(data.get("Timestamp", int(time.time())))
@@ -551,7 +563,13 @@ class Part(object):
             return
 
         # Get the snap points from the dictionary.
-        return self.SNAP_MATRIX_DICTIONARY[use_group]["snap_points"]
+        points = self.SNAP_MATRIX_DICTIONARY[use_group]["snap_points"]
+        if not mirror_pivot.is_normalized(self.object):
+            return points
+        offset = mathutils.Matrix.Translation(mirror_pivot.pivot(self.object_id))
+        return {name: dict(info, matrix=[list(row) for row in
+                offset @ mathutils.Matrix(info['matrix'])])
+                for name, info in points.items()}
 
     def get_snap_group(self):
         """Search through the grouping dictionary and return the snap group.
@@ -623,6 +641,11 @@ class Part(object):
         # Unsupported pairs must leave the source and its snap history untouched.
         if self.object == target.object:
             return False
+        from . import corvette_snapping
+        native = corvette_snapping.snap(self.object, target.object,
+                                       next_target, prev_target, next_source, prev_source)
+        if native is not None:
+            return native
         if (self.object_id == 'BASE_BUBPIPE'
                 and target.object_id == 'BASE_BUBPIPE'):
             from . import bubble_preview

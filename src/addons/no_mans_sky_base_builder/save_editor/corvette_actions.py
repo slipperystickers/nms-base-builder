@@ -357,7 +357,8 @@ class BBE_OT_corvette_export(bpy.types.Operator):
             self._scope = self.context_name, self.destination
             self._choice = None
             self.check(context)
-            return context.window_manager.invoke_props_dialog(self, width=660, confirm_text='Export Corvette')
+            return context.window_manager.invoke_props_dialog(
+                self, width=660, confirm_text='Export Corvette')
         except Exception as exc:
             self.cancel(context)
             report_error(self, {'ERROR'}, str(exc)); return {'CANCELLED'}

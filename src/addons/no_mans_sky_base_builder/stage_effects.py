@@ -23,6 +23,7 @@ COLOURS = {
     'SWARM_TROPHY_R': (1,.08,.04), 'SWARM_TROPHY_B': (.08,.38,1),
     'SET_CLASS_A': (.52,.16,1), 'SET_CLASS_B': (.15,.48,1),
     'SET_CLASS_S': (1,.65,.08),
+    'BASE_BEAMSTONE': (1,.18,.025),
 }
 POWER_PARTS = {'B_GEN_' + str(i) for i in range(6)} | {'B_TRU_' + c for c in 'ABCDEFGH'}
 COLOURS.update({pid: (.025, .12, 1) for pid in POWER_PARTS})

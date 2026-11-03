@@ -49,9 +49,9 @@ def _show_auto_update_prompt(context):
     def draw(menu, context):
         layout=menu.layout
         layout.label(text="This enables internet access for Blender")
-        layout.label(text="and automatic checks for Base Builder updates.")
+        layout.label(text="and automatic download and installation of updates.")
         layout.label(text="Other add-ons can use Blender's internet access too.")
-        layout.label(text="Updates are installed when you choose.")
+        layout.label(text="Updates install automatically when Blender is idle.")
         locked=_online_access_locked()
         if locked:
             layout.separator()
@@ -95,6 +95,9 @@ def start(action='check'):
     if not getattr(bpy.app,'online_access',True):
         _client.message='Allow online access in Blender Preferences to check or download updates.'
         return
+    if action == 'download':
+        _client.downloaded=None
+        _client._install_attempt=None
     _client.start(action)
 
 def register(product, installed, category):
@@ -113,11 +116,11 @@ def register(product, installed, category):
         def execute(self, context):
             start();return {'FINISHED'}
     class Download(bpy.types.Operator):
-        bl_idname=prefix+'.download_update';bl_label='Download verified ZIP'
+        bl_idname=prefix+'.download_update';bl_label='Download and install update'
         def execute(self, context):
             start('download');return {'FINISHED'}
     class Auto(bpy.types.Operator):
-        bl_idname=prefix+'.auto_updates';bl_label='Check for updates on startup'
+        bl_idname=prefix+'.auto_updates';bl_label='Download and install updates automatically'
         def execute(self, context):
             if _client.require_consent:
                 if _client.settings.get('auto_check'):
@@ -126,7 +129,7 @@ def register(product, installed, category):
                     _show_auto_update_prompt(context)
                 return {'FINISHED'}
             _client.set_auto(not _client.settings.get('auto_check',True))
-            if getattr(bpy.app,'online_access',True):_client.maybe_check()
+            if not bpy.app.background and getattr(bpy.app,'online_access',True):_client.maybe_check()
             return {'FINISHED'}
     class AutoChoice(bpy.types.Operator):
         bl_idname=prefix+'.auto_update_choice';bl_label='Automatic update checks'
@@ -244,9 +247,9 @@ def register(product, installed, category):
             row.operator(Check.bl_idname,text='Check now',**icons.ui_icon('FILE_REFRESH'))
             row=layout.row();row.enabled=not _client.busy and bool((_client.result or {}).get('available'))
             row.operator(Download.bl_idname,**icons.ui_icon('IMPORT'))
-            layout.operator(Auto.bl_idname,text='Automatically check for updates',**icons.ui_icon('CHECKBOX_HLT' if _client.settings.get('auto_check') else 'CHECKBOX_DEHLT'))
+            layout.operator(Auto.bl_idname,text='Download and install automatically',**icons.ui_icon('CHECKBOX_HLT' if _client.settings.get('auto_check') else 'CHECKBOX_DEHLT'))
             layout.operator(Folder.bl_idname,**icons.ui_icon('FILE_FOLDER'))
-            layout.label(text='Install ZIP after saving and restarting Blender.')
+            layout.label(text='Verified downloads install automatically when Blender is idle.')
             layout.separator();layout.operator(Report.bl_idname,**icons.ui_icon('TEXT'))
             layout.operator(Online.bl_idname,**icons.ui_icon('URL'))
             layout.operator(Email.bl_idname,**icons.ui_icon('URL'))
@@ -292,6 +295,8 @@ def poll():
             if not shown:_reporter.queue.put(payload)
     before=_client.message
     _client.poll()
+    from . import update_install
+    update_install.advance(_client, __package__)
     if not bpy.app.background and bool(getattr(bpy.app,'online_access',False)):
         _client.maybe_check()
     if _client.busy or before!=_client.message or diagnostic_before!=_diagnostics.message:
@@ -304,6 +309,8 @@ def unregister():
     global _client, _reporter, _restore_errors, _diagnostics, _error_prompt_open
     if _diagnostics:_diagnostics.close();_diagnostics=None
     _error_prompt_open=False
+    from . import update_install
+    update_install.cancel_pending()
     if _restore_errors:_restore_errors();_restore_errors=None
     _reporter=None
     if _client is not None:_client.close();_client=None

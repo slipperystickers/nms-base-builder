@@ -47,19 +47,19 @@ class BBE_OT_hd_library(bpy.types.Operator):
             return context.window_manager.invoke_popup(self, width=480)
         return context.window_manager.invoke_props_dialog(
             self, width=480,
-            title='Update HD Scenes & Effects?' if hd_library.available() else 'Download Detailed Proxies?',
+            title='Update HD Asset Packs?' if hd_library.available() else 'Download Detailed Proxies?',
             confirm_text="Enable Online Access & Download" if self.allow_online else "Download & Enable",
             cancel_default=True)
 
     def draw(self, context):
         layout = self.layout
         size = sum(spec['download_bytes'] for spec in hd_library.pending_specs())
-        label = 'Download HD scenes & effects update' if hd_library.available() else 'Download detailed models, scenes & effects'
+        label = 'Download missing HD asset packs' if hd_library.available() else 'Download detailed models, scenes, effects and characters'
         amount = ('%.1f MB' % (size / 1e6)) if size < 1e9 else ('%.2f GB' % (size / 1e9))
         layout.label(text=label + ' (' + amount + ')?')
         if hd_library.available():
             layout.label(text='Detailed models are already installed.')
-            layout.label(text='Only the missing scenes and effects will be added.')
+            layout.label(text='Only missing packs will be added, including the separate character pack.')
         layout.label(text="They stay installed through future BBE updates.")
         if not hd_library.available():
             layout.label(text="Detailed Proxies will turn on when the download finishes.")
@@ -143,7 +143,7 @@ class BBE_OT_hd_remove(bpy.types.Operator):
             self, width=460, confirm_text='Delete HD Pack', cancel_default=True)
 
     def draw(self, context):
-        self.layout.label(text='Remove downloaded HD models, scenes and effects?')
+        self.layout.label(text='Remove downloaded HD models, scenes, effects and characters?')
         self.layout.label(text='All scenes in this file will switch to Simple Proxies.')
         self.layout.label(text='Other files and Blender versions sharing this pack are affected.')
         self.layout.label(text='Detailed Proxies will offer to download the pack again.')
@@ -301,11 +301,12 @@ def after_load(_unused):
     # only the informational popup needs to wait for the UI event loop.
     _repair_saved_hd_textures(before_draw=True)
     from .part_overrides.fossil_models import refresh_scene
-    from .utils import room_glass
+    from .utils import room_glass, light_fissure
     for scene in bpy.data.scenes:
         with bpy.context.temp_override(scene=scene, view_layer=scene.view_layers[0]):
             refresh_scene(scene)
             room_glass.refresh_scene(scene)
+            light_fissure.refresh_scene(scene)
 
 
 _last_message = None

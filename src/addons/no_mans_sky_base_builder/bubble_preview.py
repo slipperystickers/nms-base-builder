@@ -26,7 +26,7 @@ _ARMS = {
 _MESH_KEY = "bbe_native_bubble_preview"
 _MESH_QUALITY = "bbe_native_bubble_quality"
 _MESH_REVISION = "bbe_native_bubble_revision"
-_PREVIEW_REVISION = 2
+_PREVIEW_REVISION = 3
 _INTENT_KEY = "bbe_bubble_shape"
 _START_KEY = "bbe_bubble_start_socket"
 _refreshing = False
@@ -213,6 +213,28 @@ def _hidden_contacts(obj, snapped):
     if not obj.get(_INTENT_KEY):
         return set()
     return snapped.get(obj.name, set()) - set(_visible_sockets(obj))
+
+
+def mirror_openings(obj, old_world, new_world, axis):
+    """Carry the visible openings through the same reflection as the tube."""
+    if obj.get('ObjectID') != 'BASE_BUBPIPE' or not obj.get(_INTENT_KEY):
+        return
+    reflection = Matrix.Identity(3)
+    reflection['XYZ'.index(axis)]['XYZ'.index(axis)] = -1
+    local = new_world.to_3x3().inverted() @ reflection @ old_world.to_3x3()
+    ports = []
+    for port in _visible_sockets(obj):
+        direction = (local @ _ARMS[port]).normalized()
+        best = max(_ARMS, key=lambda name: direction.dot(_ARMS[name]))
+        if direction.dot(_ARMS[best]) < .9999:
+            raise ValueError('Mirrored tube opening is not aligned with its local axes')
+        ports.append(best)
+    _, intent, _ = _display_spec(ports, True)
+    obj[_INTENT_KEY] = intent
+    for key in ('snapped_to', 'bbe_native_snap_target', 'bbe_native_target_socket',
+                'bbe_native_source_socket', 'bbe_native_source_option'):
+        if key in obj:
+            del obj[key]
 
 
 def _cube_rotations():
@@ -1195,9 +1217,11 @@ def refresh(scene):
                 or (len(_visible_sockets(obj)) >= 3 and not _branches_complete(obj, parts, port_links))))
             conflict = _is_junction(obj) and index in issues and not draft
             highlighted = obj == target
-            if draft or conflict or highlighted:
-                # Keep the intended bend legible while its connection is incomplete.
-                # Export continues to validate the native plan, never this mesh.
+            # An unfinished junction can still have a complete native shape.
+            # Use that planned frame so mirroring changes the visible handedness
+            # as well as the export. Only fall back to the edit hint when the
+            # planner cannot represent the intended number of openings yet.
+            if preview or conflict or (draft and len(view_sockets) != len(_visible_sockets(obj))):
                 view_sockets = preview.split(':', 1)[1].split('+') if preview else _visible_sockets(obj)
                 relative = Matrix.Identity(4)
             source_id, key, transform = _display_spec(view_sockets, high_res)

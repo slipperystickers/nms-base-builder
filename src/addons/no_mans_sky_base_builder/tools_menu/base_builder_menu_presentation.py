@@ -3,6 +3,7 @@
 import bpy
 from ..tools import asset_browser_presentation
 from ..save_editor import save_editor_presentation
+from ..save_editor.save_editor_utils import BaseType
 from .. import icons, hd_library, hd_library_ui, project_recovery, wasd_navigation
 
 class VIEW3D_PT_nms_io_panel(bpy.types.Panel):
@@ -33,6 +34,19 @@ def draw_io_contents(layout, context):
     save_editor_presentation.draw_save_manager(layout, context)
     if not context.scene.nms_save_data.check_plugin_enabled:
         layout.label(text="Enable to choose a save and access its tools.", **icons.ui_icon("INFO"))
+    elif context.scene.nms_save_data.get_current_slot_data() is not None:
+        layout.separator()
+        advanced = layout.column(align=True)
+        advanced.label(text='Advanced save tools', **icons.ui_icon('WARNING_LARGE'))
+        advanced.operator_context = 'INVOKE_DEFAULT'
+        ship = advanced.column(align=True)
+        ship.enabled = context.scene.nms_save_data.nms_base_type == BaseType.CORVETTE
+        ship.operator('bbe.ship_management', text='Ship Management (Beta)',
+                      **icons.ui_icon('OUTLINER_OB_LIGHTPROBE'))
+        advanced.operator('bbe.buildable_unlocks', text='Account Item Unlock and Currency Modify',
+                          **icons.ui_icon('UNLOCKED'))
+        advanced.operator('bbe.raw_save_json', text='Raw Save JSON Viewer / Editor',
+                          **icons.ui_icon('TEXT'))
 
 
 class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
@@ -80,6 +94,10 @@ class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
             # the viewport header/sidebar, where timer redraws are supported.
             proxy_box.label(text="Downloading: progress in top bar", **icons.ui_icon('IMPORT'))
             proxy_box.operator('bbe.hd_cancel', text='Cancel Download', **icons.ui_icon('CANCEL'))
+        elif hd_library.available() and not hd_library.ready():
+            update_row = proxy_box.row()
+            update_row.operator_context = 'INVOKE_DEFAULT'
+            update_row.operator('bbe.hd_library', text='Update HD Asset Packs', icon='IMPORT')
     
         
         layout.separator()

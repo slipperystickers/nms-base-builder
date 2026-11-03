@@ -191,8 +191,8 @@ class Builder(object):
         use_class = self.get_part_class(object_id)
         
         active_object = bpy.context.active_object
-        placement_matrix = (active_object.matrix_world.copy()
-                            if active_object is not None and active_object.select_get() else None)
+        from .builder_v2 import placement_from_target
+        placement_matrix = placement_from_target(object_id, active_object)
         item = use_class(
             object_id=object_id,
             builder_object=self,
@@ -246,6 +246,7 @@ class Builder(object):
         part_object.data.transform(Matrix.Scale(-1, 4, flip_axis))
 
     def mirror_part(self, part_object):
+        from .utils import mirror_pivot
         object_id = part_object["ObjectID"]
         new_object_id = part.Part.get_mirror_part_id(object_id)
         if new_object_id is None:
@@ -254,6 +255,10 @@ class Builder(object):
         # Update ObjectID and name
         part_object["ObjectID"] = new_object_id
         part_object["SnapID"] = new_object_id
+        if part_object.type == 'MESH' and mirror_pivot.has_pivot(new_object_id):
+            part_object[mirror_pivot.OBJECT_TAG] = new_object_id
+        elif mirror_pivot.OBJECT_TAG in part_object:
+            del part_object[mirror_pivot.OBJECT_TAG]
         part_object.name = new_object_id
         # Update cache
         if object_id in self.__part_cache:

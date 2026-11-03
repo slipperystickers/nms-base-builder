@@ -408,9 +408,6 @@ def draw_base_picker(container, save_data):
     elif save_data.nms_base_type == BaseType.CORVETTE:
         optimize_row = se_column.row()
         corvette_optimizer.draw_row(optimize_row)
-        management_row = se_column.row()
-        management_row.operator_context = 'INVOKE_DEFAULT'
-        management_row.operator('bbe.ship_management', **icons.ui_icon('TOOL_SETTINGS'), text='Ship Management (Beta)')
 
 
 def draw_save_manager(layout, context):

@@ -49,11 +49,23 @@ class Curve:
     PROP_DUP_GROUP_ID = f"dup_{Group.PROP_GROUP_ID}"
     PROP_DUP_IS_GROUP = "is_group"
     PROP_GROUP_CHILD_CACHE = f"dup_{Group.PROP_CHILD_CACHE}"
+    PROP_DISPLAY_PIVOT_CACHE = f"dup_{Group.PROP_DISPLAY_PIVOT_CACHE}"
     PROP_ORIGIN_MATRIX = f"dupe_{Group.PROP_ORIGIN_MATRIX}"
     
     def __init__(self):
         """Initialize the Curve manager."""
         pass
+
+
+def ensure_group_display_cache(curve):
+    if curve.get(Curve.PROP_DISPLAY_PIVOT_CACHE):
+        return
+    raw = curve.get(Curve.PROP_GROUP_CHILD_CACHE)
+    if not raw:
+        return
+    records = Group.display_child_cache(json.loads(raw))
+    curve[Curve.PROP_GROUP_CHILD_CACHE] = json.dumps(records)
+    curve[Curve.PROP_DISPLAY_PIVOT_CACHE] = True
 
 
 def get_follower_objects():
@@ -270,9 +282,11 @@ def duplicate_along_curve( bpy_object, curve, number_of_duplicates=10, radius_mu
     
     if bpy_object is not None:
         if "GroupID" in bpy_object:
+            Group.extract_cached_data(bpy_object)
             curve[Curve.PROP_DUP_GROUP_ID] = bpy_object[Group.PROP_GROUP_ID]
             curve[Curve.PROP_DUP_IS_GROUP] = True
             curve[Curve.PROP_GROUP_CHILD_CACHE] = bpy_object[Group.PROP_CHILD_CACHE]
+            curve[Curve.PROP_DISPLAY_PIVOT_CACHE] = True
             curve[Curve.PROP_ORIGIN_MATRIX] = bpy_object[Group.PROP_ORIGIN_MATRIX]
         else:
             curve[Curve.PROP_DUP_OBJECT_ID] = bpy_object["ObjectID"]
@@ -345,6 +359,7 @@ def add_objects_to_curve(number_to_add, curve, existing_objs, bpy_object = None)
                         new_obj[Part.PROP_USER_DATA] = curve[Curve.PROP_DUP_USER_DATA] 
             else:
                 if curve[Curve.PROP_DUP_IS_GROUP] is True:
+                    ensure_group_display_cache(curve)
                     child_cache = curve[Curve.PROP_GROUP_CHILD_CACHE]
                     origin_matrix = Group.str_to_matrix(curve[Curve.PROP_ORIGIN_MATRIX])
                     if origin_matrix is None:
@@ -637,9 +652,11 @@ def replace_curve_object(curve_obj, source_obj, number_of_objects=None, radius_m
     
     
     if Group.PROP_GROUP_ID in source_obj:
+        Group.extract_cached_data(source_obj)
         new_curve_obj[Curve.PROP_DUP_GROUP_ID] = source_obj[Group.PROP_GROUP_ID]
         new_curve_obj[Curve.PROP_DUP_IS_GROUP] = True
         new_curve_obj[Curve.PROP_GROUP_CHILD_CACHE] = source_obj[Group.PROP_CHILD_CACHE]
+        new_curve_obj[Curve.PROP_DISPLAY_PIVOT_CACHE] = True
         new_curve_obj[Curve.PROP_ORIGIN_MATRIX] = source_obj[Group.PROP_ORIGIN_MATRIX]
     else:
         new_curve_obj[Curve.PROP_DUP_OBJECT_ID] = source_obj["ObjectID"]
@@ -699,6 +716,7 @@ def mirror_curve(build_tool,curve_obj, axis = "Z", center = None, auto_duplicate
     curve_utils.mirror_curve(new_curve_obj, axis, center)
     
     if new_curve_obj[Curve.PROP_DUP_IS_GROUP]:
+        ensure_group_display_cache(new_curve_obj)
         # All this needs out of the group is two strings - the mirrored child
         # cache and the mirrored origin. It used to get them by building every
         # child as a real object, mirroring those, merging them into a mesh and

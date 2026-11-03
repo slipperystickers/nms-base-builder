@@ -21,7 +21,10 @@ class Thumb(QtWidgets.QLabel):
         part_id = part_id or ""
         custom_icon_path = os.path.join(ICON_PATH, "{}.png".format(part_id))
         catalog_icon_path = os.path.join(FILE_DIR, "..", "images", "asset_icons", "{}.png".format(part_id))
-        icon_path = next((path for path in (catalog_icon_path, custom_icon_path)
+        preferred_paths = ((custom_icon_path, catalog_icon_path)
+                           if part_id.startswith(("SET_", "S_TOWER"))
+                           else (catalog_icon_path, custom_icon_path))
+        icon_path = next((path for path in preferred_paths
                           if os.path.isfile(path)), ":{}".format(part_id))
         if QtCore.QFile.exists(icon_path):
             pixmap = QtGui.QPixmap(icon_path)
