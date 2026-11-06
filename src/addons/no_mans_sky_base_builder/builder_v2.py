@@ -52,6 +52,7 @@ MESH_TAG = materials_v2.MESH_TAG
 # scenes. Keep occupied old datablocks intact; a quality switch opts each
 # placed object into the corrected mesh without touching its saved record.
 MESH_REVISION_TAG = "nms_asset_revision"
+MESH_SOURCE_TAG = 'bbe_hd_asset_source'
 MESH_REVISIONS = dict.fromkeys(
     ("B_HAB_A", "B_HAB_B", "B_HAB_C", "B_HAB1_A", "B_HAB1_B", "B_HAB1_C", "B_ALK_C"),
     "18.0.9",
@@ -79,10 +80,13 @@ MESH_REVISIONS['BUILDTERMINAL_WALL'] = '18.1.52-wall'
 FORSAKEN_PARTS = {r['id'] for r in json.loads((Path(FILE_PATH) / 'resources/forsaken_assets.json').read_text())['assets']}
 MESH_REVISIONS.update(dict.fromkeys(FORSAKEN_PARTS, '18.2.34'))
 MESH_REVISIONS['B_COK_E'] = '7.13-vantage-closed'
+MESH_REVISIONS['GRAV_WALL'] = 'grav-wall-assembly-20261104'
 NEW_COCKPITS = {f'B_COK_C{i}' for i in range(1, 10)} | {'B_COK_E'}
 COCKPIT_BASE_REVISION = 3
 CORRECTED_LEGACY_PARTS = {r['id'] for r in json.loads((Path(FILE_PATH) / 'resources/native_asset_corrections.json').read_text())['assets']}
 MESH_REVISIONS.update(dict.fromkeys(CORRECTED_LEGACY_PARTS, '18.2.36'))
+REPAIRED_VISUAL_PARTS = {'BASE_TOYCORE'}
+MESH_REVISIONS['BASE_TOYCORE'] = 'toycore-native-spherical-effects-20261105'
 BYTEBEAT_PARTS = {'BYTEBEAT', 'BYTEBEATSWITCH', 'HOLO_DISCO_0', 'U_BYTEBEATLINE'}
 
 # Set once per session by get_asset_index().
@@ -229,6 +233,8 @@ def _deserialise_from_data(data, progress):
     BUILDER.build_rigs()
     # Optimise control points.
     BUILDER.optimise_control_points()
+    from . import cable_connections
+    cable_connections.bind_imported(bpy.context.scene)
     progress.update(1.0, 'Import complete')
 
 
@@ -342,7 +348,10 @@ def get_asset_index(rebuild=False):
     if _asset_index is not None and not rebuild and (high_res_path, str(hd_library.scenes_root()), str(hd_library.additions_root())) == _asset_root:
         return _asset_index
 
-    _asset_index = {}
+    # The native detailed mesh is reassembled in this bundled correction; its
+    # original textures still come from the downloaded HD pack.
+    toycore = os.path.join(FILE_PATH, 'resources', 'hd_corrections', 'BASE_TOYCORE.blend')
+    _asset_index = {'BASE_TOYCORE': toycore} if root else {}
     _asset_root = (high_res_path, str(hd_library.scenes_root()), str(hd_library.additions_root()))
     if not os.path.isdir(high_res_path):
         return _asset_index
@@ -378,16 +387,26 @@ def get_asset_index(rebuild=False):
         _asset_index[cable] = os.path.join(FILE_PATH, 'resources', 'hd_corrections', cable + '.blend')
 
     # Native additions are a separate, verified component of Detailed Proxies.
+    # Old core packs reused several of these IDs for unrelated meshes. An
+    # incomplete HD update must use the correct simple proxy, never that mesh.
+    for object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS:
+        _asset_index.pop(object_id, None)
     additions_root = hd_library.additions_root()
     additions = additions_root / 'assets' if additions_root else None
     if additions is not None and additions.is_dir():
         _asset_index.update({path.stem: str(path) for path in additions.glob('*.blend')})
+        # Compatible older packs still contain the detached gravity-wall rails.
+        # Use its repaired base proxy until the current HD update is installed.
+        if additions_root.name != hd_library.additions_specification()['id']:
+            _asset_index.pop('GRAV_WALL', None)
 
     # Core corrections do not replace or invalidate the persistent HD pack.
     scenes = hd_library.scenes_root()
     if scenes:
         for marker in ('SET_CLASS_A', 'SET_CLASS_B', 'SET_CLASS_S'):
             _asset_index[marker] = str(scenes / 'display' / (marker + '.blend'))
+    if root:
+        _asset_index['BASE_TOYCORE'] = toycore
     return _asset_index
 
 
@@ -435,8 +454,9 @@ def refresh_forsaken_proxies(scene):
         if mesh is not None:
             obj.data = mesh
             coloured.append((obj, obj.get('UserData', Part.DEFAULT_USER_DATA)))
-        elif (not detailed and pid in NEW_COCKPITS
-              and old.get('bbe_forsaken_revision') != COCKPIT_BASE_REVISION):
+        elif (not detailed and (
+                (pid in NEW_COCKPITS and old.get('bbe_forsaken_revision') != COCKPIT_BASE_REVISION)
+                or (pid == 'GRAV_WALL' and old.get(MESH_REVISION_TAG) != MESH_REVISIONS[pid]))):
             apply_proxy_mesh(obj, pid, obj.get('UserData', Part.DEFAULT_USER_DATA))
         if obj.data != old:
             if old.users == 0:
@@ -457,6 +477,42 @@ def refresh_forsaken_proxies(scene):
             obj.data = mesh
             if old.users == 0:
                 bpy.data.meshes.remove(old)
+
+
+def refresh_toycore_proxies(scene):
+    """Upgrade saved generator displays without changing placement or export data."""
+    detailed = getattr(scene, 'bbe_detailed_proxies', True)
+    revised = MESH_REVISIONS['BASE_TOYCORE']
+    coloured = []
+    changed = 0
+    for obj in scene.objects:
+        if obj.type != 'MESH' or obj.get('ObjectID') != 'BASE_TOYCORE':
+            continue
+        old = obj.data
+        is_hd = old.get(MESH_TAG) == 'BASE_TOYCORE'
+        is_proxy = (old.get(PROXY_MESH_TAG) == 'BASE_TOYCORE' or
+                    str(old.get(PROXY_PLACEMENT_TAG, '')).startswith('BASE_TOYCORE/'))
+        legacy_fbx = len(old.vertices) == 92 and len(old.polygons) == 104
+        if not (is_hd or is_proxy or legacy_fbx):
+            continue
+        if old.get(MESH_REVISION_TAG) == revised and (is_hd if detailed else is_proxy):
+            continue
+        if detailed:
+            mesh = load_high_res_mesh('BASE_TOYCORE')
+            if mesh is None:
+                continue
+            obj.data = mesh
+            coloured.append((obj, obj.get('UserData', Part.DEFAULT_USER_DATA)))
+        elif not apply_proxy_mesh(obj, 'BASE_TOYCORE',
+                                  obj.get('UserData', Part.DEFAULT_USER_DATA)):
+            continue
+        if obj.data != old:
+            changed += 1
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+    if coloured:
+        materials_v2.apply_many(coloured)
+    return changed
 
 
 def refresh_bytebeat_proxies(scene):
@@ -613,6 +669,12 @@ def _relink_mesh_textures(mesh):
 def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     if not force and not getattr(bpy.context.scene, "bbe_detailed_proxies", True):
         return None
+    asset_index = asset_index if asset_index is not None else get_asset_index()
+    protected = object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS | REPAIRED_VISUAL_PARTS
+    source_path = asset_index.get(object_id)
+    source_key = str(Path(source_path).resolve()) if source_path else ''
+    if protected and not source_path:
+        return None
     # the cache lives in bpy.data rather than in a module level dict, so it
     # survives a new file, a module reload and a scene the user already saved
     mesh_name = MESH_PREFIX + object_id
@@ -621,14 +683,12 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     if object_id in {'SET_CLASS_A', 'SET_CLASS_B', 'SET_CLASS_S'} and hd_library.scenes_root() is None:
         revision += '-base'
     if cached is not None and cached.get(MESH_TAG) == object_id:
-        if (revision is None or cached.get(MESH_REVISION_TAG) == revision) and (
+        if (not protected or cached.get(MESH_SOURCE_TAG) == source_key) and (revision is None or cached.get(MESH_REVISION_TAG) == revision) and (
                 not mirror_pivot.has_pivot(object_id) or
                 cached.get(mirror_pivot.MESH_TAG) == object_id):
             correct_hd_display(cached, object_id)
             return cached if _relink_mesh_textures(cached) else None
         cached.name = mesh_name + "_legacy"
-
-    asset_index = asset_index if asset_index is not None else get_asset_index()
 
     # A reproducible variant is built out of the mesh it is a variant of rather
     # than out of its own asset - most of the corvette variants ship the wrong
@@ -637,6 +697,8 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     if REBUILD_VARIANTS:
         mesh = rebuild_variant_mesh(object_id, asset_index)
         if mesh is not None:
+            if protected:
+                mesh[MESH_SOURCE_TAG] = source_key
             return mesh
 
     blend_path = asset_index.get(object_id)
@@ -662,6 +724,8 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     mesh.name = mesh_name
     mirror_pivot.normalize_mesh(mesh, object_id)
     mesh[MESH_TAG] = object_id
+    if protected:
+        mesh[MESH_SOURCE_TAG] = source_key
     if revision is not None:
         mesh[MESH_REVISION_TAG] = revision
     if CLEAN_DUPLICATE_FACES and mesh.get('bbe_duplicate_faces_prepared') != 1:

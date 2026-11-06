@@ -201,7 +201,9 @@ class DuplicateAlongCurve(bpy.types.Operator):
     def execute(self, context):
         scene = context.scene
         build_tool = scene.nms_build_tool
-        build_tool.duplicate_along_curve(self.number_of_objects, self.overall_Radius)
+        result = build_tool.duplicate_along_curve(self.number_of_objects, self.overall_Radius)
+        if result == {"CANCELLED"}:
+            return result
         return {"FINISHED"}
 
     def invoke(self, context, event):
@@ -211,21 +213,13 @@ class DuplicateAlongCurve(bpy.types.Operator):
         # make sure that there are only two objects selected
         # One must be curve, other must be an object for duplication
         if len(selected_objects) != 2:
-            message = (
-                "Make sure you have two items selected. Select the item to"
-                " duplicate, then the curve you want to snap to."
-            )
-            ShowMessageBox(message=message, title="Duplicate Along Curve")
+            curve.show_duplicate_selection_help(context)
             return {"CANCELLED"}
         
         #Make sure that there is only one curve in selection
         curve_objs = [obj for obj in selected_objects if curve.is_bezier_or_nurbs_path(obj)]
         if len(curve_objs) != 1:
-            message = (
-                "Make sure you have two items selected.\n"
-                "One of them must be a curve and other must be object for dupication."
-            )
-            ShowMessageBox(message=message, title="Duplicate Along Curve")
+            curve.show_duplicate_selection_help(context)
             return {"CANCELLED"}
         
         if "has_linked_objects" in curve_objs[0]:

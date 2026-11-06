@@ -1,9 +1,9 @@
-BASE BUILDER EXTENDED 18.1.84
+BASE BUILDER EXTENDED 18.2.44
 Base Builder by DjMonkey; Extended by Furiousfurby.
 Based on Kuma's 18.0.0 release.
 
 REQUIREMENTS
-64-bit Windows, Blender 5.1 or 5.2 (tested with 5.1.2 and 5.2.2 LTS).
+64-bit Windows, Blender 5.1 or 5.2. This release was tested with 5.1.2.
 The station reference library was saved with Blender 5.1. This combined build
 does not claim the Blender 4.2 compatibility of Kuma's original ZIP.
 Simple proxies, icons, game lighting and Python dependency wheels are included.
@@ -22,6 +22,14 @@ INSTALL / UPDATE
 2. Edit > Preferences > Get Extensions > top-right menu > Install from Disk.
 3. Select the ZIP and enable Base Builder Extended.
 4. Restart all Blender windows after upgrading.
+Existing Detailed Proxy users do NOT need a fresh install or manual pack download.
+With Blender Online Access enabled, BBE checks the installed packs automatically
+and downloads only missing or changed components. Keep Blender open until the HD
+progress finishes. Verified detailed scenes refresh automatically; Simple scenes
+stay Simple. The previous compatible pack remains available during the download.
+If a download fails, open Detailed Proxies and choose Retry Download. Offline
+users can enable Online Access later or install the matching verified pack ZIP.
+New users can opt in through Builder > Detailed Proxies.
 If Charon Forge is enabled, BBE asks before activation. Continue disables
 Charon Forge and enables BBE; Cancel leaves Charon active and BBE inactive.
 BBE cannot intercept Charon's own installer. If Charon is enabled later,
@@ -142,7 +150,8 @@ draft. Unrelated ships and freighter data are preserved. Structural checks do no
 guarantee in-game functionality.
 
 COCKPIT ORDER AND FEATURE HELP
-Swap Cockpit Order is in the top BBE menu, the BBE sidebar and Optimizer Settings.
+Swap Cockpit/Object order is in Builder (top toolbar and sidebar) and Optimizer Settings.
+Choose Cockpits, an appearance modifier type, or any other duplicate Object ID, then choose two instances.
 Choose any two cockpits and confirm. This immediately exchanges their export order;
 it never moves their models. Both ordinary and optimized exports use this order.
 Save the .blend to retain it with that project. Ctrl+Z undoes the scene change;

@@ -74,29 +74,70 @@ def placed_cockpits(context):
     return sorted(objects, key=lambda obj: obj.get('order', 0))
 
 
+def ordered_parts(context):
+    return sorted((o for o in context.scene.objects if o.get('ObjectID')),
+                  key=lambda o: o.get('order', 0))
+
+
+def order_groups(context):
+    """Cockpit roles span variants; all other choices require duplicate IDs."""
+    from .. import BUILDER
+    parts = ordered_parts(context)
+    cockpits = placed_cockpits(context)
+    by_id = {}
+    for obj in parts:
+        pid = str(obj['ObjectID']).lstrip('^').upper()
+        if not pid.startswith('B_COK_'):
+            by_id.setdefault(pid, []).append(obj)
+    groups = []
+    if len(cockpits) > 1:
+        groups.append(('COCKPITS', 'Cockpits', cockpits))
+    def priority(pid):
+        return (0 if pid in {'DRESSING_TABLE', 'FRE_ROOM_DRESS'} else 1,
+                BUILDER.get_nice_name(pid).casefold(), pid)
+    for pid in sorted(by_id, key=priority):
+        if len(by_id[pid]) > 1:
+            groups.append((pid, f'{BUILDER.get_nice_name(pid).title()} ({pid})', by_id[pid]))
+    return groups
+
+
 def cockpit_snapshot(context):
     return (context.scene.session_uid,
             tuple((obj.session_uid, obj.name, str(obj.get('ObjectID', '')), obj.get('order', 0))
-                  for obj in placed_cockpits(context)))
+                  for obj in ordered_parts(context)))
 
 
 def prepare_cockpit_choices(operator, context):
-    objects = placed_cockpits(context)
-    if len(objects) < 2:
-        raise ValueError('Place at least two Corvette cockpits before swapping their order.')
+    groups = order_groups(context)
+    if not groups:
+        raise ValueError('Add two cockpits or two objects with the same Object ID to swap their order.')
     key = uuid4().hex
-    # Blender's enum callback borrows the strings. Retain them through redraws
-    # and undo/redo; store only plain data, never Blender object references.
-    _cockpit_dialogs[key] = dict(snapshot=cockpit_snapshot(context), items=tuple(
-        (str(index), f'{index + 1}. {obj.get("ObjectID", "")} — {obj.name}',
-         f'Cockpit {index + 1} in current export order. Location: {tuple(round(value, 2) for value in obj.location)}')
-        for index, obj in enumerate(objects)))
+    # RNA borrows enum strings: retain plain data for the dialog and redo.
+    _cockpit_dialogs[key] = dict(snapshot=cockpit_snapshot(context),
+        groups=tuple((pid, f'{label} — {len(objects)} objects', label) for pid, label, objects in groups),
+        items_by_group={pid: tuple(
+            (str(index), f'{index + 1}. {obj.get("ObjectID", "")} — {obj.name}',
+             f'Current order within this group. Location: {tuple(round(v, 2) for v in obj.matrix_world.translation)}')
+            for index, obj in enumerate(objects)) for pid, _, objects in groups})
     operator.choice_key = key
+    operator.object_type = groups[0][0]
+
+
+def group_choices(self, context):
+    return _cockpit_dialogs.get(self.choice_key, {}).get('groups', ())
 
 
 def role_choices(self, context):
-    # RNA supplies OperatorProperties here, not the Python Operator instance.
-    return _cockpit_dialogs.get(self.choice_key, {}).get('items', _no_cockpit_choices)
+    data = _cockpit_dialogs.get(self.choice_key, {})
+    groups = data.get('groups', ())
+    selected = getattr(self, 'object_type', '') or (groups[0][0] if groups else '')
+    return data.get('items_by_group', {}).get(selected, _no_cockpit_choices)
+
+
+def change_order_group(self, context):
+    if len(role_choices(self, context)) >= 2:
+        self.first = '0'
+        self.second = '1'
 
 
 @persistent
@@ -106,16 +147,17 @@ def clear_cockpit_choices(_=None):
 
 class BBE_OT_swap_corvette_cockpits(bpy.types.Operator):
     bl_idname = 'bbe.swap_corvette_cockpits'
-    bl_label = 'Swap Cockpit Order'
-    bl_description = ('Immediately exchange two cockpits in this scene’s export order without moving them. '
+    bl_label = 'Swap Cockpit/Object order...'
+    bl_description = ('Immediately exchange two cockpits or matching objects in this scene’s export order without moving them. '
                       'Save the .blend to retain it; Ctrl+Z undoes it. The game save changes only when exported')
     bl_options = {'REGISTER', 'UNDO'}
 
     choice_key: bpy.props.StringProperty(options={'HIDDEN'})
-    first: bpy.props.EnumProperty(name='First cockpit', items=role_choices,
-        description='One of the two placed cockpits to exchange in export order; numbers show the current order')
-    second: bpy.props.EnumProperty(name='Second cockpit', items=role_choices,
-        description='The other cockpit to exchange with the first selection; its physical position stays unchanged')
+    object_type: bpy.props.EnumProperty(name='Object type', items=group_choices, update=change_order_group)
+    first: bpy.props.EnumProperty(name='First object', items=role_choices,
+        description='One of the two placed objects to exchange in export order; numbers show the current order')
+    second: bpy.props.EnumProperty(name='Second object', items=role_choices,
+        description='The other object to exchange with the first selection; its physical position stays unchanged')
 
     def invoke(self, context, event):
         try:
@@ -128,13 +170,11 @@ class BBE_OT_swap_corvette_cockpits(bpy.types.Operator):
 
     def draw(self, context):
         layout = self.layout
-        objects = placed_cockpits(context)
-        if len(objects) < 2:
-            layout.label(text=f'Only {len(objects)} cockpit(s) in this scene; two are needed.', **icons.ui_icon('INFO'))
-            return
+        layout.prop(self, 'object_type')
+        layout.separator()
         layout.prop(self, 'first')
         layout.prop(self, 'second')
-        layout.label(text='Swap Order changes export order now. Neither cockpit moves.')
+        layout.label(text='Swap Order changes export order now. Neither object moves.')
         layout.label(text='Save the .blend to keep it. Ctrl+Z undoes the swap.')
         layout.label(text='Ordinary and optimized exports both use this order.')
         from .function_help import help_button
@@ -146,9 +186,11 @@ class BBE_OT_swap_corvette_cockpits(bpy.types.Operator):
     def execute(self, context):
         reviewed = _cockpit_dialogs.get(self.choice_key)
         if not reviewed or reviewed['snapshot'] != cockpit_snapshot(context):
-            report_error(self, {'ERROR'}, 'The cockpit list or order changed. Reopen Swap Cockpit Order and choose again.')
+            report_error(self, {'ERROR'}, 'The object list or order changed. Reopen Swap Cockpit/Object order and choose again.')
             return {'CANCELLED'}
-        objects = placed_cockpits(context)
+        groups = order_groups(context)
+        chosen = getattr(self, 'object_type', '') or (groups[0][0] if groups else '')
+        objects = next((objects for pid, _, objects in groups if pid == chosen), [])
         try:
             first, second = int(self.first), int(self.second)
         except (TypeError, ValueError):
@@ -167,7 +209,7 @@ class BBE_OT_swap_corvette_cockpits(bpy.types.Operator):
         left['order'], right['order'] = right['order'], left['order']
         from .. import pilot_reference
         pilot_reference.sync_flight_reference(context)
-        self.report({'INFO'}, f'Swapped cockpit #{first + 1} and #{second + 1} in Blender export order')
+        self.report({'INFO'}, f'Swapped {left.name} and {right.name} in export order')
         return {'FINISHED'}
 
 
@@ -486,7 +528,7 @@ def draw_row(layout, pinned=False):
 def draw_cockpit_controls(layout):
     row = layout.row(align=True)
     row.operator_context = 'INVOKE_DEFAULT'
-    row.operator('bbe.swap_corvette_cockpits', text='Swap Cockpit Order...', **icons.ui_icon('ARROW_LEFTRIGHT'))
+    row.operator('bbe.swap_corvette_cockpits', text='Swap Cockpit/Object order...', **icons.ui_icon('ARROW_LEFTRIGHT'))
     row.operator('bbe.function_help', text='', icon='QUESTION').topic = 'COCKPIT'
 
 

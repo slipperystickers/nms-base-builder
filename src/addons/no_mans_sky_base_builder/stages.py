@@ -395,6 +395,7 @@ def on_load(_):
             preset.restore_legacy_appearance(scene)
             builder_v2.refresh_bytebeat_proxies(scene)
             builder_v2.refresh_forsaken_proxies(scene)
+            builder_v2.refresh_toycore_proxies(scene)
             for obj in scene.objects:
                 if (obj.type == 'MESH' and obj.get('ObjectID') == 'BUILDTERMINAL'
                         and obj.get('bbe_trade_terminal_wall_model')):

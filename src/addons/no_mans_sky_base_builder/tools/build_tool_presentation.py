@@ -22,6 +22,10 @@ class NMS_PT_tools_panel(Panel):
 
     def draw(self, context):
         layout = self.layout
+        from ..save_editor.corvette_optimizer import draw_cockpit_controls
+        draw_cockpit_controls(layout)
+        from .properties_presentation import draw_compact_transforms
+        draw_compact_transforms(layout, context)
         scene = context.scene
         nms_tool = scene.nms_main
         build_tool = context.scene.nms_build_tool
@@ -86,7 +90,6 @@ class NMS_PT_tools_panel(Panel):
         tools_dup_row.operator("object.nms_delete", **icons.ui_icon("TRASH"))
         tools_col.separator()
         #tools_col.label(text="Curve")
-        tools_col.operator("object.nms_duplicate_along_curve", **icons.ui_icon("MOD_DASH"))
         tools_col.separator()
         #presets_v2_col = tools_box.column(align = True)
         tools_col.label(text = "Grouping")

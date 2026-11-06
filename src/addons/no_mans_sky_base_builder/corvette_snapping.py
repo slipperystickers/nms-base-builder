@@ -9,7 +9,9 @@ from .utils import mirror_pivot
 
 DATA = json.loads((Path(__file__).parent / 'resources/corvette_snapping.json').read_text())['parts']
 DIRECTIONS = {'N': (0,0,-1), 'S': (0,0,1), 'E': (1,0,0),
-              'W': (-1,0,0), 'T': (0,1,0), 'B': (0,-1,0)}
+              'W': (-1,0,0), 'T': (0,1,0), 'B': (0,-1,0),
+              'NE': (1,0,-1), 'NW': (-1,0,-1),
+              'SE': (1,0,1), 'SW': (-1,0,1)}
 CACHE = {}
 
 
@@ -36,34 +38,98 @@ def room_points(pid):
     return result
 
 
-def options(source, target):
-    sid, tid = source.get('ObjectID'), target.get('ObjectID')
-    if sid not in DATA or tid not in DATA:
-        return []
-    native_target = mirror_pivot.native_matrix(target.matrix_world, tid,
-                                               normalized=mirror_pivot.is_normalized(target))
-    pairs = []
-    if sid == 'B_DOOR0':
-        for ti, tp in enumerate(DATA[tid]):
-            accepted = {s.replace('_In_', '') for s in tp['sockets']
-                        if re.fullmatch(r'Int(?:NS|EW)[ABCD]_In_', s)}
-            if not accepted:
+def supports(source, target):
+    return source.get('ObjectID') in DATA and target.get('ObjectID') in DATA
+
+
+def _direction_frame(direction):
+    normal = Vector(DIRECTIONS[direction]).normalized()
+    up = Vector((0, 1, 0)) if abs(normal.y) < .9 else Vector((0, 0, -1))
+    side = normal.cross(up).normalized()
+    return Matrix((normal, side.cross(normal).normalized(), side)).transposed().to_4x4()
+
+
+@lru_cache(maxsize=1024)
+def _sockets(pid):
+    """Typed connection frames, in the part's native save coordinates.
+
+    Room/Block compass suffixes specify the mating direction, rather than
+    unrelated socket types. Interior variants (A/B/C/D), stairs, magnets and
+    landing-gear cores retain their exact authored type and orientation.
+    Numeric suffixes after In/Out only distinguish repeated locator names.
+    """
+    result = []
+    for pi, point in enumerate(DATA.get(pid, ())):
+        raw = Matrix(point['matrix'])
+        positions = {}
+        for ci, socket in enumerate(point['sockets']):
+            match = re.fullmatch(r'(.+)_(In|Out)_\d*', socket)
+            if not match:
                 continue
-            for si, sp in enumerate(DATA[sid]):
-                offered = {s.replace('_Out_', '') for s in sp['sockets'] if '_Out_' in s}
-                if not accepted & offered:
-                    continue
-                tm, sm = Matrix(tp['matrix']), Matrix(sp['matrix'])
-                matrix = native_target @ tm @ sm.inverted()
-                pairs.append((str(ti), str(si), native_target @ tm.translation,
-                              mirror_pivot.display_matrix(matrix, sid)))
-    else:
-        for ti, tm in room_points(tid).items():
-            for si, sm in room_points(sid).items():
-                matrix = native_target @ tm @ Matrix.Rotation(math.pi, 4, 'Y') @ sm.inverted()
-                pairs.append((ti, si, native_target @ tm.translation,
-                              mirror_pivot.display_matrix(matrix, sid)))
-    return pairs
+            kind, role = match.groups()
+            frame = raw @ Matrix(point.get('socket_matrices', {}).get(socket, Matrix.Identity(4)))
+            # Use the child socket position, which can differ from its parent.
+            position = tuple(round(v, 5) for v in frame.translation)
+            slot = positions.setdefault(position, len(positions))
+            key = str(pi) if slot == 0 else f'{pi}:{slot}'
+            direction = re.fullmatch(r'(Room|Block)(NE|NW|SE|SW|N|E|S|W|T|B)', kind)
+            if direction:
+                kind, axis = direction.groups()
+                # Corner-only channels are not ordinary face connections.
+                # A diagonal Room input must not accept a cardinal Room output.
+                if len(axis) == 2:
+                    kind += 'Diagonal'
+                frame = frame @ _direction_frame(axis)
+            result.append((key, str(pi)+':'+str(ci), kind, role, frame))
+    return tuple(result)
+
+
+@lru_cache(maxsize=512)
+def _local_options(sid, tid):
+    """Cache geometry by part IDs, never by scene-object transforms."""
+    result, seen = [], set()
+    for tk, tc, tkind, trole, tm in _sockets(tid):
+        for sk, sc, skind, srole, sm in _sockets(sid):
+            if tkind != skind or trole == srole:
+                continue
+            relative = tm @ sm.inverted()
+            signature = (tk, tuple(round(v, 5) for row in relative for v in row))
+            if signature in seen:
+                continue
+            seen.add(signature)
+            result.append((tk, sc+'>'+tc, tm.translation.copy(), relative))
+    return tuple(result)
+
+
+def _native_target(target):
+    return mirror_pivot.native_matrix(target.matrix_world, target.get('ObjectID'),
+                                     normalized=mirror_pivot.is_normalized(target))
+
+
+def options(source, target):
+    if source == target or not supports(source, target):
+        return []
+    sid, tid = source.get('ObjectID'), target.get('ObjectID')
+    native_target = _native_target(target)
+    normalized = mirror_pivot.is_normalized(source)
+    result = []
+    for tk, sk, position, relative in _local_options(sid, tid):
+        matrix = native_target @ relative
+        # Legacy .blend objects still use native mesh coordinates. Do not
+        # silently give them a display-pivot offset without shifting the mesh.
+        if normalized:
+            matrix = mirror_pivot.display_matrix(matrix, sid)
+        result.append((tk, sk, native_target @ position, matrix))
+    return result
+
+
+def target_points(source, target):
+    """Only transform the visible target locations on viewport redraw."""
+    if source == target or not supports(source, target):
+        return []
+    points = {p[0]: p[2] for p in _local_options(source.get('ObjectID'), target.get('ObjectID'))}
+    native_target = _native_target(target)
+    return [(key, native_target @ position) for key, position in points.items()]
 
 
 def choose(source, target, target_key=None, cycle_source=False):
@@ -92,9 +158,13 @@ def apply(source, target, choice):
 
 
 def snap(source, target, next_target=False, prev_target=False, next_source=False, prev_source=False):
+    if not supports(source, target):
+        return None
     pairs = options(source, target)
     if not pairs:
-        return None
+        # Covered native parts with incompatible socket types must not fall
+        # through to a generic legacy pairing and produce an invented snap.
+        return False
     previous = CACHE.get((source.name, target.name))
     keys = list(dict.fromkeys(p[0] for p in pairs))
     key = previous[0] if previous and previous[0] in keys else None

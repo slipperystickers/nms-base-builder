@@ -51,6 +51,24 @@ class LibraryTests(unittest.TestCase):
             resource.write_text(json.dumps({'id': 'updated-manifest'}))
             self.assertEqual(hd.specification()['id'], 'updated-manifest')
 
+    def test_old_owner_recognised_after_clean_addon_reinstall(self):
+        old = dict(self.spec, id='hd-old-version')
+        root = hd.install_archive(self.zip, old)
+        with patch.object(hd, 'ADDON', self.root / 'fresh-addon'), \
+                patch.object(hd, 'specification', return_value=self.spec):
+            self.assertFalse(hd.available())
+            self.assertTrue(hd.has_installed_content())
+            self.assertIsNone(hd.installed_root())
+            (root / 'installed.json').write_text(json.dumps(dict(old, removing=True)))
+            self.assertFalse(hd.has_installed_content())
+            (root / 'installed.json').write_text('broken receipt')
+            self.assertFalse(hd.has_installed_content())
+
+    def test_new_simple_user_is_not_an_hd_owner(self):
+        with patch.object(hd, 'ADDON', self.root / 'fresh-addon'), \
+                patch.object(hd, 'specification', return_value=self.spec):
+            self.assertFalse(hd.has_installed_content())
+
     def test_compatible_additions_remain_visible_until_update_installed(self):
         old_root = hd.install_archive(self.zip, self.spec)
         new_spec = dict(self.spec, id='updated-additions', content_sha256='updated-content',

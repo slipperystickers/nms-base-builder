@@ -66,6 +66,35 @@ def available():
     return library_root() is not None
 
 
+def has_installed_content():
+    """Recognise previous HD owners across add-on updates and reinstalls.
+
+    An old pack is evidence that the user installed Detailed Proxies, not
+    evidence that its assets satisfy the current manifest.
+    """
+    if available():
+        return True
+    try:
+        for path in storage().glob('hd-*/installed.json'):
+            try:
+                receipt = json.loads(path.read_text(encoding='utf-8'))
+                if (receipt.get('id') == path.parent.name
+                        and receipt.get('content_sha256') and not receipt.get('removing')):
+                    return True
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        pass
+    return False
+
+
+def content_version():
+    """All separately downloaded components form one user-facing HD pack."""
+    return tuple((spec['id'], spec['content_sha256']) for spec in
+                 (specification(), scenes_specification(), additions_specification(),
+                  characters_specification()))
+
+
 @lru_cache(maxsize=4)
 def _texture_names(pack_id, content_sha256):
     """Index verified texture names once, including during a bulk proxy switch."""
@@ -422,14 +451,14 @@ def start(archive=None):
                     download_and_install(spec)
                     offset += spec['download_bytes']
             complete = ready()
-            STATE.update(message='Detailed models, scenes and characters installed.' if complete else
-                         'HD component installed. Install the remaining component or click Detailed Proxies to download it.',
+            STATE.update(message='Detailed Proxy pack is up to date.' if complete else
+                         'HD update incomplete. Click Detailed Proxies to finish updating.',
                          progress=1.0, result='installed' if complete else 'partial')
         except InterruptedError:
             STATE.update(message="Download cancelled.", error="", result="cancelled")
         except Exception as exc:
             models_installed = available()
-            STATE.update(message="Detailed models installed; another HD component needs a retry."
+            STATE.update(message="HD update incomplete. Retry from Detailed Proxies."
                          if models_installed else "Detailed models were not installed.",
                          error=str(exc), result="partial" if models_installed else "failed")
         finally:

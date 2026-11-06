@@ -1,7 +1,7 @@
 # Base Builder Extended
 
-Current standalone release: **18.2.37** (Forsaken 7.10 support). Windows x64,
-verified with Blender 5.1.2 and 5.2.2 LTS.
+Current standalone release: **18.2.44** (Forsaken 7.10 support). Windows x64,
+This release was verified with Blender 5.1.2.
 
 Build bubble tube routes with nearby part icons, rotation controls and all eight
 basic shapes. Add one new pathway at a time, redirect unused openings, and join
@@ -18,11 +18,18 @@ cockpit-order controls, restored Asset Browser layouts, faster export validation
 and opt-in diagnostic tickets. The Corvette picker closes after selection and
 excludes freighters. The website diagnostic service is deployed and verified.
 
-[Download the installer and read the release notes](https://github.com/slipperystickers/nms-base-builder/releases/tag/v18.2.37).
+[Download the installer and read the release notes](https://github.com/slipperystickers/nms-base-builder/releases/tag/v18.2.44).
 Install the attached plugin ZIP through Blender's **Install from Disk**, then
-restart Blender. This release adds the supported Forsaken Corvette and gravity
-parts with icons, lightweight proxies and detailed appearances. It also includes
-the chat, export, decal, theme and building improvements since 18.2.0.
+restart Blender. Existing Detailed Proxy users receive missing or updated packs
+automatically when Blender Online Access is enabled; no fresh install is needed.
+Keep Blender open until the HD progress finishes. Only changed or missing
+components download, and the previous compatible pack stays usable meanwhile.
+Use Detailed Proxies > Retry Download if a transfer fails.
+
+This release adds Curve from Edges / Faces with hover previews, expanded
+point-and-click snapping, a persistent Auto-Snap switch, interior cutaways,
+connected hab doorways and corrected magnetic wall assemblies. See the release
+notes for the complete list.
 
 Recovery defaults to every 10 minutes, with an optional placement-count trigger.
 The latest three consecutive recovery copies are kept without overwriting the
@@ -56,11 +63,11 @@ A plugin for Blender to build bases in No Mans Sky.<br />
 
 
 <p align="center">
-  <a href="#key-features">Key Features</a> •
-  <a href="#requirements">Requirements</a> •
-  <a href="#how-to-use">Guides</a> •
-  <a href="#credits">Credits & Support</a> •
-  <a href="#screenshots">Screenshots</a> •
+  <a href="#key-features">Key Features</a> â€¢
+  <a href="#requirements">Requirements</a> â€¢
+  <a href="#how-to-use">Guides</a> â€¢
+  <a href="#credits">Credits & Support</a> â€¢
+  <a href="#screenshots">Screenshots</a> â€¢
 </p>
 
 <a name="key-features"></a>
@@ -89,7 +96,7 @@ A plugin for Blender to build bases in No Mans Sky.<br />
     * https://github.com/djmonkeyuk/nms-base-builder/releases
 * A No Mans Sky Save Editor, you have a few options:
     * GoatFungus - https://github.com/goatfungus/NMSSaveEditor
-    * NomNom - https://github.com/zencq/NomNom 
+    * NomNom - https://github.com/zencq/NomNom
     * NMSBaseJsonEditor - https://www.nexusmods.com/nomanssky/mods/3849
 
 <br />

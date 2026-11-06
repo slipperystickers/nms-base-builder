@@ -25,6 +25,47 @@ _enabled = False
 _loading_handler = None
 
 
+def draw_auto_snap(surface, right, top, scale):
+    from ..utils.asset_browser_utils import auto_snap_enabled
+    from .. import curve_widgets as widgets
+    enabled=auto_snap_enabled()
+    width,height=154*scale,29*scale
+    x,y=max(4*scale,right-width),top-height
+    surface._auto_snap_bounds=(x,y,width,height)
+    hovered=getattr(surface,'_snap_hover',False)
+    shader=surface._rect_shader
+    widgets.rounded(shader,x,y,width,height,6*scale,(.48,.54,.59,1) if hovered else (.29,.33,.37,1))
+    widgets.rounded(shader,x+scale,y+scale,width-2*scale,height-2*scale,5*scale,
+                    (.19,.22,.25,1) if hovered else (.10,.12,.14,1))
+    surface.label(x+10*scale,y+9*scale,'Auto-Snap',86*scale,12,(.9,.93,.96,1))
+    track_x,track_y=x+106*scale,y+5*scale
+    widgets.rounded(shader,track_x,track_y,40*scale,19*scale,9.5*scale,
+                    (.18,.72,.38,1) if enabled else (.36,.40,.44,1))
+    knob_x=track_x+(30.5 if enabled else 9.5)*scale
+    widgets.disc(shader,knob_x,track_y+8.5*scale,7.5*scale,(.08,.12,.13,.45))
+    widgets.disc(shader,knob_x,track_y+9.5*scale,7.5*scale,(.96,.98,1,1))
+
+
+def auto_snap_event(surface, event, x, y):
+    """The fixed overlay owns its click, never the scrolling tile below it."""
+    bounds=getattr(surface,'_auto_snap_bounds',None)
+    inside=bounds is not None and _contains(bounds,x,y)
+    if event.type=='MOUSEMOVE' and inside!=getattr(surface,'_snap_hover',False):
+        surface._snap_hover=inside;surface._area.tag_redraw()
+    if event.type=='LEFTMOUSE':
+        if event.value=='PRESS' and inside:
+            surface._snap_pressed=True;surface._pressed=None;return True
+        if event.value=='RELEASE' and getattr(surface,'_snap_pressed',False):
+            surface._snap_pressed=False
+            if inside:
+                from ..utils.asset_browser_utils import toggle_auto_snap
+                if not toggle_auto_snap():surface.report({'WARNING'},'Could not save the Auto-Snap setting.')
+            return True
+    if inside and event.type in {'MOUSEMOVE','RIGHTMOUSE'}:
+        surface._hover=None;surface._area.tag_redraw();return True
+    return False
+
+
 def browser_palette(context):
     """Read live theme colors so open browser windows follow preset changes."""
     ui = context.preferences.themes[0].user_interface
@@ -266,6 +307,7 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                 return {'PASS_THROUGH'}
             region = next(r for r in self._area.regions if r.type == 'WINDOW')
             x, y = event.mouse_x - region.x, region.height - (event.mouse_y - region.y)
+            if auto_snap_event(self,event,x,region.height-y):return {'RUNNING_MODAL'}
             inside = 0 <= x < region.width and 0 <= y < self._view_height
             if not inside and not self._drag:
                 if self._hover is not None:
@@ -480,6 +522,7 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                 for i, line in enumerate(lines):
                     self.label(16*scale, footer-(23+i*21)*scale, line, width-32*scale,
                                13, palette['text'])
+            draw_auto_snap(self,width-19*scale,height-5*scale,scale)
         finally:
             gpu.state.blend_set('NONE')
 

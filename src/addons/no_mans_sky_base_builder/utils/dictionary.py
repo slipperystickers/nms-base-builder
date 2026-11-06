@@ -13,6 +13,11 @@ NICE_JSON = os.path.join(RESOURCES_DIR,"nice_names.json")
 nice_name_dictionary = {}
 
 PLACEMENT_HELP = {
+    'B_HOP_A': (
+        'Hopper Module: native B_HOP_A geometry, retained with its original export ID. '
+        'The game supplies no localized name and its product icon depicts a different shape; '
+        'BBE shows a preview rendered from the actual Hopper model.'
+    ),
     'PIPE': (
         'Automatic pipe: NMS changes its shape to match nearby connections. '
         'BBE currently shows a straight preview. Use Pipe — Fixed to keep a straight pipe.'

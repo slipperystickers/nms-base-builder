@@ -223,8 +223,10 @@ class ConversationDelegate(QtWidgets.QStyledItemDelegate):
 class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
     transfer_progress = QtCore.Signal(object)
 
-    def __init__(self, identity_path, settings_path, snapshot_dir):
+    def __init__(self, identity_path, settings_path, snapshot_dir, *, prewarm=False):
         super().__init__()
+        if prewarm:
+            self.setAttribute(QtCore.Qt.WA_DontShowOnScreen, True)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         self.identity_path = Path(identity_path)
         self.settings_path = Path(settings_path)
@@ -290,6 +292,9 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
             self.status.setText('Claim a name in account settings to join.')
             self.online_label.setText('  Not connected')
         self._restore_window()
+        if prewarm:
+            self.hide()
+            self.setAttribute(QtCore.Qt.WA_DontShowOnScreen, False)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._periodic)
         self.timer.start(5000)
@@ -1501,9 +1506,10 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
 
 
 def main():
-    if len(sys.argv) not in (5, 7) or (len(sys.argv) == 7 and sys.argv[5] != '--blender-pid'):
+    if len(sys.argv) not in (5, 7, 8) or (len(sys.argv) >= 7 and sys.argv[5] != '--blender-pid') or (len(sys.argv) == 8 and sys.argv[7] != '--prewarm'):
         raise SystemExit('Missing messenger configuration')
-    owner_pid = int(sys.argv[6]) if len(sys.argv) == 7 else os.getppid()
+    owner_pid = int(sys.argv[6]) if len(sys.argv) >= 7 else os.getppid()
+    prewarm = len(sys.argv) == 8
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName('BBE Messenger')
     lifetime = BlenderLifetime(app)
@@ -1522,14 +1528,16 @@ def main():
     socket = QtNetwork.QLocalSocket()
     socket.connectToServer(server_name)
     if socket.waitForConnected(150):
-        socket.write(json.dumps({'action': 'activate', 'owner_pid': owner_pid}).encode('utf-8'))
+        socket.write(json.dumps({'action': 'attach' if prewarm else 'activate',
+                                 'owner_pid': owner_pid}).encode('utf-8'))
         socket.waitForBytesWritten(150)
         lifetime.close()
         return
     QtNetwork.QLocalServer.removeServer(server_name)
     listener = QtNetwork.QLocalServer()
     listener.listen(server_name)
-    window = Messenger(identity_path, sys.argv[3], sys.argv[4])
+    window = (Messenger(identity_path, sys.argv[3], sys.argv[4], prewarm=True) if prewarm
+              else Messenger(identity_path, sys.argv[3], sys.argv[4]))
     lifetime.ended.connect(window.blender_exited)
 
     def activate():
@@ -1541,17 +1549,18 @@ def main():
                 command = json.loads(payload)
             except (ValueError, UnicodeDecodeError):
                 command = None
-            if (not isinstance(command, dict) or command.get('action') != 'activate'
+            if (not isinstance(command, dict) or command.get('action') not in ('activate', 'attach')
                     or not lifetime.add_owner(command.get('owner_pid'))):
                 connection.disconnectFromServer()
                 return
-        window.showNormal()
-        window.raise_()
-        window.activateWindow()
+        if payload == b'activate' or command['action'] == 'activate':
+            window.showNormal()
+            window.raise_()
+            window.activateWindow()
         connection.disconnectFromServer()
 
     listener.newConnection.connect(activate)
-    if not (window.mini and window.collapsed and window.dock_mode == 'toolbar'
+    if not prewarm and not (window.mini and window.collapsed and window.dock_mode == 'toolbar'
             and window._settings().get('native_chat_toolbar')):
         window.show()
     QtCore.QTimer.singleShot(0, window._consume_blender_command)

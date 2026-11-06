@@ -28,7 +28,7 @@ def owner():
     return proc
 
 
-def start(folder, parent, *, stalled=False):
+def start(folder, parent, *, stalled=False, prewarm=False):
     script = source / 'bbe_chat_messenger.py'
     if stalled:
         script = folder / 'stalled_worker.py'
@@ -45,9 +45,12 @@ def start(folder, parent, *, stalled=False):
             'sys.exit(m.main() or 0)\n', encoding='utf8')
     stream = (folder / ('child-' + str(len(children)) + '.log')).open('w', encoding='utf8')
     streams.append(stream)
-    proc = subprocess.Popen([sys.executable, '-I', '-u', str(script), str(site),
-                             str(folder / 'identity.json'), str(folder / 'settings.json'),
-                             str(folder), '--blender-pid', str(parent.pid)],
+    args = [sys.executable, '-I', '-u', str(script), str(site),
+            str(folder / 'identity.json'), str(folder / 'settings.json'),
+            str(folder), '--blender-pid', str(parent.pid)]
+    if prewarm:
+        args.append('--prewarm')
+    proc = subprocess.Popen(args,
                             env=env, stdout=stream, stderr=subprocess.STDOUT, creationflags=flags)
     children.append(proc)
     return proc
@@ -95,6 +98,20 @@ with tempfile.TemporaryDirectory(prefix='bbe-lifetime-') as directory:
             closed(child, folder)
             results.append(folder.name)
 
+        folder = profile('prewarm')
+        parent = owner()
+        child = start(folder, parent, prewarm=True)
+        ready(child, folder)
+        (folder / 'messenger-command.json').write_text(json.dumps({'action': 'TOOLBAR'}))
+        until = time.monotonic() + 3
+        while (folder / 'messenger-command.json').exists() and time.monotonic() < until:
+            time.sleep(.05)
+        assert not (folder / 'messenger-command.json').exists(), 'Prewarmed companion missed first click'
+        parent.stdin.close()
+        parent.wait(timeout=3)
+        closed(child, folder)
+        results.append(folder.name)
+
         folder = profile('already-exited')
         parent = owner()
         parent.kill()
@@ -110,6 +127,8 @@ with tempfile.TemporaryDirectory(prefix='bbe-lifetime-') as directory:
         ready(child, folder)
         reuse = start(folder, second)
         assert reuse.wait(timeout=5) == 0, 'Second launch should reuse the companion'
+        quiet_reuse = start(folder, second, prewarm=True)
+        assert quiet_reuse.wait(timeout=5) == 0, 'Prewarm should attach to the existing companion'
         first.kill()
         first.wait(timeout=3)
         time.sleep(2.2)
@@ -137,6 +156,6 @@ with tempfile.TemporaryDirectory(prefix='bbe-lifetime-') as directory:
                 child.stdin.close()
         for stream in streams:
             stream.close()
-        if len(results) != 5:
+        if len(results) != 6:
             for log in base.rglob('child-*.log'):
                 print(log.parent.name, log.read_text(encoding='utf8', errors='replace')[-4000:])

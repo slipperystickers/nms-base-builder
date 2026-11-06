@@ -74,7 +74,7 @@ def needs_save_refresh(message):
 
 
 def prompt_save_refresh(message):
-    """Transient attention popup; off-click dismisses without disabling I/O."""
+    """Open a dismissible refresh dialog without disabling I/O."""
     global _refresh_prompt_pending
     if bpy.app.background or _refresh_prompt_pending:
         return
@@ -95,31 +95,31 @@ def prompt_save_refresh(message):
 class BBE_OT_save_refresh_notice(bpy.types.Operator):
     bl_idname = 'bbe.save_refresh_notice'
     bl_label = 'Refresh Save'
-    bl_description = 'Refresh the changed save or click outside to dismiss this notice'
+    bl_description = 'Refresh the changed save or cancel this notice'
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
         self._generation = _refresh_generation
-        return context.window_manager.invoke_popup(self, width=470)
+        # A child operator inside invoke_popup leaves that popup alive after
+        # refresh and Blender redraws it as a second I/O menu. The dialog's
+        # own confirmation closes when execute finishes.
+        return context.window_manager.invoke_props_dialog(
+            self, width=470, confirm_text='REFRESH SAVE', cancel_default=True)
 
     def execute(self, context):
-        return {'FINISHED'}
+        if self._generation != _refresh_generation:
+            return {'FINISHED'}
+        return bpy.ops.bbe.refresh_save_counts('EXEC_DEFAULT')
 
     def draw(self, context):
-        from ..tools_menu.base_builder_menu_presentation import draw_io_contents
         if self._generation != _refresh_generation:
-            draw_io_contents(self.layout, context)
+            self.layout.label(text='The save has already been refreshed.', icon='CHECKMARK')
             return
         focus = self.layout.box()
         focus.alert = True
         focus.label(text='The game save has changed.', icon='FILE_REFRESH')
-        button = focus.row()
-        button.scale_y = 1.8
-        button.operator('bbe.refresh_save_counts', text='REFRESH SAVE', icon='FILE_REFRESH')
-        self.layout.label(text='Refresh current data, or click outside to dismiss.')
-        dimmed = self.layout.column()
-        dimmed.enabled = False
-        draw_io_contents(dimmed, context)
+        focus.label(text='Press REFRESH SAVE below to reload the selected save.')
+        self.layout.label(text='This only reads the save from disk; it does not edit it.')
 
 
 class BBE_OT_refresh_save_counts(bpy.types.Operator):

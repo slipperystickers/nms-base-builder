@@ -71,9 +71,7 @@ class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
         
         
         wasd_navigation.draw_controls(layout, context)
-        from ..save_editor.corvette_optimizer import draw_cockpit_controls
         from ..save_editor.function_help import help_button
-        draw_cockpit_controls(layout)
         help_button(layout, text='BBE Feature Help')
         layout.popover(panel='VIEW3D_PT_bbe_themes', text='Themes', icon='COLOR')
         layout.separator()
@@ -97,7 +95,7 @@ class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
         elif hd_library.available() and not hd_library.ready():
             update_row = proxy_box.row()
             update_row.operator_context = 'INVOKE_DEFAULT'
-            update_row.operator('bbe.hd_library', text='Update HD Asset Packs', icon='IMPORT')
+            update_row.operator('bbe.hd_library', text='Update Detailed Proxy Pack', icon='IMPORT')
     
         
         layout.separator()
@@ -171,7 +169,7 @@ def _draw_toolbar_group(self, context):
     for source in sources[group]:
         if hasattr(source, "poll") and not source.poll(context):
             if group == "transform":
-                self.layout.label(text="Select a part to edit its transform.", **icons.ui_icon("INFO"))
+                self.layout.label(text="Select a curve to edit its shape.", **icons.ui_icon("INFO"))
             continue
         if len(sources[group]) > 1:
             self.layout.label(text=source.bl_label)
@@ -198,7 +196,7 @@ def _toolbar_panel(identifier, label, group, width):
 TOOLBAR_GROUPS = tuple(
     (_toolbar_panel(identifier, label, group, width), icon)
     for identifier, label, group, width, icon in (
-        ("transform", "Transformations", "transform", 19, "ORIENTATION_GIMBAL"),
+        ("transform", "Curve Tools", "transform", 20, "CURVE_BEZCURVE"),
         ("cables", "Cables & Logic", "cables", 18, "CURVE_PATH"),
         ("builder_tools", "Builder Tools", "builder_tools", 20, "TOOL_SETTINGS"),
         ("batch", "Batch Tools", "batch", 19, "MOD_ARRAY"),

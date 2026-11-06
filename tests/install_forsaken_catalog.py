@@ -1,6 +1,7 @@
 """Promote audited native assets into source, preserving every existing catalogue row."""
 from pathlib import Path
 import csv, hashlib, json, re, shutil
+from PIL import Image
 REPO=Path(__file__).resolve().parents[1]
 ADDON=REPO/'src/addons/no_mans_sky_base_builder'
 AUDIT=Path(r'C:\Users\kengo\OneDrive\Desktop\NMS\outputs\nms-update-20261028')
@@ -9,6 +10,8 @@ def main():
     assert json.loads((BUILT/'asset-failures.json').read_text())=={}
     source=json.loads((AUDIT/'new-objects.json').read_text())
     ready=json.loads((BUILT/'asset-audit.json').read_text())
+    overrides_path=ADDON/'resources/catalog_icon_overrides.json'
+    icon_overrides=json.loads(overrides_path.read_text())['icons'] if overrides_path.exists() else {}
     path=ADDON/'resources/DT_PartDefinition.csv'
     rows=list(csv.DictReader(path.open(encoding='utf-16',newline='')));fields=list(rows[0]);existing={r['---']:r for r in rows}
     names=json.loads((ADDON/'resources/nice_names.json').read_text())
@@ -49,7 +52,15 @@ def main():
         for folder,destination in [('assets',ADDON/'resources/hd_additions/assets'),('simple',ADDON/'models-simple'),('icons',ADDON/'images/asset_icons')]:
             destination.mkdir(parents=True,exist_ok=True)
             suffix='.png' if folder=='icons' else '.blend'
-            shutil.copy2(BUILT/folder/(pid+suffix),destination/(pid+suffix))
+            native_icon=AUDIT/'native'/row['icon'].replace('\\','/').lower()
+            if folder=='icons' and pid in icon_overrides:
+                current=destination/(pid+suffix)
+                assert hashlib.sha256(current.read_bytes()).hexdigest()==icon_overrides[pid]['pngSha256'],pid
+            elif folder=='icons' and native_icon.is_file():
+                # Preserve authored colors/camera/full mip zero; generated art is fallback only.
+                Image.open(native_icon).convert('RGBA').save(destination/(pid+suffix),optimize=True)
+            else:
+                shutil.copy2(BUILT/folder/(pid+suffix),destination/(pid+suffix))
         added.append(dict(id=pid,name=title,visible=visible,parent=parent,category=category,subcategory=sub,
                           nativePlacement=row['placementScene'],nativeComponents=row['components']))
     with path.open('w',encoding='utf-16',newline='') as f:

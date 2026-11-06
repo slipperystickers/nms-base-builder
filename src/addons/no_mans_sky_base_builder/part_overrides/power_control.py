@@ -28,3 +28,29 @@ class POWER_CONTROL(part.Part):
     @object_id.setter
     def object_id(self, value):
         self.__object_id = value
+
+    def snap_to(self, target, next_target=False, prev_target=False,
+                next_source=False, prev_source=False):
+        # Legacy point/Snap Next workflows (including NMS-Util) must use the
+        # same typed sockets as the new asset-browser target picker.
+        from .. import cable_connections as cables
+        kind = self.object.get('bbe_cable_kind')
+        if not kind:
+            import bpy
+            cable = bpy.data.objects.get(self.object.get('power_line', ''))
+            kind = cable.get('ObjectID') if cable is not None else None
+        if kind not in cables.KINDS:
+            return super().snap_to(target, next_target, prev_target, next_source, prev_source)
+        if self.object == target.object:
+            return False
+        points = cables.sockets(target.object, kind)
+        if not points:
+            return False
+        keys = list(points)
+        key = self.object.get('bbe_socket_key')
+        if key not in keys:
+            key = min(keys, key=lambda k: (points[k]-self.object.matrix_world.translation).length_squared)
+        if next_target or prev_target:
+            key = keys[(keys.index(key) + (1 if next_target else -1)) % len(keys)]
+        cables.bind(self.object, target.object, key, kind)
+        return True

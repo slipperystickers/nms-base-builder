@@ -589,6 +589,16 @@ def calculate_curve_factors(curve, existing_objs):
     if object_count == 0:
         return
 
+    if curve.get('bbe_curve_spacing') is not None and object_count>1:
+        length=build_curve_eval_data(curve,32)[1]*curve.matrix_world.to_scale().x
+        cyclic=curve.data.splines[0].use_cyclic_u
+        intervals=object_count if cyclic else object_count-1
+        gap=min(max(.001,float(curve['bbe_curve_spacing'])),length/intervals)
+        for index,obj in enumerate(existing_objs):
+            factor=index*gap/max(1e-8,length)
+            if obj.get('curve_factor')!=factor:obj['curve_factor']=factor
+        return
+
     sample_factors, cumulative_density, total_density = build_density_samples(
         curve, max(128, object_count * 16)
     )

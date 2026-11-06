@@ -155,8 +155,16 @@ def mark_read(state, target, received):
 def bar_message(state):
     _attention_state(state)
     room = state.get('bar_room')
+    read = state.get('dm_read', {})
     pending = state['dm_pending'].get(room)
-    return (pending, room) if pending else (latest_received(state), None)
+    if pending and pending.get('time', 0) > read.get(room, -1):
+        return pending, room
+    # A viewed DM can remain in the reply queue, but it no longer owns the
+    # toolbar preview. Prefer another DM that still needs attention.
+    room = min((key for key, message in state['dm_pending'].items()
+                if message.get('time', 0) > read.get(key, -1)),
+               key=lambda key: state['dm_pending'][key].get('time', 0), default=None)
+    return (state['dm_pending'][room], room) if room else (latest_received(state), None)
 
 
 def pulse_on(seconds):

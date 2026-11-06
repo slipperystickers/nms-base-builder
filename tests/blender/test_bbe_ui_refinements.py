@@ -31,6 +31,17 @@ f.get_save_data=lambda context:SimpleNamespace(get_current_slot_data=lambda:{'te
 try:
     assert bpy.ops.bbe.refresh_save_counts()=={'FINISHED'}
     assert called==[True] and f._refresh_generation==generation+1
+    notice=SimpleNamespace()
+    dialog=[]
+    context=SimpleNamespace(window_manager=SimpleNamespace(
+        invoke_props_dialog=lambda operator, **kwargs: (dialog.append(kwargs) or {'RUNNING_MODAL'})))
+    assert f.BBE_OT_save_refresh_notice.invoke(notice,context,None)=={'RUNNING_MODAL'}
+    assert dialog[0]['confirm_text']=='REFRESH SAVE' and dialog[0]['cancel_default'] is True
+    assert f.BBE_OT_save_refresh_notice.execute(notice,bpy.context)=={'FINISHED'}
+    assert called==[True,True] and f._refresh_generation==generation+2
+    # A different refresh while the dialog is open must not refresh again.
+    assert f.BBE_OT_save_refresh_notice.execute(notice,bpy.context)=={'FINISHED'}
+    assert called==[True,True]
 finally:f.get_save_data=original
 geo=module('bbe_chat')._viewport_geometry()
 assert geo is None or len(geo)==4

@@ -228,8 +228,10 @@ class Part(object):
         self.scale = [1.0, 1.0, 1.0]
         if (self.__object.type == 'MESH' and
                 self.__object.data.get(mirror_pivot.MESH_TAG) == self.object_id):
+            # matrix_world can still contain the old transform immediately
+            # after assigning rotation_euler. Build the reset frame directly.
             self.__object.matrix_world = mirror_pivot.display_matrix(
-                self.__object.matrix_world, self.object_id)
+                mathutils.Matrix.Rotation(1.5708, 4, 'X'), self.object_id)
             self.__object[mirror_pivot.OBJECT_TAG] = self.object_id
 
     def remove_constraints(self):
@@ -657,6 +659,11 @@ class Part(object):
                 return False
             self.select()
             return True
+        from . import base_snapping
+        native = base_snapping.snap(self.object, target.object,
+                                   next_target, prev_target, next_source, prev_source)
+        if native is not None:
+            return native
         target_key = source_key = None
 
         # Get Pairing options.

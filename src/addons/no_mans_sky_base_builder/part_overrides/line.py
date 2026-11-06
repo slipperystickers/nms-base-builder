@@ -103,6 +103,14 @@ class Line(part.Part):
         # Tag powerlines onto controls.
         start["power_line"] = self.object.name
         end["power_line"] = self.object.name
+        start['bbe_cable_kind'] = self.object_id
+        end['bbe_cable_kind'] = self.object_id
+        from .. import cable_connections
+        if self.object_id in cable_connections.KINDS:
+            cable_connections.prepare_control(start, self.object_id)
+            cable_connections.prepare_control(end, self.object_id)
+            cable_connections.style(self.object)
+            cable_connections.organize(self.object)
         from .. import wire_selection
         wire_selection.invalidate()
 
@@ -322,13 +330,22 @@ class Line(part.Part):
         return mat
 
     @staticmethod
-    def generate_control_points(source, target, builder):
+    def generate_control_points(source, target, builder, line_id='U_POWERLINE'):
         """Given two inputs, check if we can generate power connections points.
 
         Args:
             source (bpy.ob): The source input.
             target (bpy.ob): The target input.
         """
+        from .. import cable_connections as cables
+        if line_id in cables.KINDS and source.snap_id != 'POWER_CONTROL' and target.snap_id != 'POWER_CONTROL':
+            source_key, target_key = cables.nearest_pair(source.object, target.object, line_id)
+            controls = []
+            for owner, key in ((source.object, source_key), (target.object, target_key)):
+                control = cables.make_control(builder, owner.name + ' ' + key, line_id)
+                cables.bind(control, owner, key, line_id)
+                controls.append(control)
+            return tuple(controls)
         source_key, target_key = source.get_closest_snap_points(
             target, source_filter="POWER", target_filter="POWER"
         )

@@ -9,9 +9,16 @@
       "renderRoot": "GAMETABLE",
       "sourceModelSha256": "9be618a1891e2d4ba7ed77c8837bb8d5d6201f843f3f1e112c54c3ea4c6e469c",
       "pngSha256": "9796db440cf1def893db49bf7aab2ed778b36b4a08c028c5963e8730af007a9f",
-      "size": [512, 512],
+      "size": [
+        512,
+        512
+      ],
       "nativeIcon": "textures/ui/frontend/icons/buildable/builders.sail_0.dds",
-      "cameraDirection": [0.539163866, -0.539163866, 0.6470]
+      "cameraDirection": [
+        0.539163866,
+        -0.539163866,
+        0.647
+      ]
     },
     "B_WNG_Y": {
       "kind": "native-model-render",
@@ -1405,6 +1412,23 @@
         0.5246373414993286,
         -0.7264209389686584,
         0.4439239203929901
+      ]
+    },
+    "B_HOP_A": {
+      "kind": "native-model-render",
+      "reason": "Native icon depicts a different shape from the assigned Hopper mesh; preserve native model and ID.",
+      "renderRoot": "B_HOP_A",
+      "sourceModelSha256": "c908e70df679007de416fc8a112e69bbc653311721299068d005d5a5227f9530",
+      "pngSha256": "8724985f6704c589e4808298d0e896e290cd8584691f5691b79c05d05d5283bc",
+      "size": [
+        512,
+        512
+      ],
+      "nativeIcon": "textures/ui/frontend/icons/buildable/biggs/big_hop1x2_a.dds",
+      "cameraDirection": [
+        1.25,
+        -1.8,
+        1.25
       ]
     }
   }

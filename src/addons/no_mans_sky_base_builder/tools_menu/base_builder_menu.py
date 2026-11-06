@@ -16,7 +16,7 @@ TOOLBAR_ITEMS = (
     ('io', 'I/O', VIEW3D_PT_nms_io_panel.bl_idname, 'IMPORT'),
     ('color', 'Color', 'VIEW3D_PT_bbe_toolbar_color', 'COLOR'),
     ('builder', 'Builder', 'VIEW3D_PT_bbe_toolbar_builder_tools', 'TOOL_SETTINGS'),
-    ('transform', 'Transform', 'VIEW3D_PT_bbe_toolbar_transform', 'ORIENTATION_GIMBAL'),
+    ('transform', 'Curve Tools', 'VIEW3D_PT_bbe_toolbar_transform', 'CURVE_BEZCURVE'),
     ('batch', 'Batch', 'VIEW3D_PT_bbe_toolbar_batch', 'MOD_ARRAY'),
     ('parts', 'Prefabs', 'VIEW3D_PT_bbe_toolbar_parts', 'ASSET_MANAGER'),
     ('cables', 'Logic', 'VIEW3D_PT_bbe_toolbar_cables', 'CURVE_PATH'),
@@ -112,7 +112,9 @@ def draw_toolbar_settings(layout, context):
                           **icons.ui_icon('CHECKBOX_DEHLT' if key in hidden else 'CHECKBOX_HLT'))
         op.menu, op.action = key, 'TOGGLE'
         key_name = 'plugin_icon' if key == 'proxies' else 'toolbar_' + key
-        if key == 'chat':
+        if key == 'transform':
+            row.label(text=label, **icons.ui_icon('MOD_DASH'))
+        elif key == 'chat':
             row.label(text=label, icon=icon)
         else:
             row.label(text=label, icon_value=icons.get_icons_pscroll()[key_name].icon_id)
@@ -188,6 +190,8 @@ def draw_toolbar(self, context):
         elif key == 'proxies':
             row.popover(panel=panel, text=label,
                         icon_value=ui_icons['plugin_icon'].icon_id)
+        elif key == 'transform':
+            row.popover(panel=panel, text=label, **icons.ui_icon('MOD_DASH'))
         else:
             row.popover(panel=panel, text=label,
                         icon_value=ui_icons['toolbar_' + key].icon_id)

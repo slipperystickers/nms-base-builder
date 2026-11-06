@@ -323,13 +323,10 @@ class BuildTool(bpy.types.PropertyGroup):
         bpy.context.view_layer.update()
         selected_objects = bpy.context.selected_objects
 
-        if len(selected_objects) != 2:
-            message = (
-                "Make sure you have two items selected. Select the item to"
-                " duplicate, then the curve you want to snap to."
-            )
-            ShowMessageBox(message=message, title="Duplicate Along Curve")
-            return {"FINISHED"}
+        if (len(selected_objects) != 2 or
+                sum(curve.is_bezier_or_nurbs_path(obj) for obj in selected_objects) != 1):
+            curve.show_duplicate_selection_help(bpy.context)
+            return {"CANCELLED"}
         
 
         # Figure out selection.
@@ -339,14 +336,11 @@ class BuildTool(bpy.types.PropertyGroup):
         elif curve.is_bezier_or_nurbs_path(selected_objects[1]):
             curve_object = selected_objects[1]
             dup_object = selected_objects[0]
-        else : 
-            message = (
-                "Make sure you have two items selected.\n"
-                "One of them must be a curve and other must be object for dupication."
-            )
-            ShowMessageBox(message=message, title="Duplicate Along Curve")
-            return {"FINISHED"}
         
+        from ..curve_studio import prepare_frame
+        if not curve_object.get("has_linked_objects"):
+            prepare_frame(curve_object)
+
         if "has_linked_objects" in curve_object:
             new_curve_object, old_curve_object = curve.replace_curve_object(
                 curve_object, dup_object, number_of_objects, radius_multiplier

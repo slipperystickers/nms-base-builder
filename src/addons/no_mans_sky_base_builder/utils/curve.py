@@ -19,6 +19,15 @@ BUILDER = builder.get_builder()
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
 
 
+def show_duplicate_selection_help(context):
+    """Explain the required selection at either curve duplication entry point."""
+    def draw(self, _context):
+        self.layout.label(text="Place an object, then select both the object and the curve.")
+        self.layout.label(text="Hold Shift while clicking to select both.")
+        self.layout.label(text="Then click Duplicate Along Curve.")
+    context.window_manager.popup_menu(draw, title="Select an Object and a Curve", icon='INFO')
+
+
 class Curve:
     
     """Curve property names."""
@@ -579,7 +588,8 @@ def select_children_of_curve(curve):
     curve_utils.normalise_curve_scale(curve)
     #curve["initial_curve_scale"] = 1
     
-    curve.hide_select = True
+    # Curve Studio guides must remain clickable while their objects are edited.
+    curve.hide_select = not curve.get('bbe_easy_curve', False)
     curve[Curve.PROP_PARENT_SELECTED] = False
     #blend_utils.select(children)
     return children

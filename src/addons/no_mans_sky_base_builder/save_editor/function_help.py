@@ -4,18 +4,25 @@ import bpy
 
 
 TOPICS = {
-    'COCKPIT': ('Swap Cockpit Order', (
-        ('What changes', 'Choose any two placed cockpits. Swap Order immediately exchanges their positions in the exported object list. Their physical positions, rotations, sizes and colors stay the same.'),
+    'CURVES': ('HOW TO - Curve Tools', (
+        ('Draw or choose a shape', 'Draw Smooth Curve uses the chosen plane. The colored shape buttons create a circle, ellipse, arc, spiral, helix or wave. Select the curve to edit its dimensions and points.'),
+        ('Edges and faces', 'Curve from Edges / Faces opens in Edges mode. Hover near a visible boundary to preview an edge section, then click to add it. Faces selects a broad patch and centers a path between its outer edges. Click a selected section again to remove it.'),
+        ('Draw on Surface', 'Use a short stroke as a highlighter to indicate direction. The tool creates a clean surface-following path. It does not trace every wobble of your stroke.'),
+        ('Rotate and create', 'For a face or drawn path, drag the ring or diamond with the hand cursor. Type degrees while holding it, or use Rotate 90 degrees. Ctrl+Z undoes, Ctrl+Y redoes. Create Curves or Enter makes editable curves; Esc cancels. You can reopen the tool to create another curve.'),
+        ('Edit and place parts', 'Select a curve or its linked object to reveal controls below. Diamonds move points; round tips shape bends. Smooth, Open / Close, Insert Point and Remove Point edit the curve. Use Duplicate Along Curve to arrange selected parts on it.'),
+    )),
+    'COCKPIT': ('Swap Cockpit/Object order', (
+        ('What changes', 'Choose Cockpits or an object type with duplicate Object IDs, then choose two named instances. Swap Order immediately exchanges their positions in the exported object list. Their physical positions, rotations, sizes and colors stay the same.'),
         ('When it takes effect', 'The scene order changes when you click Swap Order. Both ordinary and optimized exports use that order. The game save changes only when you export to it. Cockpit encounter order can affect the roles assigned by the game.'),
         ('Keeping or undoing it', 'Save the .blend to keep the order with this project. Ctrl+Z undoes the scene edit. Other projects keep their own order; this is not a global setting.'),
-        ('Separate from optimizer settings', 'Canceling Optimizer Settings does not undo a cockpit swap you already confirmed. Use Ctrl+Z to undo that swap.'),
+        ('Separate from optimizer settings', 'Canceling Optimizer Settings does not undo an object-order swap you already confirmed. Use Ctrl+Z to undo that swap.'),
     )),
     'OPTIMIZER': ('Corvette Optimizer', (
         ('What changes', 'Optimize & Export arranges exported parts by category and priority. Earlier entries come first. Your Blender objects stay in place.'),
         ('Which exports use it', 'Only Optimize & Export applies these priorities and optional duplicate removal. Ordinary Export to Save uses the scene order. The relative order of placed cockpits and landing bays is preserved by optimization.'),
         ('Editing the list', 'Add, Remove and Rename change priority entries, not the parts in your scene. Exact duplicate removal requires every saved field to match, including transform, color and other saved data.'),
         ('Keeping settings', 'Save Settings stores priorities for future optimized exports across projects. Cancel keeps the previously saved settings. Reset to Default changes the settings draft until you save it.'),
-        ('Cockpit swaps', 'Swap Placed Cockpit Order is a separate, immediate scene edit. It is saved in the .blend and is not canceled when you cancel optimizer settings.'),
+        ('Cockpit swaps', 'Swap Cockpit/Object order is a separate, immediate scene edit. It is saved in the .blend and is not canceled when you cancel optimizer settings.'),
     )),
     'EXPORT': ('Export Corvette to Save', (
         ('Source and destination', 'Exports the current Blender scene into the chosen game save, in Main or Expedition. Review the ship slot before confirming. Exporting a .nmsship file is separate and does not write a game save.'),

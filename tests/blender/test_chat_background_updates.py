@@ -10,7 +10,10 @@ with tempfile.TemporaryDirectory() as tmp:
  with patch.object(c,'_identity_path',return_value=Path(tmp)/'identity.json'), patch.object(c,'_load_chat_enabled',return_value=True), patch.object(c,'_start',return_value=True) as start:
   real=c.bpy;c.bpy=NS(app=NS(online_access=True),context=bpy.context)
   c._identity={'id':'alice','names':[{'id':'alice','name':'Alice'}],'active':False}
-  c._notification_state={};c._enabled=True;c._busy=None;c._next_sync=0;c._messenger_process=None
+  c._notification_state={};c._enabled=True;c._busy=None;c._next_sync=0;c._messenger_process=None;c._prewarm_attempted=False
+  with patch.object(c,'_launch_messenger') as launch:
+   c._tick();assert launch.call_count==1 and launch.call_args.kwargs=={'prewarm':True}
+   assert not start.called
   c._tick();assert start.call_count==1 and start.call_args.args==('sync',)
   assert c._messenger_process is None
   message=dict(id='1',name='Bob',text='Startup message',time=1,to=None,**{'from':'bob'})

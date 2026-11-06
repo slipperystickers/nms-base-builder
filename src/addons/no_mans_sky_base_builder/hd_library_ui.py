@@ -1,4 +1,4 @@
-"""One-click detailed proxies, with a one-time download when needed."""
+"""One-click Detailed Proxies, with automatic content updates for existing owners."""
 from .furby_errors import report_error
 import textwrap
 from pathlib import Path
@@ -7,6 +7,40 @@ from bpy.app.handlers import persistent
 from . import hd_library
 
 _pending_scene = None
+_auto_update_checked = False
+_auto_update_version = None
+_auto_update_attempts = set()
+_auto_update_active = False
+
+
+def reset_update_check():
+    """Run on enable/install and file load; failed attempts are not looped."""
+    global _auto_update_checked, _auto_update_version
+    _auto_update_checked = False
+    _auto_update_version = None
+
+
+def check_installed_updates():
+    global _auto_update_checked, _auto_update_version, _auto_update_active
+    if bpy.app.background or not bpy.app.online_access or hd_library.STATE['busy']:
+        return False
+    version = hd_library.content_version()
+    if _auto_update_checked and _auto_update_version == version:
+        return False
+    _auto_update_checked = True
+    _auto_update_version = version
+    if version in _auto_update_attempts or not hd_library.has_installed_content():
+        return False
+    if hd_library.ready():
+        return False
+    # Updating an already-chosen optional download does not depend on which
+    # scene happens to be open. It must not opt a Simple scene into HD.
+    if hd_library.start():
+        _auto_update_attempts.add(version)
+        _auto_update_active = True
+        return True
+    _auto_update_checked = False
+    return False
 
 
 def cancel_activation():
@@ -25,8 +59,11 @@ def request_download(context, archive=None):
         return enable_installed(context)
     if archive is None and not bpy.app.online_access:
         return {'CANCELLED'}
+    if not hd_library.start(archive):
+        return {'CANCELLED'}
+    # Cancelling a manual download must not trigger an automatic retry.
+    _auto_update_attempts.add(hd_library.content_version())
     _pending_scene = context.scene
-    hd_library.start(archive)
     return {'FINISHED'}
 
 
@@ -42,25 +79,28 @@ class BBE_OT_hd_library(bpy.types.Operator):
         if hd_library.STATE['busy']:
             self.report({'INFO'}, 'Detailed models are downloading. Progress is shown in the sidebar.')
             return {'CANCELLED'}
+        if hd_library.available() and bpy.app.online_access:
+            return request_download(context)
         self.allow_online = not bpy.app.online_access and not bpy.app.online_access_override
         if not bpy.app.online_access and bpy.app.online_access_override:
             return context.window_manager.invoke_popup(self, width=480)
         return context.window_manager.invoke_props_dialog(
             self, width=480,
-            title='Update HD Asset Packs?' if hd_library.available() else 'Download Detailed Proxies?',
+            title='Update Detailed Proxy Pack?' if hd_library.available() else 'Download Detailed Proxies?',
             confirm_text="Enable Online Access & Download" if self.allow_online else "Download & Enable",
             cancel_default=True)
 
     def draw(self, context):
         layout = self.layout
         size = sum(spec['download_bytes'] for spec in hd_library.pending_specs())
-        label = 'Download missing HD asset packs' if hd_library.available() else 'Download detailed models, scenes, effects and characters'
+        label = 'Update the Detailed Proxy pack' if hd_library.available() else 'Download the Detailed Proxy pack'
         amount = ('%.1f MB' % (size / 1e6)) if size < 1e9 else ('%.2f GB' % (size / 1e9))
         layout.label(text=label + ' (' + amount + ')?')
         if hd_library.available():
             layout.label(text='Detailed models are already installed.')
-            layout.label(text='Only missing packs will be added, including the separate character pack.')
-        layout.label(text="They stay installed through future BBE updates.")
+            layout.label(text='Only missing or updated content will be downloaded.')
+        layout.label(text="Includes detailed models, textures, scenes and characters.")
+        layout.label(text="Installed content is reused through future BBE updates.")
         if not hd_library.available():
             layout.label(text="Detailed Proxies will turn on when the download finishes.")
         if not bpy.app.online_access and bpy.app.online_access_override:
@@ -294,6 +334,7 @@ def _repair_saved_hd_textures(*, before_draw=False):
 
 @persistent
 def after_load(_unused):
+    reset_update_check()
     cancel_activation()
     relink_legacy_textures()
     # A deferred conversion (or progress redraw during it) exposes unresolved
@@ -338,25 +379,33 @@ def refresh_marker_proxies():
 
 def finish_download():
     """Only the main thread may change Blender data after the worker finishes."""
-    global _pending_scene
+    global _pending_scene, _auto_update_active
     state = hd_library.STATE
-    if state['busy'] or _pending_scene is None:
+    if state['busy'] or (_pending_scene is None and not _auto_update_active):
         return
+    from . import update_install
+    if update_install.wait_reason():
+        return  # Keep the pending activation until the current edit finishes.
     scene = _pending_scene
+    automatic = _auto_update_active
     _pending_scene = None
-    if state.get('result') not in {'installed', 'partial'} or hd_library.CANCEL.is_set():
+    _auto_update_active = False
+    if (state.get('result') != 'installed' or hd_library.CANCEL.is_set()
+            or not hd_library.ready()):
         return
     try:
-        if scene.name not in bpy.data.scenes or not hd_library.available():
-            return
-        with bpy.context.temp_override(scene=scene, view_layer=scene.view_layers[0]):
-            relink_legacy_textures()
-            result = bpy.ops.object.nms_switch_proxies_to_high()
-        if result == {'FINISHED'}:
-            state['message'] = ('Detailed Proxies enabled.' if hd_library.ready() else
-                                'Detailed Proxies enabled; HD scenes/effects need a retry.')
-        else:
-            state['error'] = 'Models are installed. Click Detailed Proxies to enable them.'
+        targets = [s for s in bpy.data.scenes if not s.library and s.bbe_detailed_proxies] if automatic else []
+        if scene is not None and scene.name in bpy.data.scenes and scene not in targets:
+            targets.append(scene)
+        relink_legacy_textures()
+        for target in targets:
+            with bpy.context.temp_override(scene=target, view_layer=target.view_layers[0]):
+                result = bpy.ops.object.nms_switch_proxies_to_high()
+            if result != {'FINISHED'}:
+                state['error'] = 'Models are installed. Click Detailed Proxies to enable them.'
+                return
+        state['message'] = ('Detailed Proxy pack updated; detailed scenes refreshed.' if automatic
+                            else 'Detailed Proxies enabled.')
     except ReferenceError:
         pass  # The scene was closed while the download was running.
     except Exception:
@@ -366,6 +415,7 @@ def finish_download():
 def redraw():
     global _last_message
     finish_download()
+    check_installed_updates()
     refresh_marker_proxies()
     message = hd_library.STATE['message']
     changed = message != _last_message
@@ -382,6 +432,10 @@ def redraw():
 
 
 def register():
+    global _auto_update_active
+    reset_update_check()
+    _auto_update_attempts.clear()
+    _auto_update_active = False
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.bbe_detailed_proxies = bpy.props.BoolProperty(name='Detailed Proxies', default=True)
@@ -391,7 +445,9 @@ def register():
 
 
 def unregister():
+    global _auto_update_active
     cancel_activation()
+    _auto_update_active = False
     hd_library.CANCEL.set()
     bpy.types.VIEW3D_HT_header.remove(draw_status)
     if bpy.app.timers.is_registered(redraw):

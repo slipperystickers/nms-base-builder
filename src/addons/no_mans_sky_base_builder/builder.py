@@ -398,6 +398,8 @@ class Builder(object):
         self.build_rigs()
         # Optimise control points.
         self.optimise_control_points()
+        from . import cable_connections
+        cable_connections.bind_imported(bpy.context.scene)
         progress.update(1.0, 'Import complete')
 
     @staticmethod
@@ -571,6 +573,13 @@ class Builder(object):
                 ]
             )
             # Append the control to the key.
+            # Electrical and teleport cables are independent even when their
+            # endpoints occupy the same location (e.g. a stacked SRT build).
+            key = (power_control.get('bbe_cable_kind', ''), key)
+            if power_control.get('bbe_socket_key'):
+                from . import cable_connections
+                owner = cable_connections.control_owner(power_control)
+                key += (owner.as_pointer() if owner else None, power_control['bbe_socket_key'])
             power_control_reference[key].append(power_control)
 
         # Swap any duplicate controls with the first instance.

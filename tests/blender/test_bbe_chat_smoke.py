@@ -1,16 +1,17 @@
 """Run in Blender background to verify isolated chat registration and identity storage."""
-import importlib.util
+import importlib
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
+from unittest.mock import patch
 
 import bpy
 
-source = Path(__file__).resolve().parents[2] / 'src/addons/no_mans_sky_base_builder/bbe_chat.py'
-spec = importlib.util.spec_from_file_location('bbe_chat_smoke', source)
-chat = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(chat)
+source = Path(__file__).resolve().parents[2] / 'src/addons'
+sys.path.insert(0, str(source))
+chat = importlib.import_module('no_mans_sky_base_builder.bbe_chat')
 
 with tempfile.TemporaryDirectory() as directory:
     chat._identity_path = lambda: Path(directory) / 'identity.json'
@@ -22,9 +23,10 @@ with tempfile.TemporaryDirectory() as directory:
     chat.register()
     assert chat._chat_enabled is False
     assert chat._start('sync', to='') is False
-    assert bpy.ops.bbe.chat_toggle() == {'FINISHED'}
+    with patch.object(chat, '_launch_messenger'):
+        assert bpy.ops.bbe.chat_toggle() == {'FINISHED'}
     assert chat._chat_enabled is True
-    assert json.loads((Path(directory) / 'settings.json').read_text()) == {'enabled': True}
+    assert json.loads((Path(directory) / 'settings.json').read_text())['enabled'] is True
     assert bpy.ops.bbe.chat_toggle() == {'FINISHED'}
     assert chat._chat_enabled is False
     assert Path(chat._python_executable()).is_file()

@@ -36,6 +36,7 @@ _next_sync = 0.0
 _enabled = False
 _chat_enabled = False
 _messenger_process = None
+_prewarm_attempted = False
 _last_theme = None
 _toolbar_status = {}
 _toolbar_status_stamp = None
@@ -200,6 +201,27 @@ def _qt_site_packages():
     return str(folder)
 
 
+def _launch_messenger(*, prewarm=False):
+    """Start the companion once; a prewarmed instance stays hidden until clicked."""
+    global _messenger_process, _prewarm_attempted
+    if _messenger_process is not None and _messenger_process.poll() is None:
+        return
+    sync_theme()
+    folder = _identity_path().parent / 'bbe-chat-temp'
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    log = folder / 'messenger-startup.log'
+    args = [_python_executable(), '-I', '-u', str(Path(__file__).with_name('bbe_chat_messenger.py')),
+            _qt_site_packages(), str(_identity_path()), str(_settings_path()), str(folder),
+            '--blender-pid', str(os.getpid())]
+    if prewarm:
+        args.append('--prewarm')
+    with open(log, 'a', encoding='utf-8') as stream:
+        _messenger_process = subprocess.Popen(
+            args, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+    _prewarm_attempted = True
+
+
 def _handle_messenger_snapshot():
     folder = _identity_path().parent / 'bbe-chat-temp'
     request = folder / 'snapshot-request.json'
@@ -271,7 +293,7 @@ def _start(action, **detail):
 def _tick():
     global _busy, _identity, _status, _messages, _online, _contacts, _chat_enabled
     global _pending, _pending_snapshot, _next_sync, _online_page, _message_page, _target
-    global _notification_state, _was_messenger_alive, _toolbar_status
+    global _notification_state, _was_messenger_alive, _toolbar_status, _prewarm_attempted
     if not _enabled:
         return None
     if _chat_enabled and _toolbar_status.get('directed'):
@@ -366,6 +388,14 @@ def _tick():
         if latest and latest != _identity:
             _identity = latest
         return 1.0
+    if (not _prewarm_attempted and _chat_enabled and getattr(bpy.app, 'online_access', False)
+            and _identity and _identity.get('id') and _busy is None):
+        _prewarm_attempted = True
+        try:
+            _launch_messenger(prewarm=True)
+            return 1.0
+        except (OSError, RuntimeError) as exc:
+            _status = str(exc)
     if _chat_enabled and _identity and _identity.get('id') and _busy is None and time.monotonic() >= _next_sync and getattr(bpy.app, 'online_access', False):
         _start('sync', to=_target, known_content=[k for k,v in _notification_state.get('content',{}).items() if 'text' in v])
         _next_sync = time.monotonic() + 10
@@ -505,17 +535,7 @@ class BBE_OT_chat_open(bpy.types.Operator):
                     import ctypes
                     ctypes.WinDLL('user32').AllowSetForegroundWindow(previous.pid)
                 return {'FINISHED'}
-            log = folder / 'messenger-startup.log'
-            with open(log, 'a', encoding='utf-8') as stream:
-                launched = subprocess.Popen(
-                    [_python_executable(), '-I', '-u', str(Path(__file__).with_name('bbe_chat_messenger.py')),
-                     _qt_site_packages(), str(_identity_path()), str(_settings_path()), str(folder),
-                     '--blender-pid', str(os.getpid())],
-                    stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-                if previous is None:
-                    _messenger_process = launched
+            _launch_messenger()
             _status = 'Messenger opened'
         except (OSError, RuntimeError) as exc:
             self.report({'ERROR'}, str(exc))
@@ -874,7 +894,8 @@ classes = (BBE_OT_chat_open, BBE_OT_chat_toggle, BBE_OT_chat_join, BBE_OT_chat_c
 
 
 def register():
-    global _identity, _enabled, _chat_enabled, _notification_state, _toolbar_status
+    global _identity, _enabled, _chat_enabled, _notification_state, _toolbar_status, _prewarm_attempted
+    _prewarm_attempted = False
     _identity = _load_identity()
     _chat_enabled = _load_chat_enabled()
     _notification_state = chat_state.load(_identity_path().parent/'bbe-chat-temp'/'notifications.json')
@@ -890,7 +911,7 @@ def register():
     bpy.types.WindowManager.bbe_chat_recovery = bpy.props.StringProperty(
         name='Recovery Key', default='', subtype='PASSWORD', options={'SKIP_SAVE'})
     if not bpy.app.timers.is_registered(_tick):
-        bpy.app.timers.register(_tick, first_interval=3.0, persistent=True)
+        bpy.app.timers.register(_tick, first_interval=1.0, persistent=True)
 
 
 def unregister():

@@ -269,12 +269,12 @@ class NMS_OT_switch_proxies_to_high(bpy.types.Operator):
 
     def execute(self, context):
         from .. import hd_library
-        # The detailed model pack is sufficient for proxy quality. HD scenes
-        # and effects are a separate optional component for Scene Preview.
-        if not hd_library.available():
+        # Detailed Proxies is one complete user-facing pack. Existing owners
+        # receive missing updates through the same control as first installs.
+        if not hd_library.ready():
             if not bpy.app.background:
-                bpy.ops.bbe.hd_library("INVOKE_DEFAULT")
-            self.report({"INFO"}, "Install the HD library to enable Detailed Proxies.")
+                return bpy.ops.bbe.hd_library("INVOKE_DEFAULT")
+            self.report({"INFO"}, "Update the HD pack to enable Detailed Proxies.")
             return {"CANCELLED"}
         context.scene.bbe_detailed_proxies = True
         parts, groups, skipped = _switch_scene_proxies(context, target_high_res=True)

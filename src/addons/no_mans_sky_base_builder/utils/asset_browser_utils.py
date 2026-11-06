@@ -179,7 +179,7 @@ def get_store_path():
 
 
 def _empty_store():
-    store = {"version": STORE_VERSION}
+    store = {"version": STORE_VERSION, "auto_snap": True}
     store.update({key: [] for key in STORE_KEYS})
     return store
 
@@ -198,6 +198,8 @@ def _read_store_file(path):
     # a hand edited or truncated file should not be able to break the browser,
     # so anything that is not a list of strings is quietly dropped
     store = _empty_store()
+    if isinstance(data.get('auto_snap'), bool):
+        store['auto_snap'] = data['auto_snap']
     for key in STORE_KEYS:
         value = data.get(key)
         if isinstance(value, list):
@@ -301,6 +303,21 @@ def clear_store_cache():
     global _store_cache, _store_mtime
     _store_cache = None
     _store_mtime = None
+
+
+def auto_snap_enabled():
+    """One durable placement preference shared by every browser surface."""
+    return read_store().get('auto_snap', True)
+
+
+def toggle_auto_snap():
+    store = dict(read_store())
+    store['auto_snap'] = not store.get('auto_snap', True)
+    if not write_store(store):return False
+    from ..tools import asset_browser_grid, asset_browser_sidebar
+    asset_browser_grid.request_redraw()
+    asset_browser_sidebar.request_redraw()
+    return True
 
 
 def load_stored_list(name):

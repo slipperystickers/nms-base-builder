@@ -197,6 +197,9 @@ class Properties(bpy.types.PropertyGroup):
 
         curve_obj = curve.get_curve_or_linked_curve(obj)
         if curve_obj is not None:
+            if obj==curve_obj and obj.get('bbe_easy_curve') and not obj.get('parent_selected',True):
+                from ..curve_studio import activate_parent
+                activate_parent(obj)
             self.show_curve_edit_options(curve_obj)
         elif "ObjectID" in obj:
             self.hide_curve_edit_options()

@@ -1,3 +1,23 @@
+# 18.2.44
+
+- Open connected hab end walls at their native snap points and restore them when detached. Include native doorway frames, corrected magnetic wall assemblies and the Pocket Reality Generator correction in the add-on ZIP.
+- Make Keep Editing, Create Curves and Discard Lines act immediately in the temporary-curve prompt; remove the redundant Continue/Cancel row.
+- Return the chat preview to the main room after reading or replying to DMs, prewarm chat on startup, and close the changed-save refresh popup without duplicating the I/O menu.
+
+- Keep an Auto-Snap ON/OFF control fixed over both asset browser grids. Remember the choice across restarts; OFF copies the selected object's exact transform. Show magnetic modules in hab wall openings, using the native 1x1 wall assemblies and the 1x2 mounting orientation; restore the closed wall and loose proxy on disconnect.
+
+- Add a compact corner help button and keep/create/discard prompt for temporary surface curves. Auto-snap compatible browser parts into green target placement and offer a nearby Snap button for selected pairs. Show green electrical and cyan teleport placement cursors. Add reversible interior roof cutaways with adjustable opening height, and default-off magnetic beam toggles for B_MAG_1X1 / B_MAG_1X2. Proxy display controls preserve original geometry and game export records.
+
+- Add colored Curve Tools icons and a HOW TO popup; rename surface tracing to Curve from Edges / Faces, open in Edges mode, put Edges/Faces first, and show a hand cursor over the rotation ring and diamond.
+
+- Preview Curve from Surface face paths and edge chains on hover, distinguish hovered and selected paths, and restore the pointer over controls. Reuse prepared topology and face previews across successive traces until geometry changes. Smooth boundary-derived centerlines and project their samples back onto the surface.
+- Extend point-and-click snapping to base and freighter parts using the installed game's placement graphs. Preserve socket child offsets and rotations; support named and unsuffixed connection locators, shared scene caching, and one marker per compatible position. Fixed bubble ducts expose only their visible, unoccupied openings through the same click UI.
+- Automatically check an existing Detailed Proxy pack against the current HD manifests after enabling/updating/reinstalling BBE and loading a project. Download missing or updated components with Blender Online Access enabled, even when the current scene uses Simple Proxies. Refresh Detailed scenes after verification without changing Simple scenes; preserve the old pack on failure and expose Retry Download.
+- Extend clickable viewport snapping to Corvette wings, structures, engines, landing gear, interior fittings, stairs, magnetic attachments and other parts with compatible native sockets. Use the installed game's placement scenes, including individual socket rotations and offsets.
+- Show only compatible connections on the selected target. Click again to cycle the moving part's connection; existing Previous/Next controls and Undo remain available.
+- Keep special connection types separate and reject incompatible pairs instead of falling back to an unrelated generic connection. The Corvette teleporter remains surface placed because its native locator has no matching Corvette socket.
+- Cache local connection calculations so viewport markers remain inexpensive to redraw. Preserve base/HD model geometry, materials, icons, save data and existing scene placement until the user snaps a part.
+
 # 18.2.43
 
 - Restore native geometry, default orientation and textured detailed models for the new Corvette parts. Vantage includes all three rear connection openings and changes the displayed walls when connections are used.
@@ -77,7 +97,7 @@
 
 # 18.2.31
 
-- Distinguish Pipe — Automatic from Pipe — Fixed in the Asset Browser, search, favourites, recents and part names. Explain the in-game shape changes in hover help, including that automatic pipes currently have a straight Blender preview. Existing part identities and exports are unchanged.
+- Distinguish Pipe â€” Automatic from Pipe â€” Fixed in the Asset Browser, search, favourites, recents and part names. Explain the in-game shape changes in hover help, including that automatic pipes currently have a straight Blender preview. Existing part identities and exports are unchanged.
 
 # 18.2.30
 
@@ -130,7 +150,7 @@
 - Fix sparse inbox notifications replacing message text with a generic attachment notice. Image links stay readable in Mini mode, failed previews show an error, and new messages scroll into view.
 - Add quoted replies and distinct unread/reply-or-DM notifications. Replies remain readable in older chat versions.
 - Compact conversations and single-line online users; the aligned drawer grows with its contents and retains scroll position during refreshes.
-- Close individual DMs with the inline ×. History is retained; clicking the person or receiving a new DM reopens the conversation.
+- Close individual DMs with the inline Ã—. History is retained; clicking the person or receiving a new DM reopens the conversation.
 - Startup profiling found about 1.6 seconds of total BBE overhead in isolated background launches, with chat registration around 5 ms. This release does not claim a general Blender startup speed fix.
 
 # 18.2.21
@@ -308,8 +328,8 @@ Validation: Blender 5.1.2 and 5.2.2 LTS. Includes a regression fixture for the u
 
 ## Ship warnings, keep-build repair and new-slot export
 
-- Check Corvette health as soon as a save is loaded. The shared I/O selector highlights affected builds in red, explains the problem and identifies ship slots consistently as 1–12. Missing-build Corvettes are also listed; the freighter stays separate.
-- Add Repair — Keep My Build directly below the selected build in I/O, in both the top bar and sidebar, and Repair Build in Ship Management. Repair retains the saved objects, transforms, colors and readable inventories, technology, hyperslots, class, stats and appearance. Invalid data resets are listed and require separate confirmation. A missing build can be supplied through scene export or Replace From File.
+- Check Corvette health as soon as a save is loaded. The shared I/O selector highlights affected builds in red, explains the problem and identifies ship slots consistently as 1â€“12. Missing-build Corvettes are also listed; the freighter stays separate.
+- Add Repair â€” Keep My Build directly below the selected build in I/O, in both the top bar and sidebar, and Repair Build in Ship Management. Repair retains the saved objects, transforms, colors and readable inventories, technology, hyperslots, class, stats and appearance. Invalid data resets are listed and require separate confirmation. A missing build can be supplied through scene export or Replace From File.
 - Add Overwrite Selected Ship / New Empty Ship Slot to ordinary and optimized Corvette Export to Save. New slots use the minimal Corvette ship record with exactly the scene objects; no template parts are added. Slots reserved by orphan builds are never treated as empty. Both Main and Expedition contexts are supported.
 - Never add a missing cockpit during repair or export. Show an unflyable-ship warning and allow the operation. Repairs without a cockpit keep their warning in the selector until the user adds one.
 - Stale selections, changed scenes or optimizer settings, changed save files and competing Ship Management drafts are rejected; verified backups precede writes. Preserve unrelated ships and freighter data.
@@ -644,7 +664,7 @@ Verified with synthetic English-key and obfuscated saves and Blender 5.1.2 / 5.2
 - Existing HD library installations are retained; this update does not require downloading HD assets again.
 - Regression: the FF Corvette imports all 525 records through both import paths, with and without the optional library; export preserves IDs, UserData, timestamps and placement vectors.
 
-# Base Builder Extended 18.1.0 — preview
+# Base Builder Extended 18.1.0 â€” preview
 
 - Optional HD library installs through Builder > Detailed Proxies, with progress,
   cancellation, checksum verification and an offline ZIP installer.

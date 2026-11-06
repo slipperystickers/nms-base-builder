@@ -6,9 +6,36 @@ from bpy.app.handlers import persistent
 from gpu_extras.batch import batch_for_shader
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Matrix, Vector
-from . import corvette_snapping
+from . import corvette_snapping, base_snapping
 
 SESSION = {}
+_BUBBLE_POINTS = {}
+
+
+def bubble_pair(source, target):
+    return source != target and all(o.get('ObjectID') == 'BASE_BUBPIPE' for o in (source, target))
+
+
+def bubble_points(source, target):
+    """Use fixed duct openings, never the hidden native shape-selecting faces."""
+    from . import bubble_preview as bubble
+    scene = target.users_scene[0] if target.users_scene else bpy.context.scene
+    others = [o for o in bubble._native_objects(scene) if o != source]
+    signature = (source.name, target.name, tuple((o.name, tuple(v for row in o.matrix_world for v in row),
+                 bubble._visible_sockets(o)) for o in others))
+    cached = _BUBBLE_POINTS.get(scene.name)
+    if cached is None or cached[0] != signature:
+        occupied = bubble._editor_contacts(others).get(target.name, set())
+        keys = tuple(k for k in bubble._visible_sockets(target) if k not in occupied)
+        _BUBBLE_POINTS[scene.name] = (signature, keys)
+    else:
+        keys = cached[1]
+    return [(k, target.matrix_world @ Vector(bubble._OFFSETS[k])) for k in keys]
+
+
+def native_engine(source, target):
+    return next((engine for engine in (corvette_snapping, base_snapping)
+                 if engine.supports(source, target)), None)
 
 
 def objects(context):
@@ -22,21 +49,28 @@ def objects(context):
 
 
 def options(source, target):
-    native = corvette_snapping.options(source, target)
-    if native:
-        return list({p[0]: p[2] for p in native}.items())
+    if bubble_pair(source, target):
+        return bubble_points(source, target)
+    engine = native_engine(source, target)
+    if engine:
+        return engine.target_points(source, target)
     if source.get('ObjectID') == 'BASE_BUBPIPE':
         return []
-    from .builder import get_builder
-    builder = get_builder()
-    a, b = (builder.get_builder_object_from_bpy_object(o) for o in (source, target))
-    if not a or not b:
-        return []
-    pairing = a.get_snap_pair_options(b)
-    if not pairing:
-        return []
-    points = b.get_snap_points() or {}
-    return [(key.strip(), target.matrix_world @ Matrix(points[key.strip()]['matrix']).translation)
+    # Gizmo polling must stay read-only: constructing Part wrappers writes
+    # SnapID and is forbidden inside Blender draw callbacks.
+    from .part import Part
+    from .utils import materials_v2,mirror_pivot
+    def group(obj):
+        pid=obj.get('ObjectID')
+        if pid=='BASE_BUBPIPE' and not materials_v2.is_high_res(obj):return 'BUBBLE_STRAIGHT_LEGACY'
+        return next((key for key,row in Part.SNAP_MATRIX_DICTIONARY.items() if pid in row['parts']),None)
+    a,b=group(source),group(target)
+    pairing=Part.SNAP_PAIR_DICTIONARY.get(b,{}).get(a)
+    if not pairing:return []
+    points=Part.SNAP_MATRIX_DICTIONARY[b].get('snap_points',{})
+    frame=target.matrix_world
+    if mirror_pivot.is_normalized(target):frame=frame@Matrix.Translation(mirror_pivot.pivot(target.get('ObjectID')))
+    return [(key.strip(),frame@Matrix(points[key.strip()]['matrix']).translation)
             for key in pairing[0].split(',') if key.strip() in points]
 
 
@@ -51,6 +85,55 @@ def start(context, source, target):
     return True
 
 
+def selected_pair(context):
+    selected=context.selected_objects
+    target=context.active_object
+    if len(selected)!=2 or target not in selected:return None
+    source=next(o for o in selected if o!=target)
+    return (source,target) if options(source,target) else None
+
+
+def place_at(source,target,key,cycle=False):
+    engine=native_engine(source,target)
+    if bubble_pair(source,target):
+        from . import bubble_preview
+        repeat=cycle and source.get('bbe_native_snap_target')==target.name and source.get('bbe_native_target_socket')==key
+        return bubble_preview.snap_native(source,target,target_key=key,next_source=repeat)
+    if engine:
+        choice=engine.choose(source,target,key,cycle_source=cycle)
+        if not choice:return False
+        engine.apply(source,target,choice)
+        return True
+    from .builder import get_builder
+    builder=get_builder()
+    a,b=(builder.get_builder_object_from_bpy_object(o) for o in (source,target))
+    if not a or not b:return False
+    a.SNAP_CACHE.setdefault(target.name,{})['target']=key
+    return a.snap_to(b) is not False
+
+
+def place_initial(context,source,target):
+    if target is None:return False
+    choices=options(source,target)
+    if not choices or not place_at(source,target,choices[0][0]):return False
+    for obj in tuple(context.selected_objects):obj.select_set(False)
+    source.select_set(True);target.select_set(True)
+    context.view_layer.objects.active=target
+    start(context,source,target)
+    return True
+
+
+class BBE_OT_quick_snap(bpy.types.Operator):
+    bl_idname='bbe.quick_snap'
+    bl_label='Snap Selected Parts'
+    bl_description='Snap the other selected part to the active part, then click a green target to change its connection'
+    bl_options={'REGISTER','UNDO'}
+    def execute(self,context):
+        pair=selected_pair(context)
+        if not pair or not place_initial(context,*pair):return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class BBE_OT_click_snap(bpy.types.Operator):
     bl_idname = 'bbe.click_snap_point'
     bl_label = 'Snap to This Connection'
@@ -63,16 +146,7 @@ class BBE_OT_click_snap(bpy.types.Operator):
         if not pair:
             return {'CANCELLED'}
         source, target = pair
-        choice = corvette_snapping.choose(source, target, self.target_key, cycle_source=True)
-        if choice:
-            corvette_snapping.apply(source, target, choice)
-        else:
-            from .builder import get_builder
-            builder = get_builder()
-            a, b = (builder.get_builder_object_from_bpy_object(o) for o in pair)
-            a.SNAP_CACHE.setdefault(target.name, {})['target'] = self.target_key
-            if a.snap_to(b) is False:
-                return {'CANCELLED'}
+        if not place_at(source,target,self.target_key,cycle=True):return {'CANCELLED'}
         source.select_set(True); target.select_set(True)
         context.view_layer.objects.active = target
         return {'FINISHED'}
@@ -137,16 +211,20 @@ class BBE_GGT_snap_targets(bpy.types.GizmoGroup):
             gizmo.target_set_operator('bbe.click_snap_point').target_key = key
 
 
-CLASSES = (BBE_OT_click_snap, BBE_GT_snap_target, BBE_GGT_snap_targets)
+CLASSES = (BBE_OT_quick_snap, BBE_OT_click_snap, BBE_GT_snap_target, BBE_GGT_snap_targets)
 
 @persistent
 def _reset_session(*args):
     SESSION.clear()
+    _BUBBLE_POINTS.clear()
     corvette_snapping.CACHE.clear()
+    base_snapping.CACHE.clear()
 
 @persistent
 def _reset_history(*args):
+    _BUBBLE_POINTS.clear()
     corvette_snapping.CACHE.clear()
+    base_snapping.CACHE.clear()
 
 def register():
     for cls in CLASSES:bpy.utils.register_class(cls)

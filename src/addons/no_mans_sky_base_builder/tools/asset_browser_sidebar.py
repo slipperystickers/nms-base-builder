@@ -14,6 +14,7 @@ from bpy.app.handlers import persistent
 
 from .asset_browser_grid import (
     BBE_OT_asset_grid, _contains, _groups, grid_geometry, tile_action, browser_palette,
+    draw_auto_snap, auto_snap_event,
 )
 from ..utils import new_assets
 from ..utils.asset_browser_utils import get_grid_settings
@@ -156,6 +157,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 return {'PASS_THROUGH'}
             x = event.mouse_x - region.x
             y = event.mouse_y - region.y
+            if auto_snap_event(self,event,x,y):return {'RUNNING_MODAL'}
             inside = _contains(self._bounds, x, y)
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and self._drag:
                 self._drag = False
@@ -279,6 +281,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 top = self._offset / self._max_offset * (self._view_height-thumb)
                 self.rectangle(track_x+4*scale, self._view_height-top-thumb,
                                4*scale, thumb, palette['accent'])
+            draw_auto_snap(self,left+panel_width-13*scale,self._view_height-4*scale,scale)
         finally:
             gpu.state.blend_set('NONE')
 

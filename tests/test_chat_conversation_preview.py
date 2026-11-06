@@ -92,6 +92,7 @@ with tempfile.TemporaryDirectory() as tmp:
     # Reading clears the pulse without removing the unanswered response.
     state.update(w._notifications,dict(inbox=inbox,messages=[newest]),w.persona,w.names,viewed='zapper')
     assert not w._notifications['unread'].get('zapper') and toolbar()['directed']==0
+    assert toolbar()['preview'] == 'Bob: Main response' and toolbar()['target'] is None
     w.dock_mode = 'floating'; w._collapse(False); w.show()
     with patch.object(m.time,'monotonic',return_value=100):
         w._update_badge()
@@ -105,9 +106,9 @@ with tempfile.TemporaryDirectory() as tmp:
     # Pending replies survive restart and background/Messenger handoff.
     state.save(folder/'saved.json', w._notifications)
     saved = state.load(folder/'saved.json')
-    assert state.toolbar(saved, 0)['preview'] == 'Zapper: New response in this poll'
+    assert state.toolbar(saved, 0)['preview'] == 'Bob: Main response'
     assert state.toolbar(saved,0)['directed']==0
-    assert state.toolbar(saved, 0, 'zapper')['preview'] == 'Zapper: New response in this poll'
+    assert state.toolbar(saved, 0, 'zapper')['preview'] == 'Bob: Main response'
     old = dict(persona='alice', content=saved['content'], latest=newest, unread={}, directed={})
     state.update(old, dict(inbox=[], messages=[]), 'alice', w.names)
     assert 'Main response' in state.toolbar(old, 0)['preview']

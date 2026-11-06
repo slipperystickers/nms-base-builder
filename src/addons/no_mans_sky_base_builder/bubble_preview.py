@@ -870,7 +870,7 @@ class BBE_OT_bubble_joint_pivot(bpy.types.Operator):
 
 
 def snap_native(source, target, next_target=False, prev_target=False,
-                next_source=False, prev_source=False):
+                next_source=False, prev_source=False, target_key=None):
     """Place a fixed duct at a free visible opening of another duct.
 
     Keep the preview's fixed shape and align one of its drawn openings with a
@@ -885,7 +885,7 @@ def snap_native(source, target, next_target=False, prev_target=False,
     branch = [source]
     if _joined_sockets(source, target):
         branch = _moving_branch(source, target, scene)
-        if branch is None and (next_source or prev_source or next_target or prev_target):
+        if branch is None and (next_source or prev_source or next_target or prev_target or target_key is not None):
             return False
         branch = branch or [source]
     original_source = source.matrix_world.copy()
@@ -917,7 +917,11 @@ def snap_native(source, target, next_target=False, prev_target=False,
     same_target = source.get('bbe_native_snap_target') == target.name
     old_target = source.get('bbe_native_target_socket') if same_target else None
     target_names = [entry[1] for entry in choices]
-    if old_target in target_names:
+    if target_key is not None:
+        if target_key not in target_names:
+            return False
+        target_index = target_names.index(target_key)
+    elif old_target in target_names:
         target_index = target_names.index(old_target)
     elif not occupied and target.get(_START_KEY) in target_names:
         target_index = target_names.index(target[_START_KEY])

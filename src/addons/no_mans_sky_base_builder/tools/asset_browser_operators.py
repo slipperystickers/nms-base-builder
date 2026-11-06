@@ -434,6 +434,15 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     
     
     def execute(self, context):
+        from .. import cable_connections
+        if self.object_id in cable_connections.KINDS and not self.is_preset:
+            with placement_view(context):
+                result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=self.object_id)
+            if result in ({'RUNNING_MODAL'}, {'FINISHED'}):
+                context.scene.nms_asset_browser.add_to_recents_list(self.object_id)
+                self.report({'INFO'}, 'Click two blue teleport targets.' if self.object_id == cable_connections.TELEPORT else 'Click two green electrical targets.')
+                return {'FINISHED'}
+            return {'CANCELLED'}
         from .. import character_references
         if character_references.decode(self.object_id):
             try:
@@ -483,6 +492,7 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                 report_error(self,{'ERROR'}, f"Could not add {self.object_id} to scene")
                 return {'CANCELLED'}
 
+            auto_snap=asset_browser_utils.auto_snap_enabled()
             if self.object_id == 'BASE_BUBPIPE_L':
                 from .. import bubble_preview
                 try:
@@ -491,8 +501,10 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                         if selected_target is not None and not selected_target.select_get():
                             selected_target = None
                         item = bubble_preview.add_native_bend_point(
-                            BUILDER, target=selected_target,
+                            BUILDER, target=selected_target if auto_snap else None,
                             cursor=context.scene.cursor.location)
+                        if not auto_snap and selected_target is not None:
+                            item.object.matrix_world=selected_target.matrix_world.copy()
                     blend_utils.select(item.object)
                     asset_browser.add_to_recents_list(self.object_id)
                     bubble_preview._sync_joint_rotation_guard()
@@ -511,11 +523,11 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                     selected_target = bpy.context.active_object
                     if selected_target is not None and not selected_target.select_get():
                         selected_target = None
-                    if (self.object_id == 'BASE_BUBPIPE'
+                    if (auto_snap and self.object_id == 'BASE_BUBPIPE'
                             and selected_target is not None
                             and selected_target.get('ObjectID') == 'BASE_BUBPIPE_L'):
                         raise ValueError('This is an old preview-only corner. Convert the route before extending it')
-                    if (self.object_id == 'BASE_BUBPIPE'
+                    if (auto_snap and self.object_id == 'BASE_BUBPIPE'
                             and selected_target is not None
                             and selected_target.get('ObjectID') == 'BASE_BUBPIPE'):
                         from .. import bubble_preview
@@ -523,6 +535,8 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                         if problem:
                             raise ValueError(problem)
                     placement_matrix = builder_v2.placement_from_target(self.object_id, selected_target)
+                    if not auto_snap and selected_target is not None:
+                        placement_matrix=selected_target.matrix_world.copy()
                     item = builder_v2.add_part(self.object_id, builder_object=BUILDER)
                     if self.object_id == 'BASE_BUBPIPE':
                         item.object['bbe_bubble_shape'] = 'STRAIGHT:Y'
@@ -543,19 +557,17 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
             else:
                 bpy_obj.matrix_world = placement_matrix
 
-            # Pipe placement uses the same endpoint frames and continuation
-            # history as the sidebar Snap button, rather than copying the origin.
-            pipe_ids = {"PIPE", "PIPESHAPE", "CURVEPIPESHAPE", "BASE_BUBPIPE"}
-            if (self.object_id in pipe_ids and selected_target is not None
-                    and selected_target.get("ObjectID") in pipe_ids):
-                target = BUILDER.get_builder_object_from_bpy_object(selected_target)
-                if target is not None:
-                    if item.snap_to(target) is False and self.object_id == 'BASE_BUBPIPE':
-                        bpy.data.objects.remove(bpy_obj, do_unlink=True)
-                        report_error(self, {'ERROR'},
-                                     'No safe straight duct placement here. Move nearby ducts farther apart first.')
+            from .. import snap_markers
+            with placement_view(context):
+                snapped=auto_snap and snap_markers.place_initial(bpy.context,bpy_obj,selected_target)
+                if not snapped:
+                    if auto_snap and self.object_id=='BASE_BUBPIPE' and selected_target is not None and selected_target.get('ObjectID')=='BASE_BUBPIPE':
+                        bpy.data.objects.remove(bpy_obj,do_unlink=True)
+                        report_error(self,{'ERROR'},'No safe straight duct placement here. Move nearby ducts farther apart first.')
                         return {'CANCELLED'}
-            blend_utils.select(bpy_obj)
+                    blend_utils.select(bpy_obj)
+            # The new part stays paired with the target so every compatible
+            # green socket is immediately clickable after browser placement.
             asset_browser.add_to_recents_list(self.object_id)
             self.report({'INFO'}, f"Added {self.object_id} to scene")
         return {'FINISHED'}
