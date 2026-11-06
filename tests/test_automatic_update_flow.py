@@ -17,8 +17,10 @@ class UpdateFlow(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('update_flow_test', SOURCE)
         self.u = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.u)
+        self.session = tempfile.TemporaryDirectory()
+        self.addCleanup(self.session.cleanup)
         self.window = NS(modal_operators=[])
-        self.bpy = NS(app=NS(background=False, online_access=True, version=(5,1,2),
+        self.bpy = NS(app=NS(background=False, online_access=True, version=(5,1,2), tempdir=self.session.name,
                             is_job_running=Mock(return_value=False),
                             timers=NS(register=Mock(), is_registered=Mock(return_value=False), unregister=Mock())),
                       context=NS(mode='OBJECT', window_manager=NS(is_interface_locked=False, windows=[self.window],
@@ -151,6 +153,22 @@ class UpdateFlow(unittest.TestCase):
                     (installed/'blender_manifest.toml').write_bytes(z.read('blender_manifest.toml'))
                 self.u.install(str(path), package)
                 self.bpy.ops.wm.save_userpref.assert_called_once()
+
+    def test_missing_cookie_stops_before_blender_disables_addon(self):
+        self.bpy.app.tempdir = str(Path(self.session.name)/'missing-session')
+        installer = Mock()
+        self.bpy.ops = NS(extensions=NS(package_install_files=installer))
+        with self.assertRaisesRegex(RuntimeError, 'temporary session folder is missing'):
+            self.u.install('verified.zip', 'bl_ext.test.no_mans_sky_base_builder')
+        installer.assert_not_called()
+
+    def test_unwritable_cookie_stops_before_blender_disables_addon(self):
+        installer = Mock()
+        self.bpy.ops = NS(extensions=NS(package_install_files=installer))
+        with patch('tempfile.TemporaryFile', side_effect=PermissionError('Access denied')):
+            with self.assertRaisesRegex(RuntimeError, 'cannot write'):
+                self.u.install('verified.zip', 'bl_ext.test.no_mans_sky_base_builder')
+        installer.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,3 +1,9 @@
+# 18.2.45
+
+- Fix Windows updater downloads failing when a reader temporarily locks progress.json. Progress updates are optional, throttled and retried; final status writes retry transient locks, and download activity remains visible even if progress reporting is unavailable. Download size and SHA-256 verification remain mandatory.
+- Check Blender's session temporary directory before the BBE updater invokes installation. If it is missing or unwritable, stop with restart instructions before Blender disables BBE.
+- No HD pack changes. Reuse the verified 18.2.44 additions pack and existing core, effects and character packs.
+
 # 18.2.44
 
 - Open connected hab end walls at their native snap points and restore them when detached. Include native doorway frames, corrected magnetic wall assemblies and the Pocket Reality Generator correction in the add-on ZIP.

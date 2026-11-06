@@ -1,18 +1,22 @@
-# Base Builder Extended 18.2.44
+# Base Builder Extended 18.2.45
 
-## Updating: no fresh install needed
+Hotfix for Windows update downloads failing with **PermissionError / WinError 5** while replacing `progress.json`.
 
-Install the new add-on ZIP over your existing BBE installation and restart Blender. Existing Detailed Proxy users receive missing or updated HD components automatically when Blender Online Access is enabled. Leave Blender open until the HD progress finishes. Your existing compatible pack stays available during the download; Detailed scenes refresh after verification and Simple scenes remain Simple. If a download fails, use **Detailed Proxies > Retry Download**.
+- A locked progress file no longer aborts a download. BBE retries temporary locks, limits progress writes and continues tracking the growing ZIP.
+- Final results retry temporary file locks. File-size and SHA-256 verification remain mandatory before installation.
+- BBE's updater checks Blender's temporary session directory before handing over to the installer. A missing or unwritable directory produces restart instructions before BBE is disabled.
 
-The updated additions pack is included with this release. The unchanged core, effects and character packs remain available through the automatic installer. You do not need to manually download all the release assets. New HD users can opt in with **Builder > Detailed Proxies**.
+## If you are stuck on 18.2.43 or 18.2.44
 
-## What's new
+The updater already running in those versions cannot benefit from this fix until you install it:
 
-- Curve from Edges / Faces: broad surface selection, continuous edge sections, fast hover previews, smoother surface centerlines, directional drawing, and rotation controls. Temporary curves now have three working choices: Keep Editing, Create Curves or Discard Lines.
-- Point-and-click snapping for base, freighter and Corvette parts, plus electrical and teleport targets. A persistent Auto-Snap switch in both asset browsers preserves the option to copy the selected object's transform instead.
-- Interior roof cutaways, connected hab openings, corrected magnetic wall assemblies and optional magnetic beams, off by default. These display options do not alter game export records.
-- Corrected Pocket Reality Generator preview, electrical connector data and updated detailed assets.
-- Chat preview returns to the main room after a DM is read or answered; chat starts loading ahead of the first click.
-- Refresh Save closes its warning popup without opening another I/O menu.
+1. Turn off **Download and install automatically** for now and save your work.
+2. Fully close every Blender window, then reopen Blender.
+3. Download **no_mans_sky_base_builder-18.2.45.zip** below. Use **Edit > Preferences > Get Extensions > Install from Disk** to install it over BBE.
+4. Restart Blender and confirm **18.2.45** in Updates & Support. You can then re-enable automatic updates.
 
-Save your work before updating and restart all Blender windows afterward. Existing projects and separately installed HD libraries are retained.
+If Blender showed `acquire(): cookie doesn't exist!` and BBE's checkbox stayed enabled while its interface disappeared, fully restarting Blender restores its session directory. If needed, uncheck and re-enable BBE after restarting. This hotfix protects BBE's updater; it does not replace Blender's own Install from Disk implementation.
+
+**No uninstall or fresh install is required. Do not delete the HD packs.** HD content is unchanged from 18.2.44. Existing HD owners still receive missing or updated components automatically with Blender Online Access enabled.
+
+Verified on Windows with real file-sharing locks, checksum rejection tests, and native Blender 5.1.2 installation/recovery tests. Blender 5.2.3 was reported by the affected user but is not locally runtime-verified.

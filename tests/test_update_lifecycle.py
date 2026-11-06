@@ -33,6 +33,17 @@ class Lifecycle(unittest.TestCase):
         other=Path(self.tmp.name)/'existing.zip';other.write_text('keep')
         self.c.poll();self.assertFalse(self.c.busy);self.assertEqual(other.read_text(),'keep')
 
+    def test_growing_download_survives_unavailable_progress_file(self):
+        self.worker();self.c.action='download';self.c.last_progress-=121
+        self.c.staging=Path(self.tmp.name)/'download.part'
+        self.c.staging.write_bytes(b'new downloaded bytes')
+        self.c.poll()
+        self.assertTrue(self.c.busy)
+        self.c.worker.terminate.assert_not_called()
+        self.c.last_progress-=121  # No further growth still times out.
+        self.c.poll()
+        self.assertFalse(self.c.busy)
+
     def test_malformed_result_releases_busy(self):
         self.worker(False);(self.c.job/'result.json').write_text('{"release": null}')
         self.c.poll();self.assertFalse(self.c.busy);self.assertIn('retry',self.c.message)

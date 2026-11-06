@@ -33,9 +33,28 @@ def validate_archive(path, result, product, blender_version):
                 raise ValueError('This NMScribe update needs a newer Blender version')
     return str(path.resolve())
 
+def check_extension_session():
+    """Check Blender's lock cookie before its installer disables the add-on."""
+    import bpy
+    import tempfile
+    directory = bpy.app.tempdir
+    if not directory or not Path(directory).is_dir():
+        raise RuntimeError('Blender\'s temporary session folder is missing. Save your work, '
+                           'close every Blender window, reopen Blender, and retry. '
+                           'BBE has not been disabled or replaced.')
+    try:
+        with tempfile.TemporaryFile(dir=directory):
+            pass
+    except OSError as exc:
+        raise RuntimeError('Blender cannot write to its temporary session folder. '
+                           'Save your work, restart Blender, and retry. '
+                           'BBE has not been disabled or replaced.') from exc
+
+
 def install(path, package):
     import bpy
     if package.startswith('bl_ext.'):
+        check_extension_session()
         repo=package.split('.')[1]
         result=bpy.ops.extensions.package_install_files('EXEC_DEFAULT',filepath=path,repo=repo,enable_on_install=True)
     else:

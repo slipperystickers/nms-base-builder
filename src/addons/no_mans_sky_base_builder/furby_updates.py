@@ -210,6 +210,7 @@ class ProcessUpdateClient(UpdateClient):
         super().__init__(*args,**kwargs)
         self.worker=None;self.job=None;self.staging=None
         self.started=0;self.last_progress=0;self.progress_stamp=None;self.action='check'
+        self.staging_stamp=None
 
     def start(self,action='check',destination=None):
         import subprocess,sys,tempfile
@@ -238,6 +239,7 @@ class ProcessUpdateClient(UpdateClient):
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             self.busy=True;self.message='Checking…' if action=='check' else 'Downloading…'
             self.action=action;self.started=self.last_progress=time.monotonic();self.progress_stamp=None
+            self.staging_stamp=None
         except Exception as exc:
             self.message=f'{type(exc).__name__}: {exc}';self.close()
 
@@ -251,6 +253,17 @@ class ProcessUpdateClient(UpdateClient):
             if stamp!=self.progress_stamp:
                 self.progress_stamp=stamp;self.last_progress=time.monotonic()
         except (OSError,ValueError,KeyError,TypeError):pass
+        # Progress messages are optional. A Windows reader/virus scanner can
+        # temporarily deny their replacement while the ZIP is still growing.
+        if self.action == 'download' and self.staging is not None:
+            try:
+                info = self.staging.stat()
+                stamp = (info.st_size, info.st_mtime_ns)
+                if stamp != self.staging_stamp:
+                    self.staging_stamp = stamp
+                    self.last_progress = time.monotonic()
+            except OSError:
+                pass
         if self.worker.poll() is None:
             if (self.action=='check' and time.monotonic()-self.started>45
                     or self.action=='download' and time.monotonic()-self.last_progress>120):
@@ -279,11 +292,40 @@ class ProcessUpdateClient(UpdateClient):
         if self.job is not None:
             shutil.rmtree(self.job,ignore_errors=True);self.job=None
 
+def _write_worker_status(folder, name, value, *, required=True):
+    """Keep status atomic, tolerating Windows sharing locks on replacement.
+
+    A stale progress percentage is harmless; it must never cancel a verified
+    download. The final result is required and gets a longer retry window.
+    """
+    temporary = folder / (name + '.tmp')
+    delays = (0, .05, .1, .2, .4, .8) if required else (0, .01, .02)
+    for attempt, delay in enumerate(delays):
+        if delay:
+            time.sleep(delay)
+        try:
+            temporary.write_text(json.dumps(value), encoding='utf-8')
+            os.replace(temporary, folder / name)
+            return True
+        except OSError as exc:
+            transient = isinstance(exc, PermissionError) or getattr(exc, 'winerror', None) in (5, 32, 33)
+            if not transient or attempt == len(delays) - 1:
+                if required:
+                    raise
+                return False
+
+
 def worker(folder):
     folder=Path(folder)
     request=json.loads((folder/'request.json').read_text(encoding='utf-8'))
-    def write(name,value):
-        temporary=folder/(name+'.tmp');temporary.write_text(json.dumps(value),encoding='utf-8');os.replace(temporary,folder/name)
+    last_progress = float('-inf')
+    def progress(n, size):
+        nonlocal last_progress
+        now = time.monotonic()
+        if n < size and now - last_progress < .25:
+            return
+        last_progress = now
+        _write_worker_status(folder, 'progress.json', {'message': f'Download {n/size:.0%}'}, required=False)
     try:
         release=check_release(request['product'],request['installed'])
         if request['action']=='check':outcome={'release':release}
@@ -292,10 +334,10 @@ def worker(folder):
             if not release.get('available') or release['asset']['name']!=request['asset']['name']:
                 raise ValueError('The release changed. Check again before downloading.')
             path=download_release(release,request['destination'],staging_token=request['token'],
-                progress=lambda n,size:write('progress.json',{'message':f'Download {n/size:.0%}'}))
+                progress=progress)
             outcome={'download':str(path)}
     except Exception as exc:outcome={'error':f'{type(exc).__name__}: {exc}'}
-    write('result.json',outcome)
+    _write_worker_status(folder, 'result.json', outcome)
 
 if __name__=='__main__':
     import argparse
