@@ -32,15 +32,15 @@ def geometry(path):
     raw=p.with_name(p.name.replace('.geometry.','.geometry.data.')).read_bytes()
     return g,raw,{m.IdString.upper():m for m in g.StreamMetaDataArray}
 
-def triangles(path,parent):
+def triangles(path,parent,detail=None):
  root=scene(path);geo=root.attributes.get('GEOMETRY');out=[]
  levels={int(n.attributes.get('LODLEVEL','0')) for n in root.iter() if n.Type=='MESH'}
- level=max((l for l in levels if l<=2),default=0)
+ level=max((l for l in levels if l<=2),default=0) if detail is None else detail
  def walk(node,parent):
   world=parent@node.matrix_local;a=node.attributes;name=node.Name
   lod=re.search(r'LOD(\d+)',name,re.I)
   if lod and int(lod.group(1))!=level:return
-  if node.Type=='REFERENCE':out.extend(triangles(a['SCENEGRAPH'],world))
+  if node.Type=='REFERENCE':out.extend(triangles(a['SCENEGRAPH'],world,detail))
   if node.Type=='MESH' and 'MATERIAL' in a and int(a.get('LODLEVEL','0'))==level:
    if any(t in norm(a['MATERIAL']) for t in ['COLLISION','LIGHTBLOCK','TERRAINEDIT','WATERPROXY','EXCLUSIONVOLUME','SHADOWONLY']):return
    g,data,meta=geometry(geo);m=meta[name.upper()];layout=g.PositionVertexLayout;count=m.VertexPositionDataSize//layout.Stride;ve=next(x for x in layout.VertexElements if x.SemanticID==0);dt={5131:np.float16,5126:np.float32}[ve.Type]
@@ -61,11 +61,18 @@ def ranges(ids):
 P=Path(os.environ.get('BBE_HAB_BUILD_DIR', str(WORK/'outputs/hab-opening-build')));out=P/'simple-habs';out.mkdir(parents=True,exist_ok=True)
 rows=json.loads((D/'resources/hab_wall_slots.json').read_text())
 native=json.loads((WORK/'outputs/nms-update-20261028/new-objects.json').read_text());templates={r['id']:r for r in native}
+decks={}
 for pid,row in rows.items():
  template=templates['B_HAB_D' if pid.startswith('B_HAB_') else 'B_HAB1_D']
  locpath=PREFIX+('HAB_1X2_POSITIONLOCATORS.SCENE.MBIN' if pid.startswith('B_HAB_') else 'PARTS/HAB_1X1_POSITIONLOCATORS.SCENE.MBIN')
  locs={n.Name:n.matrix_local for n in scene(locpath).iter()}
  verts=[];faces=[];slots={}
+ decks[pid]={'simple':{},'detailed':{}}
+ hd=v.load_high_res_mesh(pid)
+ assert len(hd.polygons)==row['polygons'],pid
+ tree=KDTree(len(hd.polygons))
+ for face in hd.polygons:tree.insert(face.center,face.index)
+ tree.balance()
  for c in template['components']:
   locator=c['locator'];path=c['scene'].replace('_D','_'+pid[-1])
   if locator.startswith('WALL'):path=row['slots'][locator]['source']
@@ -81,6 +88,16 @@ for pid,row in rows.items():
   m=o.data
   start=len(faces);offset=len(verts);verts.extend([v.co[:] for v in m.vertices]);faces.extend([[i+offset for i in f.vertices] for f in m.polygons])
   if locator.startswith('WALL'):slots[locator]={'faces':[[start,len(faces)-1]]}
+  if locator.startswith(('CEILING','FLOOR')):
+   decks[pid]['simple'][locator]=[[start,len(faces)-1]]
+   matched=set()
+   for tri in triangles(path,locs[locator],0):
+    center=sum(tri,Vector())/3
+    for _,i,_ in tree.find_range(center,.001):
+     points=[hd.vertices[j].co for j in hd.polygons[i].vertices]
+     if all(min((a-b).length for b in points)<.0001 for a in tri):matched.add(i)
+   assert matched,(pid,locator)
+   decks[pid]['detailed'][locator]=ranges(matched)
   bpy.data.objects.remove(o,do_unlink=True)
   bpy.data.meshes.remove(m)
  mesh=bpy.data.meshes.new(pid+' native low-detail opening preview');mesh.from_pydata(verts,[],faces);mesh.update()
@@ -90,3 +107,5 @@ for pid,row in rows.items():
  row['simple']={'vertices':len(mesh.vertices),'polygons':len(mesh.polygons),'slots':slots,'file':'hab_simple_openings/'+pid+'.blend','native_lod':2}
  print(pid,len(mesh.vertices),len(mesh.polygons),flush=True)
 (P/'slots-candidate.json').write_text(json.dumps(rows,separators=(',',':')))
+
+(P/'deck-slots.json').write_text(json.dumps(decks,separators=(',',':')))

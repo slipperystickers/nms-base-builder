@@ -1,5 +1,7 @@
 """Authored magnetic mounting variants; object/save transforms stay untouched."""
 import math
+import re
+from functools import lru_cache
 from pathlib import Path
 import bpy
 from mathutils import Matrix
@@ -26,15 +28,58 @@ def variant_mesh(variant,detailed):
     return mesh
 
 
+@lru_cache(maxsize=16)
+def single_mount_poses(hab_id):
+    """The 1x1 placement entity switches meshes only for its IntWall outputs."""
+    poses = []
+    for _, channel, kind, role, source in snapping._sockets('B_MAG_1X1'):
+        if role != 'Out' or not channel.startswith('0:'):
+            continue
+        socket = snapping.DATA['B_MAG_1X1'][0]['sockets'][int(channel.split(':')[1])]
+        for key, _, target_kind, target_role, target in snapping._sockets(hab_id):
+            if target_kind != kind or target_role != 'In':
+                continue
+            name = snapping.DATA[hab_id][int(key.split(':')[0])]['name']
+            wall = re.fullmatch(r'SnapPoint_Int([NSEW]\d+)', name)
+            deck = re.fullmatch(r'SnapPoint_([TB])([13])', name)
+            if wall and kind.startswith(('IntNS','IntEW')):
+                slot = 'WALL' + wall[1] + '_'
+                variant = kind[3:5]
+                locator = Matrix.Identity(4)
+            elif deck and socket in ('RoomT_Out_', 'RoomB_Out_'):
+                slot = ('CEILING' if deck[1] == 'T' else 'FLOOR') + ('0_' if deck[2] == '1' else '1_')
+                variant = 'TB'
+                # Native TOP_ and BOT_ locators within EXT_MAG_1X1.
+                locator = Matrix.Translation((0, 1.5, 0))
+                if socket == 'RoomB_Out_':
+                    locator = locator @ Matrix.Diagonal((1, -1, -1, 1))
+            else:
+                continue
+            poses.append((slot, variant, locator, (target @ source.inverted()).inverted()))
+    return poses
+
+
+def single_mount(obj, hab):
+    host = snapping._native_target(hab)
+    if abs(host.determinant()) < 1e-12:
+        return None
+    relative = host.inverted() @ snapping._native_target(obj)
+    for slot, variant, locator, inverse_pose in single_mount_poses(hab['ObjectID']):
+        delta = inverse_pose @ relative
+        if (delta.translation.length < (.1 if variant == 'TB' else .05) and
+                max(abs(delta[r][c] - (r == c)) for r in range(3) for c in range(3)) < .025):
+            return slot, variant, locator
+    return None
+
+
 def mounting_frame(obj,hab,slots):
     native=snapping._native_target(hab)
     if obj.get('ObjectID')=='B_MAG_1X1':
-        slot=sorted(slots)[0][4:-1]
-        point=next(p for p in snapping.DATA[hab['ObjectID']] if p['name']=='SnapPoint_Int'+slot)
-        # The native NS/EW assemblies include the frame and the referenced magnet
-        # at their authored heights (1.470776 / 1.418625), unlike the loose magnet.
-        desired=native@Matrix(point['matrix'])@Matrix.Translation((0,-1.5,0))
-        return ('NS' if slot[0] in 'NS' else 'EW'),obj.matrix_world.inverted_safe()@desired
+        match = single_mount(obj, hab)
+        if match is None:
+            return None, None
+        _, variant, locator = match
+        return variant, obj.matrix_world.inverted_safe() @ snapping._native_target(obj) @ locator
     # The 1x2 part selects a locator when its Room output is connected. Its
     # existing proxy is the top assembly, whose long axis runs from -12 to 0.
     # Center that display about the pair of native sockets at Z=-3,+3.
@@ -55,7 +100,8 @@ def mounting_frame(obj,hab,slots):
 
 def refresh(obj,mount):
     from . import part_controls
-    if not obj.data.get(MOUNT):obj[SOURCE]=obj.data
+    if not obj.data.get(MOUNT) and obj.get(SOURCE) != obj.data:
+        obj[SOURCE] = obj.data
     source=obj.get(SOURCE,obj.data)
     if mount is None:
         if obj.data!=source:
@@ -71,6 +117,9 @@ def refresh(obj,mount):
     if mesh is None:
         mesh=(source if variant=='DOUBLE' else variant_mesh(variant,detailed)).copy()
         mesh.name='BBE Mounted '+obj['ObjectID']+' '+variant
+        if not detailed and not mesh.materials:
+            for material in source.materials:
+                mesh.materials.append(material)
         mesh.transform(frame);mesh.update()
         for key,value in source.items():mesh[key]=value
         mesh[REVISION_KEY]=REVISION

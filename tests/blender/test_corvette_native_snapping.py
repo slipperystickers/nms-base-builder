@@ -158,6 +158,24 @@ for key in rear:
     cs.apply(source, target, cs.choose(source, target, key))
     assert habitat.opening_mask(target, [source]) in (1, 2, 4)
 
+# Coincident Vantage sockets share a marker. Each marker cycles to a flush
+# beam pose with the disc parallel to the hull, without changing the cockpit.
+source['ObjectID'] = 'B_MAG_1X1'
+points = cs.target_points(source, target)
+assert len(points) == len({tuple(round(v, 4) for v in pt) for _,pt in points}) == 22
+for key, position in points:
+    cs.CACHE.clear()
+    poses = [p for p in cs.options(source, target, placement=True) if p[0] == key]
+    for _ in poses:
+        assert markers.place_at(source,target,key,cycle=True)
+        if cs.CACHE[source.name,target.name][1]=='face-parallel':break
+    else:raise AssertionError(key)
+    native = pivot.native_matrix(source.matrix_world, 'B_MAG_1X1', normalized=pivot.is_normalized(source))
+    assert (native.translation-position).length < .0001
+    name = cs.DATA['B_COK_E'][int(key)]['name'].removeprefix('SnapPoint_').removeprefix('SPIGN_')
+    normal = target.matrix_world.to_3x3() @ Vector(cs.DIRECTIONS[name[0]])
+    assert native.col[1].to_3d().normalized().dot(normal.normalized()) > .9999
+
 # Marker redraws reuse cached local geometry instead of rebuilding every option.
 source['ObjectID'] = 'B_WNG_A'; target['ObjectID'] = 'B_HAB_D'
 cs.target_points(source, target)

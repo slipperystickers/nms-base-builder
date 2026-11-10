@@ -5,6 +5,7 @@ on the original objects; removing/moving an attachment restores the closed secti
 """
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 import bpy
 import numpy as np
@@ -34,6 +35,11 @@ def table():
     if _table is None:
         _table = json.loads((Path(__file__).parent/'resources/hab_wall_slots.json').read_text())
     return _table
+
+
+@lru_cache(maxsize=1)
+def deck_slots():
+    return json.loads((Path(__file__).parent/'resources/hab_deck_slots.json').read_text())
 
 
 def source_mesh(obj):
@@ -107,12 +113,64 @@ def ghost(obj, enabled):
         if REFERENCE in obj:del obj[REFERENCE]
 
 
+WASTE_STYLE = 'bbe_waste_wall_style'
+WASTE_REVISION = 'bbe_waste_wall_revision'
+WASTE_SOURCE = 'bbe_waste_wall_source'
+
+
+def display_waste(obj, style):
+    # The free-standing model is also the native A wall. B and C supply
+    # different assemblies. The D-style table has no east/west toilet model.
+    if GHOST in obj and style == 'D' and obj.data.get(GHOST_MESH):
+        return
+    ghost(obj, False)
+    source = obj.data.get(WASTE_SOURCE) or obj.data
+    if style in ('A', 'B', 'C'):
+        if obj.data.get(WASTE_STYLE) == style and obj.data.get(WASTE_REVISION) == 1:
+            return
+        mesh = next((m for m in bpy.data.meshes if m.get(WASTE_STYLE) == style
+                     and m.get(WASTE_SOURCE) == source and m.get(WASTE_REVISION) == 1), None)
+        if mesh is None:
+            from . import builder_v2
+            detailed = builder_v2.MESH_TAG in source
+            quality = 'detailed' if detailed else 'simple'
+            path = Path(__file__).parent / 'resources/waste_walls/waste_walls.blend'
+            with bpy.data.libraries.load(str(path), link=False) as (_, dst):
+                dst.meshes = [f'BBE Waste Wall {style} {quality}']
+            mesh = dst.meshes[0]
+            if detailed:
+                builder_v2._relink_mesh_textures(mesh)
+                materials_v2.note_appended_data()
+                materials_v2.dedupe_appended_data()
+            else:
+                for mat in source.materials:
+                    mesh.materials.append(mat)
+            for key, value in source.items():
+                mesh[key] = value
+            mesh[WASTE_SOURCE] = source
+            mesh[WASTE_STYLE] = style
+            mesh[WASTE_REVISION] = 1
+        undo_guard.track_generated_preview()
+        obj.data = mesh
+    elif obj.data != source:
+        obj.data = source
+    if style == 'D':
+        ghost(obj, True)
+
+
 def matching_slots(attachment, hab):
     """Native socket compatibility plus pose, including scaled/rotated ships."""
+    if attachment.get('ObjectID') == 'B_MAG_1X1':
+        from .magnetic_mounts import single_mount
+        match = single_mount(attachment, hab)
+        return {match[0]} if match else set()
     slots = set()
     points = corvette_snapping.DATA.get(hab.get('ObjectID'), ())
     for key, _, _, candidate in corvette_snapping.options(attachment, hab):
         name = points[int(key.split(':')[0])]['name']
+        if attachment.get('ObjectID') == WASTE and not name.startswith('SnapPoint_Int'):
+            # An opposite-side socket keeps the host wall in place.
+            continue
         match = re.fullmatch(r'SnapPoint_(?:SPIGN_)?(?:IntOpp|Int)?([NSEW]\d+)', name)
         if not match:
             continue
@@ -198,7 +256,11 @@ def open_mesh(source, pid, slots, detailed=True, doorways=()):
         return original
     keep = np.ones(len(source.polygons), dtype=bool)
     for slot in slots:
-        for first, last in spec['slots'][slot]['faces']:
+        if slot in spec['slots']:
+            ranges = spec['slots'][slot]['faces']
+        else:
+            ranges = deck_slots()[pid]['detailed' if detailed else 'simple'][slot]
+        for first, last in ranges:
             keep[first:last+1] = False
     faces = [p for p in source.polygons if keep[p.index]]
     loop_ids = np.array([i for p in faces for i in p.loop_indices], dtype=np.int32)
@@ -273,9 +335,14 @@ def refresh(scene=None, force=False):
                 mount = next(((hab, slots) for a, hab, slots in matches if a == attachment), None)
                 magnetic_mounts.refresh(attachment, mount)
             if attachment.get('ObjectID') == WASTE:
-                opened = any(a == attachment and slots.issubset(set(hab.data.get(OPEN, '').split(',')))
-                             for a, hab, slots in matches)
-                ghost(attachment, opened)
+                style = next((room['ObjectID'][-1] for a, room, slots in matches
+                              if a == attachment and slots <= set(room.data.get(OPEN, '').split(','))), None)
+                if style is None:
+                    from . import habitat_preview
+                    if any(o.get('ObjectID') == 'B_COK_E' and
+                           habitat_preview.opening_mask(o, [attachment]) for o in parts):
+                        style = 'D'
+                display_waste(attachment, style or 'A')
         _signatures[key] = signature
         # Keep unused display meshes: older undo steps can still own them.
     finally:
@@ -327,8 +394,8 @@ def unregister():
         if obj.type == 'MESH' and obj.get('ObjectID') in MAGNETS:
             from . import magnetic_mounts
             magnetic_mounts.refresh(obj, None)
-        if GHOST in obj:
-            ghost(obj, False)
+        if obj.type == 'MESH' and obj.get('ObjectID') == WASTE:
+            display_waste(obj, None)
         if obj.type == 'MESH' and obj.data.get(OPEN) and obj.get(SOURCE):
             obj.data = obj[SOURCE]
     _signatures.clear()

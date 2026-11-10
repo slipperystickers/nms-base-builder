@@ -48,6 +48,16 @@ for detailed in (False,True):
     obj.location.x+=8;bpy.context.view_layer.update();h.refresh(force=True)
     assert hab.object.data==closed and obj.data==free
     cases+=1
+   if aid=='B_MAG_1X1':
+    assert set(h.deck_slots()[pid]['detailed']) <= covered
+    # Exterior Block placements at the same wall keep the loose projector.
+    for choice in s.options(obj,hab.object):
+     if s.DATA[pid][int(choice[0].split(':')[0])]['name']!='SnapPoint_E1':continue
+     obj.matrix_world=choice[3];bpy.context.view_layer.update()
+     if not h.matching_slots(obj,hab.object):break
+    else:raise AssertionError('No exterior placement found')
+    h.refresh(force=True)
+    assert obj.data==free and hab.object.data==closed
    assert covered,(pid,aid,detailed)
    results.append(dict(hab=pid,part=aid,detailed=detailed,slots=len(covered),poses=cases))
    bpy.data.objects.remove(obj,do_unlink=True);h.refresh(force=True);assert hab.object.data==closed

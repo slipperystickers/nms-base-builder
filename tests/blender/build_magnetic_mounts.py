@@ -1,6 +1,6 @@
-"""Build magnetic wall variants from authored NMS scenes; no replacement geometry."""
+"""Build magnetic wall and deck variants from authored NMS scenes; no replacement geometry."""
 from pathlib import Path
-import ast,sys
+import ast,sys,os
 R=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(R/'tests/blender'))
 # Reuse the native geometry/normal/material decoder without running its catalog batch.
@@ -37,14 +37,15 @@ out=R/'tests/.artifacts/magnetic-native-build';out.mkdir(exist_ok=True)
 for folder in ['assets','simple']:(out/folder).mkdir(exist_ok=True)
 ns['OUT']=out
 for obj in list(bpy.data.objects):bpy.data.objects.remove(obj,do_unlink=True)
-for variant in ['NS','EW']:
+variants=os.environ.get('BBE_MAG_VARIANTS', 'NS,EW,TB').split(',')
+for variant in variants:
  scene='MODELS/COMMON/SPACECRAFT/BIGGS/MODULES/PARTS/MAG_1X1_'+variant+'.SCENE.MBIN'
  root=ns['scene'](scene)
  result=ns['build'](dict(id='MAG_'+variant,placementScene=scene,components=[dict(scene=scene,locator=root.Name,entity='')]))
  print(result['id'],result['polygons'])
 # Write mesh-only, texture-packed variants for both quality modes.
 dest=R/'src/addons/no_mans_sky_base_builder/resources/magnetic_mounts';dest.mkdir(exist_ok=True)
-for variant in ['NS','EW']:
+for variant in variants:
  for quality,folder in [('detailed','assets'),('simple','simple')]:
   with bpy.data.libraries.load(str(out/folder/('MAG_'+variant+'.blend')),link=False) as (a,b):b.meshes=list(a.meshes)
   mesh=b.meshes[0];mesh.name='BBE Magnetic '+variant+' '+quality

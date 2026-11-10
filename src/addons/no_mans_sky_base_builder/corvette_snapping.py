@@ -101,19 +101,53 @@ def _local_options(sid, tid):
     return tuple(result)
 
 
+@lru_cache(maxsize=1)
+def _vantage_beam_placements():
+    """One marker per location, with native mates and a flush editor placement."""
+    choices = []
+    locations = {}
+    seen = set()
+    for key, channel, position, relative in _local_options('B_MAG_1X1', 'B_COK_E'):
+        center = tuple(round(v, 5) for v in position)
+        key = locations.setdefault(center, key)
+        pose = (key, tuple(round(v, 5) for row in relative for v in row))
+        if pose not in seen:
+            seen.add(pose)
+            choices.append((key, channel, position, relative))
+    for center, key in locations.items():
+        point = DATA['B_COK_E'][int(key.split(':')[0])]
+        face = re.fullmatch(r'SnapPoint_(?:SPIGN_)?([NSEWTB])\d*', point['name'])
+        if face is None:
+            continue
+        normal = (Matrix(point['matrix']).to_3x3() @ Vector(DIRECTIONS[face[1]])).normalized()
+        # The loose projector sits at its model origin. Its Room/Block snaps
+        # can turn the ring edge-on. Offer its base flat on the same hull spot.
+        frame = Vector((0, 1, 0)).rotation_difference(normal).to_matrix().to_4x4()
+        frame.translation = Vector(center)
+        choices.append((key, 'face-parallel', frame.translation.copy(), frame))
+    return tuple(choices)
+
+
+def _placement_choices(sid, tid):
+    if (sid, tid) == ('B_MAG_1X1', 'B_COK_E'):
+        return _vantage_beam_placements()
+    return _local_options(sid, tid)
+
+
 def _native_target(target):
     return mirror_pivot.native_matrix(target.matrix_world, target.get('ObjectID'),
                                      normalized=mirror_pivot.is_normalized(target))
 
 
-def options(source, target):
+def options(source, target, *, placement=False):
     if source == target or not supports(source, target):
         return []
     sid, tid = source.get('ObjectID'), target.get('ObjectID')
     native_target = _native_target(target)
     normalized = mirror_pivot.is_normalized(source)
     result = []
-    for tk, sk, position, relative in _local_options(sid, tid):
+    choices = _placement_choices(sid, tid) if placement else _local_options(sid, tid)
+    for tk, sk, position, relative in choices:
         matrix = native_target @ relative
         # Legacy .blend objects still use native mesh coordinates. Do not
         # silently give them a display-pivot offset without shifting the mesh.
@@ -127,13 +161,13 @@ def target_points(source, target):
     """Only transform the visible target locations on viewport redraw."""
     if source == target or not supports(source, target):
         return []
-    points = {p[0]: p[2] for p in _local_options(source.get('ObjectID'), target.get('ObjectID'))}
+    points = {p[0]: p[2] for p in _placement_choices(source.get('ObjectID'), target.get('ObjectID'))}
     native_target = _native_target(target)
     return [(key, native_target @ position) for key, position in points.items()]
 
 
 def choose(source, target, target_key=None, cycle_source=False):
-    pairs = options(source, target)
+    pairs = options(source, target, placement=True)
     if target_key is not None:
         pairs = [p for p in pairs if p[0] == target_key]
     if not pairs:
@@ -143,7 +177,7 @@ def choose(source, target, target_key=None, cycle_source=False):
         current = next(i for i, p in enumerate(pairs) if p[:2] == previous)
         return pairs[(current + int(cycle_source)) % len(pairs)]
     reference = source.matrix_world.to_quaternion()
-    pairs.sort(key=lambda p: (round(1-abs(p[3].to_quaternion().dot(reference)), 5),
+    pairs.sort(key=lambda p: (p[1] == 'face-parallel', round(1-abs(p[3].to_quaternion().dot(reference)), 5),
                               (p[3].translation-source.matrix_world.translation).length))
     return pairs[0]
 
@@ -160,12 +194,22 @@ def apply(source, target, choice):
 def snap(source, target, next_target=False, prev_target=False, next_source=False, prev_source=False):
     if not supports(source, target):
         return None
-    pairs = options(source, target)
+    pairs = options(source, target, placement=True)
     if not pairs:
         # Covered native parts with incompatible socket types must not fall
         # through to a generic legacy pairing and produce an invented snap.
         return False
     previous = CACHE.get((source.name, target.name))
+    if (not previous and (next_source or prev_source)
+            and (source.get('ObjectID'), target.get('ObjectID')) == ('B_MAG_1X1', 'B_COK_E')):
+        # Reopening a project clears the transient snap cache. Recover an
+        # already placed beam's current marker before advancing its rotation.
+        for candidate in pairs:
+            delta = candidate[3].inverted_safe() @ source.matrix_world
+            if delta.translation.length < .05 and max(abs(delta[r][c] - (r == c))
+                                                       for r in range(3) for c in range(3)) < .025:
+                previous = CACHE[source.name, target.name] = candidate[:2]
+                break
     keys = list(dict.fromkeys(p[0] for p in pairs))
     key = previous[0] if previous and previous[0] in keys else None
     if next_target or prev_target:

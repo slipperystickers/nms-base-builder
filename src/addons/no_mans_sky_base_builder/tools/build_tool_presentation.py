@@ -72,8 +72,8 @@ class NMS_PT_tools_panel(Panel):
         snap_op = snap_button_container.operator("object.nms_snap", **icons.ui_icon("SNAP_ON"))
 
         target_source_column = snap_button_container.column(align=True)
-        source_row = target_source_column.row(align=True)
         target_row = target_source_column.row(align=True)
+        source_row = target_source_column.row(align=True)
         
         snap_target_prev = target_row.operator( "object.nms_snap", **icons.ui_icon("TRIA_LEFT"), text="Prev" )
         snap_target_next = target_row.operator( "object.nms_snap", **icons.ui_icon("TRIA_RIGHT"), text="Next" )
