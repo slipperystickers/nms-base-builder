@@ -9,6 +9,7 @@ from mathutils import Matrix, Vector
 import uuid
 
 from .utils import blend_utils, materials_v2, mirror_utils, dictionary
+from . import part_controls
 from .part import Part
 from .part_overrides.fossil_models import resolve_model_id
 
@@ -84,10 +85,21 @@ class Group:
         parent_matrix_inverted = parent_obj.matrix_world.inverted()
 
         for obj in object_list:
-            if obj == parent_obj or Group.PROP_OBJECT_ID not in obj:
+            if obj == parent_obj:
                 continue
-
             matrix_local = parent_matrix_inverted @ obj.matrix_world
+            if Group.PROP_GROUP_ID in obj:
+                children, _ = Group.extract_cached_data(obj)
+                for name, child in children.items():
+                    entry = dict(child)
+                    local = matrix_local @ Matrix(child[Group.PROP_MATRIX_LOCAL])
+                    entry[Group.PROP_MATRIX_LOCAL] = [list(row) for row in local]
+                    if Group.PROP_USER_DATA in obj:
+                        entry[Group.PROP_USER_DATA] = obj[Group.PROP_USER_DATA]
+                    cache_data[f'{obj.name}/{name}'] = entry
+                continue
+            if Group.PROP_OBJECT_ID not in obj:
+                continue
             matrix_list = [list(row) for row in matrix_local]
 
             cache = {
@@ -101,6 +113,9 @@ class Group:
             if obj.get('bbe_bubble_shape'):
                 cache['bbe_bubble_shape'] = obj['bbe_bubble_shape']
 
+            display = part_controls.display_settings(obj)
+            if display:
+                cache['display'] = display
             cache_data[obj.name] = cache
 
         return json.dumps(cache_data)
@@ -135,7 +150,7 @@ class Group:
 
 
     @staticmethod
-    def group_objects(objects_to_group, target_matrix=None):
+    def group_objects(objects_to_group, target_matrix=None, *, flatten_groups=False):
         """
         Groups multiple objects into a single merged object.
         Applies the location and local rotation axes from the provided target_matrix.
@@ -156,8 +171,10 @@ class Group:
         # Check if any object already has a GroupID
         for obj in objects_to_group:
             if Group.PROP_GROUP_ID in obj:
-                return None
-            if "ObjectID" in obj:
+                if not flatten_groups or not Group.extract_cached_data(obj)[0]:
+                    return None
+                objects_list.append(obj)
+            elif "ObjectID" in obj:
                 objects_list.append(obj)
 
         # Keep location, rotation, and scale from the target matrix
@@ -172,7 +189,7 @@ class Group:
             clean_matrix.translation = total_location / len(objects_list)
 
         # Merge objects
-        merged_object = blend_utils.merge_objects(objects_list, "Grouped_Objects")
+        merged_object = part_controls.merge_display_parts(objects_list)
 
         # this check used to sit after the write below, so a failed merge threw
         # a TypeError on None instead of returning None the way it says it does
@@ -209,7 +226,7 @@ class Group:
         # Cache all combined objects
         child_cache = Group.cache_relative_matrices(merged_object, objects_list)
         #child_cache[Group.PROP_ORIGIN_MATRIX] = target_matrix_cache
-        number_of_objects_grouped = len(objects_list)
+        number_of_objects_grouped = sum(obj.get(Group.PROP_PART_COUNT, 1) for obj in objects_list)
         merged_object[Group.PROP_CHILD_CACHE] = child_cache
         merged_object[Group.PROP_DISPLAY_PIVOT_CACHE] = True
         merged_object[Group.PROP_GROUP_ID] = str(uuid.uuid4())
@@ -287,6 +304,7 @@ class Group:
             return False
         previous = group_obj.data
         group_obj.data = rebuilt
+        part_controls.group_roof_modifier(group_obj)
         if Part.PROP_USER_DATA in group_obj:
             del group_obj[Part.PROP_USER_DATA]
         Group._apply_switched_colour(group_obj, detailed, representative)
@@ -332,6 +350,7 @@ class Group:
                 continue
 
             new_obj = new_part.object
+            part_controls.restore_display(new_obj, cache_data)
 
             # Restore properties
             new_obj[Group.PROP_TIMESTAMP] = time_stamp
@@ -461,6 +480,7 @@ class Group:
                 continue
 
             new_obj = new_part.object
+            part_controls.restore_display(new_obj, cache_data)
 
             # Restore properties
             new_obj[Group.PROP_TIMESTAMP] = time_stamp
@@ -515,6 +535,7 @@ class Group:
                 continue
 
             new_obj = new_part.object
+            part_controls.restore_display(new_obj, cache_data)
 
             # Restore properties
             new_obj[Group.PROP_TIMESTAMP] = time_stamp
@@ -762,6 +783,7 @@ class Group:
                 if new_obj is None:
                     continue
 
+                part_controls.restore_display(new_obj, cache_data)
                 new_obj.matrix_world = origin_matrix @ mathutils.Matrix(matrix_local_data)
                 restored_objects.append(new_obj)
         except Exception:
@@ -891,6 +913,7 @@ class Group:
 
         old_data = group_obj.data
         group_obj.data = new_data
+        part_controls.group_roof_modifier(group_obj)
         if old_data is not None:
             if dead_meshes is not None:
                 dead_meshes.append(old_data)
@@ -957,6 +980,7 @@ class Group:
                 if shared is not None:
                     shared_data, shared_user_data = shared
                     group_obj.data = shared_data
+                    part_controls.group_roof_modifier(group_obj)
                     dead_meshes.append(old_data)
                     Group._apply_switched_colour(
                         group_obj, target_high_res, shared_user_data

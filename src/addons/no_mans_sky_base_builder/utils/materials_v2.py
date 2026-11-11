@@ -41,6 +41,7 @@ import bpy
 
 from ..utils import material
 from ..utils import userdata
+from . import corvette_trim
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 RESOURCES_PATH = os.path.join(FILE_PATH, "..", "resources")
@@ -365,20 +366,29 @@ def get_finish(user_data_value):
     return get_finish_table().get(finish_name, FINISH_NEUTRAL)
 
 
-def apply_palette(bpy_object, palette, finish=None):
+def apply_palette(bpy_object, palette, finish=None, finish_name=None):
     """Write the four palette slots and the surface finish onto an object.
 
     Args:
         bpy_object (bpy.types.Object): The object to colour.
         palette (dict): A palette entry with p/s/t/q RGBA lists.
         finish (dict): An entry from finishes.json. Defaults to neutral.
+        finish_name (str): Name used to select a native Corvette texture layer.
     """
     finish = finish if finish is not None else FINISH_NEUTRAL
 
     slots = SLOT_ORDER_INVERTED if finish.get("invert") else SLOT_ORDER
+    primary = tuple(palette[slots[0]])
+    if (bpy_object.get('ObjectID') in corvette_trim.GEOMETRY and
+            bpy_object.data is not None and bpy_object.data.get(corvette_trim.TAG)):
+        native = finish_name in corvette_trim.FINISHES
+        bpy_object[corvette_trim.LAYER] = float(corvette_trim.FINISHES.index(finish_name) if native else 0)
+        if native:
+            # These maps already contain the material response and inverted mask.
+            slots = SLOT_ORDER
+            finish = FINISH_NEUTRAL
     for prop_name, slot in zip(SLOT_PROPS, slots):
         bpy_object[prop_name] = tuple(palette[slot])
-    primary = tuple(palette[slots[0]])
 
     # Offsets rather than absolute values, so a part keeps the surface detail
     # its own maps give it. 0 is "unchanged", which is also what the shader
@@ -416,8 +426,8 @@ def apply(bpy_object, user_data_value, tag=True):
     if palette is None:
         return None
 
-    apply_palette(bpy_object, palette, get_finish(user_data_value))
     colour_name, finish_name = get_nice_names(user_data_value)
+    apply_palette(bpy_object, palette, get_finish_table().get(finish_name), finish_name)
     bpy_object[PROP_READONLY_COLOUR] = colour_name or ""
     bpy_object[PROP_READONLY_MATERIAL] = finish_name or ""
     if tag:
@@ -455,7 +465,7 @@ def apply_many(pairs, tag=False, update=False):
             unresolved += 1
             continue
 
-        apply_palette(bpy_object, palette, finish)
+        apply_palette(bpy_object, palette, finish, names[1])
         bpy_object[PROP_READONLY_COLOUR] = names[0] or ""
         bpy_object[PROP_READONLY_MATERIAL] = names[1] or ""
         if tag:
@@ -545,7 +555,7 @@ def recolour_from_user_data(objects, user_data_value, tag=True):
 
     for bpy_object in objects:
         bpy_object["UserData"] = value
-        apply_palette(bpy_object, palette, finish)
+        apply_palette(bpy_object, palette, finish, finish_name)
         bpy_object[PROP_READONLY_COLOUR] = colour_name or ""
         bpy_object[PROP_READONLY_MATERIAL] = finish_name or ""
         if tag:

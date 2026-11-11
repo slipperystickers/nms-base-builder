@@ -519,6 +519,7 @@ def refresh_bytebeat_proxies(scene):
     """Repair old HD scenes whose specialized importers kept simple meshes."""
     if not getattr(scene, 'bbe_detailed_proxies', True):
         return 0
+    from . import cable_connections
     to_colour = []
     for obj in scene.objects:
         pid = obj.get('ObjectID')
@@ -526,6 +527,8 @@ def refresh_bytebeat_proxies(scene):
             continue
         if materials_v2.is_high_res(obj):
             correct_hd_display(obj.data, pid)
+            if pid == cable_connections.BYTEBEAT:
+                cable_connections.style(obj)
             continue
         mesh = load_high_res_mesh(pid)
         if mesh is not None:
@@ -533,6 +536,9 @@ def refresh_bytebeat_proxies(scene):
             to_colour.append((obj, obj.get('UserData', Part.DEFAULT_USER_DATA)))
     if to_colour:
         materials_v2.apply_many(to_colour)
+        for obj, _ in to_colour:
+            if obj.get('ObjectID') == cable_connections.BYTEBEAT:
+                cable_connections.style(obj)
         materials_v2.dedupe_appended_data()
         materials_v2.ensure_finish_nodes()
     return len(to_colour)
@@ -541,7 +547,8 @@ def refresh_bytebeat_proxies(scene):
 # get the shared mesh datablock for an object id, appending it on first use
 def correct_hd_display(mesh, object_id):
     """Upgrade HD display data only; placement and export records stay intact."""
-    from .utils import room_glass, roof_alignment, light_fissure
+    from .utils import room_glass, roof_alignment, light_fissure, corvette_trim
+    corvette_trim.correct(mesh, object_id)
     room_glass.correct(mesh, object_id)
     roof_alignment.correct(mesh, object_id)
     light_fissure.correct(mesh, object_id)

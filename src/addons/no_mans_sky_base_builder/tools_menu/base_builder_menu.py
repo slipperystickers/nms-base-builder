@@ -102,7 +102,10 @@ class BBE_OT_toolbar_menu(bpy.types.Operator):
 
 
 def draw_toolbar_settings(layout, context):
-    layout.label(text='Toolbar Menus')
+    from ..save_editor.function_help import corner_help
+    heading = layout.row(align=True)
+    heading.label(text='Toolbar Menus')
+    corner_help(heading, 'TOOLBAR')
     layout.label(text='Checked menus are visible. Arrows change their order.')
     order, hidden = toolbar_state(context)
     for index, key in enumerate(order):

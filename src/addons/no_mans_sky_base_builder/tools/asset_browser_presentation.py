@@ -361,7 +361,10 @@ def draw_asset_browser_left_options(context, asset_browser_box, scene):
 
     search_column= asset_browser_box.column(align=True)
     search_column.scale_y = 1.4
-    search_column.label(text = "Search")
+    from ..save_editor.function_help import corner_help
+    heading = search_column.row(align=True)
+    heading.label(text = "Search")
+    corner_help(heading, 'ASSETS')
     search_column.prop(asset_browser, "asset_broser_search_query", text="", icon='VIEWZOOM')
 
     asset_browser_box.separator()
@@ -531,7 +534,9 @@ class NMS_PT_asset_browser_panel(bpy.types.Panel):
         row.prop(browser, 'asset_broser_search_query', text='', icon='VIEWZOOM')
         settings = row.operator('object.nms_asset_browser_list_settings', text='', icon='SETTINGS')
         settings.grid_type = 'Grid'
+        from ..save_editor.function_help import corner_help
         row.operator('object.nms_launch_asset_browser_window', text='', icon='WINDOW')
+        corner_help(row, 'ASSETS')
 
         mode = browser.enum_asset_browser_what_to_display
         row = layout.row(align=True)

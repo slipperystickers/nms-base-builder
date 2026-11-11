@@ -14,6 +14,7 @@ from .utils import mirror_pivot
 
 CACHE = {}
 # These use a shape-aware assembly/cable system with different display meshes.
+PIPE_PARTS = frozenset({'PIPE', 'PIPESHAPE', 'CURVEPIPESHAPE', 'BASE_BUBPIPE', 'BASE_BUBPIPE_L'})
 SPECIAL = {'BASE_BUBPIPE', 'U_POWERLINE', 'U_PIPELINE', 'U_PORTALLINE', 'U_BYTEBEATLINE'}
 
 
@@ -24,7 +25,8 @@ def catalog():
 
 def supports(source, target):
     ids = (source.get('ObjectID'), target.get('ObjectID'))
-    return not any(pid in SPECIAL for pid in ids) and all(pid in catalog()['parts'] for pid in ids)
+    return (not all(pid in PIPE_PARTS for pid in ids) and not any(pid in SPECIAL for pid in ids)
+            and all(pid in catalog()['parts'] for pid in ids))
 
 
 @lru_cache(maxsize=512)

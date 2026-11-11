@@ -1,6 +1,6 @@
 {
-  "id": "hd-additions-1-60337a754eeb",
-  "content_sha256": "60337a754eebe029aa526210cceb50769f7d7a7247d537deadabf3ee95c60bd8",
+  "id": "hd-additions-1-364b8f508490",
+  "content_sha256": "364b8f5084902af12651a8bdf8fac2798f05aad7051993b62b44bc8232f9cbef",
   "files": {
     "assets/B_COK_C1.blend": {
       "bytes": 7388987,
@@ -966,6 +966,30 @@
       "bytes": 254008,
       "sha256": "a2b43fa5963b8a4cdfb35c719c84972dfc89f7698d60459a7e6bd8af5f3a56da"
     },
+    "corvette_trim/B_GEN_5.zlib": {
+      "bytes": 150485,
+      "sha256": "7b1186a200f191a8ac34a56ddde932a1b0429d45a91d1105cab02cbcf70bd8af"
+    },
+    "corvette_trim/B_TUR_F.zlib": {
+      "bytes": 11325,
+      "sha256": "a565769f599fe6d25cfd2b2132a28685344195924f7987ada7bc4b656285f470"
+    },
+    "corvette_trim/colourisemask.png": {
+      "bytes": 4191,
+      "sha256": "e55b02be20dfcefabd45ab230beab20854d42ca73a51d704afa03371c6ab447b"
+    },
+    "corvette_trim/diffuse.png": {
+      "bytes": 2206569,
+      "sha256": "e69ee8ff8a2b2327fc0454674ef8369c20b809f119d4e4bb750d44023147302c"
+    },
+    "corvette_trim/masks.png": {
+      "bytes": 1695119,
+      "sha256": "2457a2eded5e96199ec37280ace2668b36e7c61af19c067f4b5f91abead4ef9f"
+    },
+    "corvette_trim/normal.png": {
+      "bytes": 599226,
+      "sha256": "9619449af28f598fdacf1be2b2243918febf24a925e5e27296c3ce0a4f32cca1"
+    },
     "habitat/B_COK_E_OPEN_0.blend": {
       "bytes": 6916408,
       "sha256": "1ed3f4819ceb5318c7f57c83e28adf3068dcc8753b89a211da9b905be03380e6"
@@ -997,6 +1021,18 @@
     "habitat/B_COK_E_OPEN_7.blend": {
       "bytes": 7394232,
       "sha256": "c2146a83918bdd6afe5191e4d252f126358852901c57d6fc32d5849ca93fead3"
+    },
+    "magnetic_mounts/EW_detailed.blend": {
+      "bytes": 7739642,
+      "sha256": "ce39744f13cff3d5c1068e7353719efabc609d82f6a95b98ec662da818538672"
+    },
+    "magnetic_mounts/NS_detailed.blend": {
+      "bytes": 5584412,
+      "sha256": "0c6130caf9c33b42c7dbb1aac5e8d105e85f2cac700161e98b3baf2621e946d2"
+    },
+    "magnetic_mounts/TB_detailed.blend": {
+      "bytes": 7146579,
+      "sha256": "7091e25304fc1455e3888b6f7aa69545bc6ac22a0928bdd960a57fe41dcddbce"
     },
     "textures/0173e4191d31_glasstrim.masks.webp": {
       "bytes": 479926,
@@ -1489,16 +1525,24 @@
     "textures/ff9a70e74a3a_speedo.webp": {
       "bytes": 7798,
       "sha256": "be1c4d3ee67cee4994167c3756c5f34478eebcf0f5775af78627c533ad64353d"
+    },
+    "waste_walls/detailed.blend": {
+      "bytes": 17251605,
+      "sha256": "6a0d3a4a6933a7820750d5c48f94079d69d01a0c471a62fe00102ba38ea0b9e8"
     }
   },
-  "download_bytes": 251541033,
+  "download_bytes": 293865987,
   "archives": {
-    "38b9976d4131a2e5b1f8cfa5e337d4ca9cee2fd1c0ac0280e7d6396c4df46403": {
+    "807d1519e8d64fc2cdbd7f798d8f87c74b455dfc8ca2f535382e55d94c6256bf": {
       "prefix": ""
     }
   },
-  "url": "https://github.com/slipperystickers/nms-base-builder/releases/download/v18.2.44/bbe-hd-additions-1.zip",
+  "url": "https://github.com/slipperystickers/nms-base-builder/releases/download/v18.2.46/bbe-hd-additions-1.zip",
   "compatible_previous": [
+    {
+      "id": "hd-additions-1-60337a754eeb",
+      "content_sha256": "60337a754eebe029aa526210cceb50769f7d7a7247d537deadabf3ee95c60bd8"
+    },
     {
       "id": "hd-additions-1-9fce3efc358b",
       "content_sha256": "9fce3efc358b4789e077dc1cb4c2e8897e1b113c01c6a287150d97ba61b1479f",

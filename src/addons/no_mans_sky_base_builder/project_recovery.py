@@ -302,6 +302,8 @@ class BBE_MT_recovery(bpy.types.Menu):
     bl_label = 'Open Recovery Copy'
 
     def draw(self, context):
+        from .save_editor.function_help import corner_help
+        corner_help(self.layout, 'RECOVERY')
         entries = _backups()
         if not entries:
             self.layout.label(text='No recovery copies yet', **icons.ui_icon('INFO'))
@@ -378,8 +380,13 @@ def draw_controls(layout, context, *, boxed=True):
         _status_popups.add((context.window, popup))
     prefs = _preferences()
     box = layout.box() if boxed else layout
+    from .save_editor.function_help import corner_help
+    header = box.row(align=True)
     if boxed:
-        box.label(text='Project Recovery', **icons.ui_icon('RECOVER_LAST'))
+        header.label(text='Project Recovery', **icons.ui_icon('RECOVER_LAST'))
+    else:
+        header.label(text='Keeps the last 3 recovery saves')
+    corner_help(header, 'RECOVERY')
     if prefs:
         schedule = box.split(factor=0.60, align=True)
         schedule.prop(prefs, 'bbe_recovery_mode', text='')
@@ -389,9 +396,8 @@ def draw_controls(layout, context, *, boxed=True):
             schedule.prop(prefs, 'bbe_recovery_parts', text='Qty')
         else:
             schedule.label(text='Manual only')
-    box.label(text='Keeps the last 3 recovery saves')
-    from .save_editor.function_help import help_button
-    help_button(box, 'RECOVERY')
+    if boxed:
+        box.label(text='Keeps the last 3 recovery saves')
     status = box.row()
     status.alert = bool(_last_error)
     status.label(text=_status(prefs))

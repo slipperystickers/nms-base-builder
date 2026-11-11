@@ -4,6 +4,10 @@ import json
 import os
 
 REPLY = re.compile(r'^↪ @([A-Za-z0-9][A-Za-z0-9 _-]{1,23}): ([^\n]{0,160})\n\n([\s\S]*)$')
+CHAT_HELP = (
+    ('Start chatting', 'Enable Online Access in Blender Preferences, then enable chat. Open chat from the toolbar and choose a conversation. Click a name in the users list to start a direct message.'),
+    ('Write a message', 'Type in the message box. Enter sends the message and Shift+Enter starts a new line. The options menu opens account settings and controls where mini chat appears.'),
+)
 _saved = {}
 
 def load(path):

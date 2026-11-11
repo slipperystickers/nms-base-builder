@@ -146,10 +146,9 @@ def new_curve(context,kind):
     elif kind=='WAVE':obj.bbe_curve.width=12
     obj['bbe_easy_curve']=True
     if kind!='FREE':rebuild(obj,reset=True)
-    # Keep a selected part as the seed for Duplicate Along Curve.
-    seed=next((o for o in context.selected_objects if o.get('ObjectID') or o.get('GroupID')),None)
-    for selected in context.selected_objects:selected.select_set(False)
-    if seed:seed.select_set(True)
+    for selected in context.selected_objects:
+        if not (selected.get('ObjectID') or selected.get('GroupID')):
+            selected.select_set(False)
     obj.select_set(True);context.view_layer.objects.active=obj
     context.scene.bbe_curve_helper=True
     for area in context.screen.areas:
@@ -574,24 +573,27 @@ def slider_range(obj,field):
 def draw_controls(layout,context):
     from . import icons
     layout.operator_context='INVOKE_REGION_WIN'
-    help_row=layout.row(align=True)
-    help_row.alignment='RIGHT'
-    help_row.operator_context='INVOKE_DEFAULT'
-    help_row.operator('bbe.function_help',text='',**icons.ui_icon('QUESTION')).topic='CURVES'
-    row=layout.row(align=True)
-    row.operator('bbe.curve_draw',text='Draw Smooth Curve',**icons.ui_icon('LINCURVE')).plane=context.scene.bbe_curve_plane
-    row.prop(context.scene,'bbe_curve_plane',text='')
     from .curve_icons import icon_id
-    grid=layout.row(align=True);grid.scale_y=1.65;grid.scale_x=1.65
+    header = layout.row(align=True)
+    grid = header.row(align=True)
+    grid.scale_y = grid.scale_x = 1.65
     for kind,label,_ in SHAPES:
         if kind!='FREE':grid.operator('bbe.curve_add',text='',icon_value=icon_id(kind,context)).kind=kind
-    layout.separator()
+    help_row = header.row(align=True)
+    help_row.alignment = 'RIGHT'
+    help_row.operator_context = 'INVOKE_DEFAULT'
+    help_row.operator('bbe.function_help', text='', **icons.ui_icon('QUESTION')).topic = 'CURVES'
+    row=layout.row(align=True)
+    row.operator('bbe.curve_draw',text='Draw Smooth Curve',**icons.ui_icon('OUTLINER_DATA_GREASEPENCIL')).plane=context.scene.bbe_curve_plane
+    row.prop(context.scene,'bbe_curve_plane',text='')
     layout.operator('bbe.curve_from_surface',text='Curve from Edges / Faces',**icons.ui_icon('RESTRICT_SELECT_OFF'))
     layout.operator('object.nms_duplicate_along_curve',**icons.ui_icon('MOD_DASH'))
     obj=active_curve(context)
     if obj is None:
         layout.label(text='Select a curve or its linked object to edit.',**icons.ui_icon('INFO'));return
-    layout.label(text=obj.name,**icons.ui_icon('MOD_DASH'))
+    row = layout.row(align=True)
+    row.label(text=obj.name,**icons.ui_icon('MOD_DASH'))
+    row.operator('object.nms_curve_delete', text='Delete Curve', icon='TRASH')
     layout.prop(context.scene,'bbe_curve_helper',text='Viewport controls & drag points')
     layout.prop(obj.bbe_curve,'linked_handles',text='Link tangent handles')
     if obj.get('bbe_easy_curve') and obj.bbe_curve.kind!='FREE':
@@ -728,7 +730,7 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 if obj.get('has_linked_objects'):
                     self.button(index,'Duplicate set','object.nms_duplicate',x+14*scale,y+32*scale,138*scale);index+=1
                     action('Unlink objects','DETACH',160,32)
-                else:lines.append((16*scale,40*scale,'Select a part + this curve to create copies.',curve_widgets.MUTED))
+                else:lines.append((16*scale,40*scale,'Select parts + this curve to create copies.',curve_widgets.MUTED))
                 self.draw_points(context,obj)
         self.card.lines=tuple(lines);self.card.children=tuple(self.buttons)
     def marker(self,context,obj,si,pi,part,xy,stem=None):
@@ -769,7 +771,8 @@ def reset(*_):
     _anchors.clear();_drawing.clear()
     # Old child-edit mode saved the guide with selection disabled.
     for obj in bpy.data.objects:
-        if obj.get('bbe_easy_curve') and obj.get('has_linked_objects') and not obj.library:
+        if (obj.type == 'CURVE' and not obj.library and
+                (obj.get('has_linked_objects') or obj.get('is_initialised') and 'parent_selected' in obj)):
             obj.hide_select=False
 
 

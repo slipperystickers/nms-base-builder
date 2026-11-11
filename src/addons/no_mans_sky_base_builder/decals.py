@@ -85,7 +85,7 @@ def retire_child_previews(scene):
     Includes orphans saved after deleting a parent in older builds. New
     displays live on the part itself and need no deletion handler or helper.
     """
-    for preview in list(scene.objects):
+    for preview in list(scene.collection.all_objects):
         if preview.get(PREVIEW) and not preview.get('ObjectID'):
             for collection in list(preview.users_collection):
                 collection.objects.unlink(preview)
@@ -420,7 +420,7 @@ def geometry_stamp(obj):
 def signature(scene):
     return (scene.as_pointer(), getattr(scene, 'bbe_detailed_proxies', True),
             tuple((geometry_stamp(o), o.hide_viewport, o.hide_render)
-                  for o in scene.objects if o.type == 'MESH' and o.get('ObjectID')))
+                  for o in scene.collection.all_objects if o.type == 'MESH' and o.get('ObjectID')))
 
 
 def receiver_bounds(obj):
@@ -460,6 +460,22 @@ def refresh(scene=None, force=False):
     if force:
         _geometry_stamps.clear()
     _refresh_requested = False
+    # A wiring-only build has no decal geometry to project. Inspect cached
+    # collection membership before touching receiver meshes or their transforms.
+    members = scene.collection.all_objects
+    decals = [obj for obj in members if is_decal(obj)]
+    if not decals:
+        if any(obj.get(PREVIEW) for obj in members):
+            retire_child_previews(scene)
+        _signature = (scene.as_pointer(), getattr(scene, 'bbe_detailed_proxies', True), ())
+        _project_signatures.clear()
+        _geometry_stamps.clear()
+        _mesh_revisions.clear()
+        _object_revisions.clear()
+        _bounds_cache.clear()
+        _triangle_cache.clear()
+        _known_meshes.clear()
+        return 0
     current = signature(scene)
     if not force and current == _signature:
         return 0
@@ -467,10 +483,9 @@ def refresh(scene=None, force=False):
     count = 0
     try:
         retire_child_previews(scene)
-        decals = [o for o in scene.objects if is_decal(o)]
         detailed = getattr(scene, 'bbe_detailed_proxies', True)
         need_receivers = detailed and any(not o.get(PREVIEW_DISABLED, False) for o in decals)
-        receivers = ([o for o in scene.objects if o.type == 'MESH' and o.get('ObjectID')
+        receivers = ([o for o in scene.collection.all_objects if o.type == 'MESH' and o.get('ObjectID')
                       and not is_decal(o) and not o.hide_render and not o.hide_viewport]
                      if need_receivers else [])
         # Reconcile membership after additions/deletions. Only integers and
@@ -570,6 +585,8 @@ def tick():
     if not undo_guard.history_ready():
         return .2
     try:
+        if bpy.context.window_manager is None or bpy.context.window_manager.is_interface_locked:
+            return .2
         if not _undoing and time.monotonic() >= _resume_after_undo and not bpy.app.is_job_running('RENDER'):
             now = time.monotonic()
             scene = bpy.context.scene
@@ -613,7 +630,7 @@ def solid_references(force_disable=False):
         enabled = (not force_disable and getattr(scene, 'bbe_solid_decals', True) and
                    getattr(scene, 'bbe_detailed_proxies', True) and
                    any(is_decal(o) and not o.hide_viewport and not o.hide_render
-                       for o in scene.objects))
+                       for o in scene.collection.all_objects))
         for area in window.screen.areas:
             if area.type != 'VIEW_3D':
                 continue
@@ -631,7 +648,7 @@ def solid_references(force_disable=False):
                     space.shading.color_type = previous
                     area.tag_redraw()
         if enabled:
-            for obj in scene.objects:
+            for obj in scene.collection.all_objects:
                 if obj.type == 'MESH' and obj.get('ObjectID'):
                     for mat in obj.data.materials:
                         if mat and mat.use_nodes:

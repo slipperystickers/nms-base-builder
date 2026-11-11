@@ -351,11 +351,15 @@ class BBE_PT_stage(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         s = context.scene.bbe_stage
+        from .save_editor.function_help import corner_help
+        header = layout.row(align=True)
         if hd_library.scenes_root() is None:
-            layout.label(text='Scenes and effects are included with HD proxies.')
+            header.label(text='Scenes and effects are included with HD proxies.')
+            corner_help(header, 'LIGHTING')
             layout.operator('bbe.hd_library', text='Download & Enable HD', **icons.ui_icon('IMPORT'))
             return
-        layout.prop(s,'enabled',toggle=True,**icons.ui_icon('SHADING_RENDERED'))
+        header.prop(s,'enabled',toggle=True,**icons.ui_icon('SHADING_RENDERED'))
+        corner_help(header, 'LIGHTING')
         if not s.enabled:
             return
         layout.prop(s,'environment',text='')

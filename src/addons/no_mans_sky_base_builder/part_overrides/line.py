@@ -17,6 +17,8 @@ class Line(part.Part):
 
         # Only create if a bpy object was not specified.
         if not bpy_object:
+            from .. import cable_connections
+            cable_connections.organize(self.object, with_endpoints=False)
             # if self.build_rigs:
             # self.build_rig()
 
@@ -110,7 +112,7 @@ class Line(part.Part):
             cable_connections.prepare_control(start, self.object_id)
             cable_connections.prepare_control(end, self.object_id)
             cable_connections.style(self.object)
-            cable_connections.organize(self.object)
+        cable_connections.organize(self.object)
         from .. import wire_selection
         wire_selection.invalidate()
 

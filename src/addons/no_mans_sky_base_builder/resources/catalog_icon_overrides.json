@@ -109,8 +109,8 @@
       "kind": "native-model-render",
       "reason": "Game icon has a red X and shows an obsolete model",
       "renderRoot": "B_GEN_5",
-      "sourceModelSha256": "1a80ce250a4aa4a04303d9be4bd26d1bc749c2adf985249b3f479082cda34e55",
-      "pngSha256": "be080987c9374d3572a20c1307505409042745716a6eb6e4d0f3e2949d54c077",
+      "sourceModelSha256": "37ec5652533a37999f8345884228b539374589597eea5db3d59ba9420f9d8238",
+      "pngSha256": "962249b567809bf617939f8f059e775ed4837769c452b6d2b67e14214061aff1",
       "size": [
         512,
         512
@@ -120,14 +120,15 @@
         0.5246373414993286,
         -0.7264209389686584,
         0.4439239203929901
-      ]
+      ],
+      "paletteIndex": 100
     },
     "B_TUR_F": {
       "kind": "native-model-render",
       "reason": "Game icon shows an obsolete model",
       "renderRoot": "B_TUR_F",
-      "sourceModelSha256": "a3eee7ab25e4cfc89e6a7b357318de1fd48c252817debad5be6c71f954edc926",
-      "pngSha256": "5f7a2e1470bc0693cf9320b3b9aa8fbb8737b5187abacc8baec1e92014faff5f",
+      "sourceModelSha256": "ba66254657cb86aadb8fe943fe518d1a2a0f1fcddf97b505a6efba5b1fffef8d",
+      "pngSha256": "85392d34cf24cddf11c0e64dc50185d4cbfe257aa73d4d03756470c011211c6a",
       "size": [
         512,
         512
@@ -137,7 +138,8 @@
         0.5246373414993286,
         -0.7264209389686584,
         0.4439239203929901
-      ]
+      ],
+      "paletteIndex": 101
     },
     "B_STR_AH_NETB": {
       "kind": "native-model-render",

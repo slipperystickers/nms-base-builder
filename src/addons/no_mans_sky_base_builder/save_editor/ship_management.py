@@ -480,17 +480,15 @@ class BBE_PG_ship_keep(bpy.types.PropertyGroup):
 
 class BBE_UL_ship_keep(bpy.types.UIList):
     def draw_item(self,context,layout,data,item,icon,active_data,active_propname,index):
-        layout.prop(item,'keep',text=f'{item.context_name} | {item.name}')
-
-
-class BBE_PG_ship_copy(bpy.types.PropertyGroup):
-    entries:bpy.props.CollectionProperty(type=BBE_PG_ship_keep)
-    active:bpy.props.IntProperty()
+        context_label = 'Expedition' if item.context_name == 'Season' else 'Main'
+        layout.prop(item, 'keep', text=f'{context_label} | {item.name}')
 
 
 class BBE_OT_ship_duplicate(Dialog,bpy.types.Operator):
-    bl_idname='bbe.ship_duplicate';bl_label='Duplicate Save and Clear Builds'
+    bl_idname='bbe.ship_duplicate';bl_label='Duplicate Save'
     bl_description='Create a new save slot from this save, keeping selected ships and builds'
+    entries: bpy.props.CollectionProperty(type=BBE_PG_ship_keep, options={'SKIP_SAVE', 'HIDDEN'})
+    active: bpy.props.IntProperty(options={'SKIP_SAVE', 'HIDDEN'})
     save_name:bpy.props.StringProperty(name='New save name',default='Builder Save',maxlen=100)
     slot:bpy.props.IntProperty(name='Empty save slot',min=1,max=15,default=9)
     @classmethod
@@ -503,27 +501,41 @@ class BBE_OT_ship_duplicate(Dialog,bpy.types.Operator):
             links=list(dict.fromkeys(p for p in slot['saves'] if p and Path(p).exists()))
             if not links:raise ValueError('Select a save slot containing game save files')
             self._root,self._hashes,self._source=ship_files.read(links)
-            for ctx in core.contexts(self._root):core.validate_links(self._root,ctx)
+            contexts = core.contexts(self._root)
+            if not contexts:
+                raise ValueError('No supported player context found in this save')
+            for ctx in contexts:
+                core.validate_links(self._root, ctx)
             self._empty=ship_files.empty_slots(self._source.parent)
             if not self._empty:raise ValueError('No empty game save slots')
             self.slot=self._empty[0]
-            entries=context.window_manager.bbe_ship_copy.entries;entries.clear()
-            for ctx in core.contexts(self._root):
+            self.entries.clear()
+            self.active = 0
+            for ctx in contexts:
+                default_ship = core.default_keep(self._root, ctx)
                 for i,ship in enumerate(core.ships(self._root,ctx)):
                     if not core.occupied(ship):continue
-                    row=entries.add();row.context_name=ctx;row.index=i;row.ship=True;row.keep=i==core.default_keep(self._root,ctx)
-                    row.name='Ship '+str(i+1)+': '+(core.get(ship,'Name') or 'Unnamed')
+                    row = self.entries.add()
+                    row.context_name = ctx
+                    row.index = i
+                    row.ship = True
+                    row.keep = i == default_ship
+                    label = 'Corvette' if core.corvette(ship) else 'Ship'
+                    row.name = f"{label} {i+1}: {core.get(ship,'Name') or 'Unnamed'}"
                 for i,base in enumerate(core.get(core.player(self._root,ctx),'PersistentPlayerBases',[])):
                     if core.kind(base)=='PlayerShipBase':continue
-                    row=entries.add();row.context_name=ctx;row.index=i;row.ship=False
-                    row.name=(core.get(base,'Name') or core.kind(base) or 'Unnamed build')+f" ({len(core.get(base,'Objects',[]))} parts)"
-            return context.window_manager.invoke_props_dialog(self,width=650)
+                    row = self.entries.add()
+                    row.context_name = ctx
+                    row.index = i
+                    name = core.get(base, 'Name') or core.kind(base) or 'Unnamed build'
+                    row.name = f"Base {i+1}: {name} ({len(core.get(base, 'Objects', []))} parts)"
+            return context.window_manager.invoke_props_dialog(self,width=650,confirm_text='Create Copy')
         except Exception as exc:return self.fail(exc)
     def draw(self,context):
-        l=self.layout;st=context.window_manager.bbe_ship_copy
+        l=self.layout
         l.prop(self,'save_name');l.prop(self,'slot');l.label(text='Empty slots: '+', '.join(map(str,self._empty)))
-        l.label(text='Keep checked ships/builds. Each populated context needs one ship.')
-        l.template_list('BBE_UL_ship_keep','',st,'entries',st,'active',rows=12)
+        l.label(text='Check the bases and ships to keep. Each populated context needs one ship.')
+        l.template_list('BBE_UL_ship_keep','',self.properties,'entries',self.properties,'active',rows=12)
         l.label(text='A retained Corvette also retains its linked build.')
         l.label(text='Uses the selected saved source, excluding unsaved Ship Management edits.')
         l.label(text='Creates a NEW save slot. The source save is kept intact.')
@@ -531,7 +543,7 @@ class BBE_OT_ship_duplicate(Dialog,bpy.types.Operator):
         try:
             if self.slot not in self._empty:raise ValueError('Choose one of the empty slots listed')
             ships={};bases={}
-            for row in context.window_manager.bbe_ship_copy.entries:
+            for row in self.entries:
                 if row.keep:(ships if row.ship else bases).setdefault(row.context_name,[]).append(row.index)
             root=core.clean_copy(self._root,self.save_name,ships,bases)
             ship_files.commit(root,ship_files.slot_paths(self._source.parent,self.slot),self._hashes,source=self._source,name=self.save_name,create=True)
@@ -991,12 +1003,11 @@ class BBE_OT_ship_management(bpy.types.Operator):
             SESSION=None;report_error(self, {'ERROR'},str(exc));return {'CANCELLED'}
 
 
-CLASSES=(BBE_PG_ship_catalog_item,BBE_PG_ship_catalog,BBE_UL_ship_catalog,BBE_PG_ship_keep,BBE_PG_ship_copy,BBE_PG_ship_stat,BBE_OT_ship_class,BBE_OT_ship_stats,BBE_OT_ship_add,BBE_OT_ship_item,BBE_OT_ship_insert,BBE_OT_ship_replace_file,BBE_OT_ship_replace_review,BBE_OT_ship_save,BBE_OT_ship_link_status,BBE_OT_ship_duplicate,BBE_OT_ship_move_hyperslot,BBE_OT_ship_discard,BBE_OT_ship_lost,BBE_OT_ship_management_window,BBE_OT_ship_management)
+CLASSES=(BBE_PG_ship_catalog_item,BBE_PG_ship_catalog,BBE_UL_ship_catalog,BBE_PG_ship_keep,BBE_UL_ship_keep,BBE_PG_ship_stat,BBE_OT_ship_class,BBE_OT_ship_stats,BBE_OT_ship_add,BBE_OT_ship_item,BBE_OT_ship_insert,BBE_OT_ship_replace_file,BBE_OT_ship_replace_review,BBE_OT_ship_save,BBE_OT_ship_link_status,BBE_OT_ship_duplicate,BBE_OT_ship_move_hyperslot,BBE_OT_ship_discard,BBE_OT_ship_lost,BBE_OT_ship_management_window,BBE_OT_ship_management)
 
 def register():
     for cls in CLASSES:bpy.utils.register_class(cls)
     bpy.types.WindowManager.bbe_ship_catalog=bpy.props.PointerProperty(type=BBE_PG_ship_catalog)
-    bpy.types.WindowManager.bbe_ship_copy=bpy.props.PointerProperty(type=BBE_PG_ship_copy)
     bpy.app.handlers.load_post.append(repair_after_load)
     bpy.app.timers.register(repair_orphaned_preview_windows, first_interval=.1)
 
@@ -1008,6 +1019,5 @@ def unregister():
         bpy.app.handlers.load_post.remove(repair_after_load)
     if bpy.app.timers.is_registered(repair_orphaned_preview_windows):
         bpy.app.timers.unregister(repair_orphaned_preview_windows)
-    for p in ('bbe_ship_catalog','bbe_ship_copy'):
-        if hasattr(bpy.types.WindowManager,p):delattr(bpy.types.WindowManager,p)
+    del bpy.types.WindowManager.bbe_ship_catalog
     for cls in reversed(CLASSES):bpy.utils.unregister_class(cls)

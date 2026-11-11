@@ -134,7 +134,11 @@ def display_waste(obj, style):
             from . import builder_v2
             detailed = builder_v2.MESH_TAG in source
             quality = 'detailed' if detailed else 'simple'
-            path = Path(__file__).parent / 'resources/waste_walls/waste_walls.blend'
+            from . import hd_library
+            root = hd_library.additions_root(allow_previous=False) if detailed else Path(__file__).parent / 'resources'
+            if root is None:
+                return
+            path = root / 'waste_walls' / (quality + '.blend')
             with bpy.data.libraries.load(str(path), link=False) as (_, dst):
                 dst.meshes = [f'BBE Waste Wall {style} {quality}']
             mesh = dst.meshes[0]

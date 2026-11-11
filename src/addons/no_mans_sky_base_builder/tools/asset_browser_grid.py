@@ -371,7 +371,9 @@ class BBE_OT_asset_grid(bpy.types.Operator):
     def show_options(self, context, tile):
         object_id, data = tile[4:]
         def menu(menu, _context):
+            from ..save_editor.function_help import corner_help
             layout = menu.layout
+            corner_help(layout, 'ASSETS')
             op = layout.operator('object.nms_asset_browser_object_selected',
                                  text='Place Reference' if data.get('is_reference') else 'Place Part', icon='ADD')
             op.object_id, op.is_preset = object_id, bool(data.get('is_preset'))

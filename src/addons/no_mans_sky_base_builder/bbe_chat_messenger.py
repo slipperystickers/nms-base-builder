@@ -378,6 +378,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self.options_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         menu = QtWidgets.QMenu(self.options_button)
         menu.addAction('Chat & account settings...', self.show_account_settings)
+        menu.addAction('How to use BBE Chat', self.show_chat_help)
         menu.addSeparator()
         self.mini_action = menu.addAction('Mini mode')
         self.mini_action.setCheckable(True)
@@ -407,6 +408,12 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         menu.addAction('Close Messenger', self.close)
         self.options_button.setMenu(menu)
         header.addWidget(self.options_button)
+        help_button = QtWidgets.QToolButton()
+        help_button.setText('?')
+        help_button.setToolTip('How to use BBE Chat')
+        help_button.setAccessibleName('How to use BBE Chat')
+        help_button.clicked.connect(self.show_chat_help)
+        header.addWidget(help_button)
         self.header_extras = []
         mini_button = QtWidgets.QPushButton('Mini')
         mini_button.setToolTip('Show only messages and the message field')
@@ -683,6 +690,10 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self.chat_enabled_toggle.blockSignals(True)
         self.chat_enabled_toggle.setChecked(bool(enabled))
         self.chat_enabled_toggle.blockSignals(False)
+
+    def show_chat_help(self):
+        message = '\n\n'.join(heading + '\n' + body for heading, body in chat_state.CHAT_HELP)
+        QtWidgets.QMessageBox.information(self, 'How to use BBE Chat', message)
 
     def show_account_settings(self):
         if self.account_dialog and self.account_dialog.isVisible():

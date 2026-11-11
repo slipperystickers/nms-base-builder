@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 import bpy
 from mathutils import Matrix
-from . import corvette_snapping as snapping, undo_guard
+from . import corvette_snapping as snapping, hd_library, undo_guard
 from .utils import materials_v2
 
 SOURCE='bbe_magnetic_free_mesh'
@@ -22,7 +22,10 @@ def variant_mesh(variant,detailed):
                and m.get('bbe_magnetic_quality')==quality
                and m.get(REVISION_KEY)==REVISION and not m.get(MOUNT)),None)
     if mesh is None:
-        path=Path(__file__).parent/'resources/magnetic_mounts'/(variant+'_'+quality+'.blend')
+        root = hd_library.additions_root(allow_previous=False) if detailed else Path(__file__).parent / 'resources'
+        if root is None:
+            return None
+        path = root / 'magnetic_mounts' / (variant+'_'+quality+'.blend')
         with bpy.data.libraries.load(str(path),link=False) as (a,b):b.meshes=[name]
         mesh=b.meshes[0]
     return mesh
@@ -115,7 +118,10 @@ def refresh(obj,mount):
     token=str(REVISION)+':'+variant+':'+','.join(str(round(v,4)) for row in frame for v in row)
     mesh=next((m for m in bpy.data.meshes if m.get(MOUNT)==token and m.get(SOURCE)==source),None)
     if mesh is None:
-        mesh=(source if variant=='DOUBLE' else variant_mesh(variant,detailed)).copy()
+        template = source if variant == 'DOUBLE' else variant_mesh(variant, detailed)
+        if template is None:
+            return
+        mesh = template.copy()
         mesh.name='BBE Mounted '+obj['ObjectID']+' '+variant
         if not detailed and not mesh.materials:
             for material in source.materials:

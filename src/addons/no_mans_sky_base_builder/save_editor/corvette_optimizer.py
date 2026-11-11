@@ -1,12 +1,14 @@
 """Corvette priority editor and explicit optimized export for both Save Manager views."""
 from ..furby_errors import report_error
 import json
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 import bpy
 from bpy.app.handlers import persistent
 from .. import icons
 from .. import progress_ui
+from ..utils import dictionary
 from . import optimizer_core as core, optimizer_export
 from .save_editor_utils import BaseType
 
@@ -250,6 +252,46 @@ class BBE_OT_optimizer_move(bpy.types.Operator):
         return {'FINISHED'}
 
 
+@lru_cache(maxsize=1)
+def part_library():
+    # Blender borrows the enum strings, so keep them alive across search redraws.
+    names = dictionary.get_nice_names_diictionary()
+    return tuple((pid, f'{name} ({pid})', pid) for pid, name in
+                 sorted(names.items(), key=lambda item: (item[1].casefold(), item[0])))
+
+
+def library_items(self, context):
+    return part_library()
+
+
+class BBE_OT_optimizer_choose_part(bpy.types.Operator):
+    bl_idname = 'bbe.optimizer_choose_part'
+    bl_label = 'Add Library Part'
+    bl_description = 'Find a part by name or Object ID and add it to the selected priority category'
+    bl_property = 'part_id'
+    part_id: bpy.props.EnumProperty(name='Part', items=library_items)
+
+    def invoke(self, context, event):
+        if not context.window_manager.bbe_optimizer.groups:
+            self.report({'WARNING'}, 'Add a category first')
+            return {'CANCELLED'}
+        context.window_manager.invoke_search_popup(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        state = context.window_manager.bbe_optimizer
+        if not state.groups:
+            return {'CANCELLED'}
+        for gi, group in enumerate(state.groups):
+            for pi, part in enumerate(group.parts):
+                if part.part_id == self.part_id:
+                    state.active_group = gi
+                    group.active_part = pi
+                    self.report({'INFO'}, f'{self.part_id} is already in {group.name}')
+                    return {'FINISHED'}
+        return bpy.ops.bbe.optimizer_edit(action='ADD_PART', value=self.part_id)
+
+
 class BBE_OT_optimizer_edit(bpy.types.Operator):
     bl_idname = 'bbe.optimizer_edit'
     bl_label = 'Edit Priority List'
@@ -271,10 +313,10 @@ class BBE_OT_optimizer_edit(bpy.types.Operator):
         if self.action.startswith('REMOVE'):
             self.layout.label(text='Remove the selected entry from priority settings?')
             self.layout.label(text='Its ship objects will be kept as unlisted parts.')
+        elif self.action == 'ADD_PART':
+            self.layout.prop(self, 'value', text='Object ID')
         else:
-            self.layout.prop(self, 'value', text='Part ID' if self.action == 'ADD_PART' else 'Category')
-            if self.action == 'ADD_PART':
-                self.layout.label(text='Enter the Object ID shown on a selected Blender part.')
+            self.layout.prop(self, 'value', text='Category')
 
     def execute(self, context):
         state = context.window_manager.bbe_optimizer
@@ -292,7 +334,11 @@ class BBE_OT_optimizer_edit(bpy.types.Operator):
                 config['groups'].pop(gi)
                 gi = max(0, gi - 1)
             elif self.action == 'ADD_PART':
-                config['groups'][gi]['parts'].append(self.value)
+                pid = self.value.strip().lstrip('^').upper()
+                previous = next((group for group in config['groups'] if pid in group['parts']), None)
+                if previous:
+                    raise ValueError(f"{pid} is already in {previous['name']}")
+                config['groups'][gi]['parts'].append(pid)
             elif self.action == 'REMOVE_PART':
                 parts = config['groups'][gi]['parts']
                 if parts:
@@ -303,6 +349,8 @@ class BBE_OT_optimizer_edit(bpy.types.Operator):
             return {'CANCELLED'}
         populate(state, config)
         state.active_group = min(gi, max(0, len(state.groups) - 1))
+        if self.action == 'ADD_PART':
+            state.groups[gi].active_part = len(state.groups[gi].parts) - 1
         return {'FINISHED'}
 
 
@@ -355,7 +403,11 @@ class BBE_OT_optimizer_settings(bpy.types.Operator):
                 op.direction = direction
             edits = column.row(align=True)
             edits.operator_context = 'INVOKE_DEFAULT'
-            edits.operator('bbe.optimizer_edit', text='Add', **icons.ui_icon('ADD')).action = 'ADD_GROUP' if is_group else 'ADD_PART'
+            if is_group:
+                edits.operator('bbe.optimizer_edit', text='Add', **icons.ui_icon('ADD')).action = 'ADD_GROUP'
+            else:
+                edits.operator('bbe.optimizer_choose_part', text='Add Part', **icons.ui_icon('ADD'))
+                edits.operator('bbe.optimizer_edit', text='By ID...').action = 'ADD_PART'
             edits.operator('bbe.optimizer_edit', text='Remove', **icons.ui_icon('REMOVE')).action = 'REMOVE_GROUP' if is_group else 'REMOVE_PART'
             if is_group:
                 column.operator('bbe.optimizer_edit', text='Rename Category').action = 'RENAME_GROUP'
@@ -408,23 +460,27 @@ def prepare(context, pinned, progress=None):
     from .. import BUILDER
     ordered, counts = core.optimize(objects, config, name_for_part=BUILDER.get_nice_name)
     name = context.scene.nms_base_tool.string_base.strip() or None
-    from ..build_metadata import save_owner
-    owner_override = save_owner(context.scene.nms_base_tool)
-    signature = core.fingerprint([owner_override, objects, config, links, identifier.base_index,
-                                  identifier.base_name, identifier.base_type,
-                                  identifier.user_data, identifier.galactic_address, getattr(identifier, 'save_context', None), name])
+    signature = ''
+    if pinned:
+        from ..build_metadata import save_owner
+        signature = core.fingerprint([save_owner(context.scene.nms_base_tool), objects, config, links,
+                                      identifier.base_index, identifier.base_name, identifier.base_type,
+                                      identifier.user_data, identifier.galactic_address,
+                                      getattr(identifier, 'save_context', None), name])
     return identifier, links, name, ordered, counts, signature
 
 
 class BBE_OT_optimizer_export(bpy.types.Operator):
     bl_idname = 'bbe.optimizer_export'
     bl_label = 'Optimize & Export to Save'
-    bl_description = 'Export this scene to the selected Corvette using saved priorities and optional exact duplicate removal, with verified backups'
+    bl_description = 'Back up the save and immediately write the optimized scene to the selected Corvette. Choose a destination if no Corvette is selected'
     pinned: bpy.props.BoolProperty(default=False, options={'HIDDEN'})
     expected_signature: bpy.props.StringProperty(default='', options={'HIDDEN'})
 
     def invoke(self, context, event):
         if not self.pinned:
+            if context.scene.nms_save_data.has_selected_base():
+                return self.execute(context)
             return bpy.ops.bbe.corvette_export('INVOKE_DEFAULT', optimized=True)
         try:
             with progress_ui.Activity('Preparing optimized export') as progress:
@@ -490,7 +546,11 @@ class BBE_OT_optimizer_export(bpy.types.Operator):
             self.report({'INFO'}, 'Optimized export is starting')
             return {'FINISHED'}
 
+        from . import corvette_actions, ship_management, ship_repair
+        manager = context.scene.nms_save_data
         try:
+            if not self.pinned and ship_management.SESSION is not None:
+                raise ValueError('Finish or discard the open Ship Management draft before exporting.')
             with progress_ui.Activity('Optimizing and exporting') as progress:
                 progress.update(.02, 'Collecting and ordering scene parts')
                 current = prepare(context, self.pinned, progress)
@@ -499,13 +559,21 @@ class BBE_OT_optimizer_export(bpy.types.Operator):
                 if expected and current[-1] != expected:
                     raise ValueError('Scene, settings or destination changed. Review the export again.')
                 identifier, links, name, ordered, counts, signature = current
+                ship_repair.validate_parts(ordered)
                 progress.update(.15, 'Optimization complete')
                 from ..build_metadata import save_owner
                 backups = optimizer_export.export(ordered, identifier, links, name,
-                                                  progress=progress, owner_override=save_owner(context.scene.nms_base_tool))
+                                                  progress=progress, owner_override=save_owner(context.scene.nms_base_tool),
+                                                  selected_source=None if self.pinned else manager.extracted_base_data)
                 progress.update(.98, 'Refreshing save list')
                 try:
-                    context.scene.nms_save_data.refresh_bases_list()
+                    if self.pinned:
+                        manager.refresh_bases_list()
+                    else:
+                        corvette_actions.remember_ship_source(context.scene, links, identifier.save_context,
+                                                              identifier.user_data, name or identifier.base_name)
+                        corvette_actions.refresh_selection({'scene': context.scene}, identifier.save_context,
+                                                          identifier.user_data)
                 except Exception as exc:
                     self.report({'WARNING'}, f'Saved, but the save list could not refresh: {exc}')
                 progress.update(1.0, 'Export complete')
@@ -514,7 +582,7 @@ class BBE_OT_optimizer_export(bpy.types.Operator):
             return {'CANCELLED'}
         from .ship_repair import cockpit_warning
         warning = cockpit_warning(ordered)
-        self.report({'WARNING'} if warning else {'INFO'}, f"Exported {counts['after']} objects; removed {counts['removed']} exact duplicates; {len(backups)} backups created" + (' — ' + warning if warning else ''))
+        self.report({'WARNING'} if warning else {'INFO'}, f"Saved {name or identifier.base_name} in ship slot {identifier.user_data + 1} ({counts['after']} parts, {len(backups)} files backed up)" + (' — ' + warning if warning else ''))
         return {'FINISHED'}
 
 
@@ -534,7 +602,7 @@ def draw_cockpit_controls(layout):
 
 CLASSES = (BBE_PG_optimizer_part, BBE_PG_optimizer_group, BBE_PG_optimizer_settings,
            BBE_UL_optimizer_groups, BBE_UL_optimizer_parts, BBE_OT_optimizer_move,
-           BBE_OT_optimizer_edit, BBE_OT_optimizer_reset, BBE_OT_swap_corvette_cockpits,
+           BBE_OT_optimizer_edit, BBE_OT_optimizer_choose_part, BBE_OT_optimizer_reset, BBE_OT_swap_corvette_cockpits,
            BBE_OT_optimizer_settings, BBE_OT_optimizer_export)
 
 

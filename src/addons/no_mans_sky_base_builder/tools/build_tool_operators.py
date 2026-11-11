@@ -12,6 +12,19 @@ BUILDER = Builder()
 
 from mathutils import Vector
 
+class BBE_OT_toggle_auto_snap(bpy.types.Operator):
+    bl_idname = 'bbe.toggle_auto_snap'
+    bl_label = 'Auto-Snap'
+    bl_description = 'Toggle automatic snap placement for parts added from the Asset Browser'
+
+    def execute(self, context):
+        from ..utils.asset_browser_utils import toggle_auto_snap
+        if not toggle_auto_snap():
+            self.report({'WARNING'}, 'Could not save the Auto-Snap setting.')
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class MirrorAcrossX(bpy.types.Operator):
     """Mirror the object along the X axis."""
 
@@ -172,7 +185,7 @@ class Delete(bpy.types.Operator):
 
 class DuplicateAlongCurve(bpy.types.Operator):
     
-    """Select two objects, one of them must be a curve and other an object. """
+    """Repeat the selected parts together along one guide curve."""
 
     bl_idname = "object.nms_duplicate_along_curve"
     bl_label = "Duplicate Along Curve"
@@ -210,19 +223,12 @@ class DuplicateAlongCurve(bpy.types.Operator):
         wm = context.window_manager
         selected_objects = bpy.context.selected_objects
 
-        # make sure that there are only two objects selected
-        # One must be curve, other must be an object for duplication
-        if len(selected_objects) != 2:
+        guide, seeds = curve.duplication_selection(selected_objects)
+        if not seeds:
             curve.show_duplicate_selection_help(context)
             return {"CANCELLED"}
-        
-        #Make sure that there is only one curve in selection
-        curve_objs = [obj for obj in selected_objects if curve.is_bezier_or_nurbs_path(obj)]
-        if len(curve_objs) != 1:
-            curve.show_duplicate_selection_help(context)
-            return {"CANCELLED"}
-        
-        if "has_linked_objects" in curve_objs[0]:
+
+        if guide.get("has_linked_objects"):
             return self.execute(context)
         else :
             return wm.invoke_props_dialog(self)
@@ -297,6 +303,8 @@ class CurveBreakApart(bpy.types.Operator):
                     print(error_message)
                     
         blend_utils.select(unlinked_objects)
+        from ..curve_studio import restore_if_left
+        restore_if_left(context.scene)
         self.report({'INFO'}, f"Created {detached_count} objects")
         return {"FINISHED"}
     
@@ -309,12 +317,15 @@ class CurveDelete(bpy.types.Operator):
     bl_options = {"UNDO", "REGISTER"}
 
     def execute(self, context):
-        active_object = bpy.context.active_object
+        from ..curve_tools import active_curve
         try:
-            deleted_count = curve.delete_curve_and_children(active_object)
+            deleted_count = curve.delete_curve_and_children(active_curve(context))
+            from ..curve_studio import restore_if_left
+            restore_if_left(context.scene)
             self.report({'INFO'}, f"Deleted curve and {deleted_count} objects linked to it")
         except TypeError as error_message:
             report_error(self,{'ERROR'}, str(error_message))
+            return {'CANCELLED'}
         return {"FINISHED"}
 
 class SelectObjectParentCurve(bpy.types.Operator):
@@ -381,6 +392,7 @@ class ShowCurveToolInfo(bpy.types.Operator):
 
     
 classes = (
+    BBE_OT_toggle_auto_snap,
     MirrorAcrossX,
     MirrorAcrossY,
     MirrorAcrossZ,

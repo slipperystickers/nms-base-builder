@@ -285,7 +285,10 @@ class VIEW3D_PT_bbe_themes(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         layout.operator_context = 'INVOKE_DEFAULT'
-        layout.operator('bbe.custom_theme', text='Customize Colors & Gradients...', icon='PREFERENCES')
+        from .save_editor.function_help import corner_help
+        heading = layout.row(align=True)
+        heading.operator('bbe.custom_theme', text='Customize Colors & Gradients...', icon='PREFERENCES')
+        corner_help(heading, 'THEMES')
         presets = custom_themes()
         if presets:
             layout.label(text='My themes')

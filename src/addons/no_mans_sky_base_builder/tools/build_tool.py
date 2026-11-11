@@ -323,20 +323,19 @@ class BuildTool(bpy.types.PropertyGroup):
         bpy.context.view_layer.update()
         selected_objects = bpy.context.selected_objects
 
-        if (len(selected_objects) != 2 or
-                sum(curve.is_bezier_or_nurbs_path(obj) for obj in selected_objects) != 1):
+        curve_object, seeds = curve.duplication_selection(selected_objects)
+        if not seeds:
             curve.show_duplicate_selection_help(bpy.context)
             return {"CANCELLED"}
-        
+        if len(seeds) == 1:
+            dup_object = seeds[0]
+        else:
+            active = bpy.context.active_object
+            pivot = active.matrix_world if active in seeds else None
+            dup_object = Group.group_objects(seeds, pivot, flatten_groups=True)
+            if dup_object is None:
+                return {"CANCELLED"}
 
-        # Figure out selection.
-        if curve.is_bezier_or_nurbs_path(selected_objects[0]):
-            curve_object = selected_objects[0]
-            dup_object = selected_objects[1]
-        elif curve.is_bezier_or_nurbs_path(selected_objects[1]):
-            curve_object = selected_objects[1]
-            dup_object = selected_objects[0]
-        
         from ..curve_studio import prepare_frame
         if not curve_object.get("has_linked_objects"):
             prepare_frame(curve_object)
@@ -382,15 +381,18 @@ class BuildTool(bpy.types.PropertyGroup):
                 message="Select an item to delete from the scene.", title="Delete"
             )
             return
+        # Removing a guide can also remove selected followers.
+        names = [obj.name for obj in selected_objects]
         deleted_count = 0
-        for item in selected_objects:
-            if item:
-                if "CurveID" in item:
-                    curve.delete_curve_and_children(item)
-                else:
-                    blend_utils.delete(item)
-                deleted_count += 1
-                
+        for name in names:
+            item = bpy.context.scene.objects.get(name)
+            if item is None:
+                continue
+            if curve.is_bezier_or_nurbs_path(item):
+                deleted_count += curve.delete_curve_and_children(item)
+            else:
+                blend_utils.delete(item)
+            deleted_count += 1
         return deleted_count
 
     def duplicate(self):
@@ -501,11 +503,10 @@ class BuildTool(bpy.types.PropertyGroup):
                 prev_target=prev_target,
             )
             if snapped is not False:
-                if len(selected_objects) == 2 and not any((next_source, prev_source, next_target, prev_target)):
+                source.select()
+                if (len(selected_objects) == 2 and hasattr(source, 'object') and hasattr(target, 'object')
+                        and not any((next_source, prev_source, next_target, prev_target))):
                     from .. import snap_markers
-                    source.object.select_set(True)
-                    target.object.select_set(True)
-                    bpy.context.view_layer.objects.active = target.object
                     snap_markers.start(bpy.context, source.object, target.object)
                 return {"FINISHED"}
         ShowMessageBox(
@@ -515,14 +516,5 @@ class BuildTool(bpy.types.PropertyGroup):
         return {"CANCELLED"}
         
     def get_part_count(self):
-        parts_count = 0
-        # Iterate through all objects and count parts
-        for obj in bpy.context.scene.objects:
-            # count 1 if object has perperty "ObjectID"
-            if "ObjectID" in obj:
-                parts_count += 1
-                
-            # size of a group is stored in its "part_count" property
-            if "GroupID" in obj:
-                parts_count += obj.get("part_count", 0)
-        return parts_count
+        from .. import part_counts
+        return part_counts.count(self.id_data)

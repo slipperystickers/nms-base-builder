@@ -56,7 +56,7 @@ def overwrite_warning(op):
 
 def snapshot(context):
     if ship_management.SESSION is not None:
-        raise ValueError('Finish or discard the Ship Management draft before exporting or repairing from I/O.')
+        raise ValueError('Finish or discard the Ship Management draft before editing a save from I/O.')
     data = context.scene.nms_save_data
     slot = data.get_current_slot_data()
     if not slot:
@@ -66,7 +66,7 @@ def snapshot(context):
     cache = data.extracted_base_data
     if str(source) != cache.get('source_path') or hashes[str(source)] != cache.get('source_hash'):
         raise ValueError('The save changed. Refresh the save list before continuing.')
-    return dict(root=root, hashes=hashes, links=links, scene=context.scene, expected=io.cache_key(data))
+    return dict(root=root, source=str(source), hashes=hashes, links=links, scene=context.scene, expected=io.cache_key(data))
 
 
 def check_snapshot(s, context):
@@ -301,6 +301,97 @@ def slot_items(self, context):
     return _dialogs.get(self.dialog_key, {}).get('slots', {}).get((self.context_name, self.destination), _NO_SLOTS)
 
 
+def minimal_slot_items(self, context):
+    return _dialogs.get(self.dialog_key, {}).get('minimal_slots', _NO_SLOTS)
+
+
+class BBE_OT_io_add_minimal_corvette(bpy.types.Operator):
+    bl_idname = 'bbe.io_add_minimal_corvette'
+    bl_label = 'Add Minimal Corvette'
+    bl_description = 'Create an S-class starter Corvette in an empty ship slot and select it in I/O'
+    dialog_key: bpy.props.StringProperty(options={'HIDDEN'})
+    slot: bpy.props.EnumProperty(name='Empty ship slot', items=minimal_slot_items)
+    ship_name: bpy.props.StringProperty(name='Ship name', default='New Corvette', maxlen=80)
+
+    @classmethod
+    def poll(cls, context):
+        data = context.scene.nms_save_data
+        return data.nms_base_type == 'PlayerShipBase' and data.is_base_data_loaded()
+
+    def invoke(self, context, event):
+        try:
+            self._snapshot = snapshot(context)
+            state = self._snapshot
+            self._roots = {}
+            for path in state['links']:
+                if path == state['source']:
+                    self._roots[path] = state['root']
+                else:
+                    save = ship_files.SaveFile(path)
+                    self._roots[path] = save.load()
+                    if save.source_hash != state['hashes'][path]:
+                        raise ValueError('The save changed. Refresh the save list before continuing.')
+
+            selected = context.scene.nms_save_data.get_current_base_identifiers()
+            preferred = selected.save_context if selected else core.get(state['root'], 'ActiveContext')
+            choices = []
+            problems = []
+            for ctx in sorted(core.contexts(state['root']), key=lambda ctx: ctx != preferred):
+                if not all(ctx in core.contexts(root) for root in self._roots.values()):
+                    continue
+                available = set(range(12))
+                try:
+                    for root in self._roots.values():
+                        core.validate_links(root, ctx)
+                        available.intersection_update(repair.empty_ship_slots(root, ctx))
+                except ValueError as exc:
+                    problems.append(str(exc))
+                    continue
+                title = 'Expedition' if ctx == 'Season' else ctx
+                choices.extend((f'{ctx}:{i}', f'{title} / Slot {i + 1}', '') for i in sorted(available))
+            if not choices:
+                raise ValueError(' '.join(problems) or 'No ship slot is empty across the selected save points.')
+            self.dialog_key = uuid4().hex
+            _dialogs[self.dialog_key] = {'minimal_slots': choices}
+            self.slot = choices[0][0]
+            return context.window_manager.invoke_props_dialog(self, width=360, confirm_text='Add Corvette')
+        except Exception as exc:
+            self.cancel(context)
+            report_error(self, {'ERROR'}, str(exc))
+            return {'CANCELLED'}
+
+    def draw(self, context):
+        self.layout.prop(self, 'slot')
+        self.layout.prop(self, 'ship_name')
+        self.layout.label(text='Creates an S-class starter ship in the save.')
+
+    def cancel(self, context):
+        _dialogs.pop(self.dialog_key, None)
+
+    def execute(self, context):
+        try:
+            if self.slot not in {item[0] for item in _dialogs.get(self.dialog_key, {}).get('minimal_slots', [])}:
+                raise ValueError('Reopen Add Minimal Corvette to choose an empty ship slot.')
+            check_snapshot(self._snapshot, context)
+            ctx, number = self.slot.split(':')
+            index = int(number)
+            for root in self._roots.values():
+                core.add_minimal(root, ctx, index, self.ship_name)
+            ship_files.commit_roots(self._roots, self._snapshot['hashes'])
+        except Exception as exc:
+            report_error(self, {'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        finally:
+            self.cancel(context)
+        try:
+            refresh_selection(self._snapshot, ctx, index)
+        except Exception:
+            self.report({'WARNING'}, 'Corvette saved with backups. Refresh the save list to select it.')
+        else:
+            self.report({'INFO'}, f'Added {self.ship_name.strip()} to ship slot {index + 1} with verified backups.')
+        return {'FINISHED'}
+
+
 class BBE_OT_corvette_export(bpy.types.Operator):
     bl_idname = 'bbe.corvette_export'
     bl_label = 'Export Corvette to Save'
@@ -467,7 +558,7 @@ def clear_pending(_=None):
     _dialogs.clear()
 
 
-CLASSES = (BBE_OT_corvette_commit, BBE_OT_corvette_repair_keep, BBE_OT_corvette_export)
+CLASSES = (BBE_OT_corvette_commit, BBE_OT_corvette_repair_keep, BBE_OT_io_add_minimal_corvette, BBE_OT_corvette_export)
 
 
 def register():

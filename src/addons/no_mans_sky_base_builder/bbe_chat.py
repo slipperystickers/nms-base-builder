@@ -459,7 +459,8 @@ def draw_native_toolbar(layout, context):
         text = '↪ ' + text
     elif unread:
         text = '● ' + text
-    row.operator('bbe.chat_open', text=text+' ▾', icon_value=_chat_icon()).view = 'TOOLBAR'
+    op = row.operator('bbe.chat_open', text=text+' ▾', icon_value=_chat_icon())
+    op.view = 'CHAT' if getattr(getattr(context, 'region', None), 'type', None) == 'UI' else 'TOOLBAR'
 
 
 def _dropdown_anchor(context, event):
@@ -877,8 +878,12 @@ class VIEW3D_PT_bbe_chat(bpy.types.Panel):
     bl_ui_units_x = 18
 
     def draw(self, context):
-        row = self.layout.row()
+        from .save_editor.function_help import corner_help
+        header = self.layout.row(align=True)
+        row = header.row(align=True)
         row.enabled = bool(getattr(bpy.app, 'online_access', False))
+        # Help is available even when the chat toggle is disabled.
+        corner_help(header, 'CHAT')
         row.operator('bbe.chat_toggle', text='Enable chat',
                      icon='CHECKBOX_HLT' if _chat_enabled else 'CHECKBOX_DEHLT', depress=_chat_enabled)
         self.layout.label(text='Your names stay reserved when chat is off.')

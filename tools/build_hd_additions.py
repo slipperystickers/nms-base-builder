@@ -17,7 +17,7 @@ def main(argv=None):
  target=ROOT/'dist/bbe-hd-additions-1.zip'
  with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
   for p in sorted(source.rglob('*')):
-   if not p.is_file() or p.suffix not in ('.blend','.png','.webp','.npz'):continue
+   if not p.is_file() or p.suffix not in ('.blend','.png','.webp','.npz','.zlib'):continue
    name=p.relative_to(source).as_posix()
    # Characters have their own optional download and manifest.
    if name.split('/',1)[0] in ('pilot_references','character_references'):continue

@@ -439,6 +439,8 @@ def build_category_tree(favourite_ids=None, nice_names=None):
             continue
 
         nice_name = dictionary.to_title_case(nice_name)
+        if object_id.startswith('B_COK_'):
+            nice_name = nice_name.replace('-Ii-', '-II-').replace('-Iii-', '-III-')
         if object_id == 'BASE_BUBPIPE_L':
             nice_name = 'Curved Bubble Duct'
 

@@ -40,7 +40,10 @@ class NMS_PT_batch_tools_panel(Panel):
         
         more_options_box =  top_row.box()
         more_options_column = more_options_box.column(align = True)
-        more_options_column.label(text = "Selection Tools",)
+        from ..save_editor.function_help import corner_help
+        heading = more_options_column.row(align=True)
+        heading.label(text = "Selection Tools",)
+        corner_help(heading, 'BATCH')
         more_options_column.operator("object.nms_select_duplicates", text = "Find Duplicates", **icons.ui_icon("BRUSH_DATA"))
         more_options_column.operator("object.nms_batch_select_random", text = "Select Random", **icons.ui_icon("MOD_NOISE"))
         more_options_column.operator("object.nms_batch_select_pattern", text = "Select Pattern", **icons.ui_icon("MOD_OCEAN"))

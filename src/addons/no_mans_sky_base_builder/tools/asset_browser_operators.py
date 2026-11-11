@@ -434,13 +434,17 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     
     
     def execute(self, context):
-        from .. import cable_connections
+        from .. import cable_connections, cable_targets
+        if (cable_targets.session(context) or {}).get('repeat'):
+            cable_targets.cancel(context)
         if self.object_id in cable_connections.KINDS and not self.is_preset:
             with placement_view(context):
                 result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=self.object_id)
             if result in ({'RUNNING_MODAL'}, {'FINISHED'}):
                 context.scene.nms_asset_browser.add_to_recents_list(self.object_id)
-                self.report({'INFO'}, 'Click two blue teleport targets.' if self.object_id == cable_connections.TELEPORT else 'Click two green electrical targets.')
+                hint = ('Click two pink sockets or points in empty space.' if self.object_id == cable_connections.BYTEBEAT
+                        else f'Click two {cable_connections.TARGET_LABELS[self.object_id].lower()} targets.')
+                self.report({'INFO'}, hint)
                 return {'FINISHED'}
             return {'CANCELLED'}
         from .. import character_references
@@ -478,12 +482,15 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
             def draw_popup(self, context):
                 layout = self.layout
                 nice_names = dictionary.get_nice_names_diictionary()
-                layout.label(text="Select Variants")
+                from ..save_editor.function_help import corner_help
+                heading = layout.row(align=True)
+                heading.label(text="Select Variants")
+                corner_help(heading, 'ASSETS')
                 variants_list = json.loads(variants)
                 for variant_obj_id in variants_list:
                     if variant_obj_id in nice_names:
                         variant_name = nice_names[variant_obj_id]
-                        button = layout.operator("object.nms_asset_browser_object_selected", text = variant_name)
+                        button = layout.operator("object.nms_asset_browser_object_selected", text=variant_name)
                         button.object_id = variant_obj_id
                         button.has_variants = False
             context.window_manager.popup_menu(draw_popup)
@@ -492,7 +499,6 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                 report_error(self,{'ERROR'}, f"Could not add {self.object_id} to scene")
                 return {'CANCELLED'}
 
-            auto_snap=asset_browser_utils.auto_snap_enabled()
             if self.object_id == 'BASE_BUBPIPE_L':
                 from .. import bubble_preview
                 try:
@@ -501,10 +507,8 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                         if selected_target is not None and not selected_target.select_get():
                             selected_target = None
                         item = bubble_preview.add_native_bend_point(
-                            BUILDER, target=selected_target if auto_snap else None,
+                            BUILDER, target=selected_target,
                             cursor=context.scene.cursor.location)
-                        if not auto_snap and selected_target is not None:
-                            item.object.matrix_world=selected_target.matrix_world.copy()
                     blend_utils.select(item.object)
                     asset_browser.add_to_recents_list(self.object_id)
                     bubble_preview._sync_joint_rotation_guard()
@@ -523,11 +527,11 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                     selected_target = bpy.context.active_object
                     if selected_target is not None and not selected_target.select_get():
                         selected_target = None
-                    if (auto_snap and self.object_id == 'BASE_BUBPIPE'
+                    if (self.object_id == 'BASE_BUBPIPE'
                             and selected_target is not None
                             and selected_target.get('ObjectID') == 'BASE_BUBPIPE_L'):
                         raise ValueError('This is an old preview-only corner. Convert the route before extending it')
-                    if (auto_snap and self.object_id == 'BASE_BUBPIPE'
+                    if (self.object_id == 'BASE_BUBPIPE'
                             and selected_target is not None
                             and selected_target.get('ObjectID') == 'BASE_BUBPIPE'):
                         from .. import bubble_preview
@@ -535,8 +539,6 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                         if problem:
                             raise ValueError(problem)
                     placement_matrix = builder_v2.placement_from_target(self.object_id, selected_target)
-                    if not auto_snap and selected_target is not None:
-                        placement_matrix=selected_target.matrix_world.copy()
                     item = builder_v2.add_part(self.object_id, builder_object=BUILDER)
                     if self.object_id == 'BASE_BUBPIPE':
                         item.object['bbe_bubble_shape'] = 'STRAIGHT:Y'
@@ -558,16 +560,19 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                 bpy_obj.matrix_world = placement_matrix
 
             from .. import snap_markers
+            from ..base_snapping import PIPE_PARTS
             with placement_view(context):
-                snapped=auto_snap and snap_markers.place_initial(bpy.context,bpy_obj,selected_target)
-                if not snapped:
-                    if auto_snap and self.object_id=='BASE_BUBPIPE' and selected_target is not None and selected_target.get('ObjectID')=='BASE_BUBPIPE':
-                        bpy.data.objects.remove(bpy_obj,do_unlink=True)
-                        report_error(self,{'ERROR'},'No safe straight duct placement here. Move nearby ducts farther apart first.')
+                target_id = selected_target.get('ObjectID') if selected_target is not None else None
+                if self.object_id in PIPE_PARTS and target_id in PIPE_PARTS:
+                    target = BUILDER.get_builder_object_from_bpy_object(selected_target)
+                    if target and item.snap_to(target) is False and self.object_id == 'BASE_BUBPIPE':
+                        bpy.data.objects.remove(bpy_obj, do_unlink=True)
+                        report_error(self, {'ERROR'}, 'No safe straight duct placement here. Move nearby ducts farther apart first.')
                         return {'CANCELLED'}
-                    blend_utils.select(bpy_obj)
-            # The new part stays paired with the target so every compatible
-            # green socket is immediately clickable after browser placement.
+                elif (self.object_id not in PIPE_PARTS and target_id not in PIPE_PARTS
+                      and asset_browser_utils.auto_snap_enabled()):
+                    snap_markers.place_initial(bpy.context, bpy_obj, selected_target)
+                blend_utils.select(bpy_obj)
             asset_browser.add_to_recents_list(self.object_id)
             self.report({'INFO'}, f"Added {self.object_id} to scene")
         return {'FINISHED'}
@@ -594,7 +599,10 @@ class AssetBrowserObjectMoreOptions(bpy.types.Operator):
         
         def draw_popup(self, context):
             layout = self.layout
-            layout.label(text=f"{object_id} Options", icon = "COLLAPSEMENU")
+            from ..save_editor.function_help import corner_help
+            heading = layout.row(align=True)
+            heading.label(text=f"{object_id} Options", icon = "COLLAPSEMENU")
+            corner_help(heading, 'ASSETS')
             layout.separator()
             layout.separator()
             
@@ -667,7 +675,10 @@ class AssetBrowserCategoryReorderPopup(bpy.types.Operator):
         asset_browser = scene.nms_asset_browser
 
         layout = self.layout
-        layout.label(text="Reorder Categories", icon="SORTALPHA")
+        from ..save_editor.function_help import corner_help
+        heading = layout.row(align=True)
+        heading.label(text="Reorder Categories", icon="SORTALPHA")
+        corner_help(heading, 'ASSETS')
         layout.label(text="Favourites always stay on top", icon="INFO")
         layout.separator()
 
@@ -811,7 +822,10 @@ class AssetBrowserListSettings(bpy.types.Operator):
             asset_browser_utils.get_grid_size_properties(self.grid_type)
         )
 
-        layout.prop(prefs, icon_size_prop,text = "Icon Size")
+        from ..save_editor.function_help import corner_help
+        heading = layout.row(align=True)
+        heading.prop(prefs, icon_size_prop,text = "Icon Size")
+        corner_help(heading, 'ASSETS')
         layout.separator()
         layout.prop(prefs, number_of_columns_prop, text = "Columns")
         
@@ -825,23 +839,20 @@ class AssetBrowserBatchReplace(bpy.types.Operator):
     object_id: bpy.props.StringProperty()
     
     def execute(self, context):
-        scene = context.scene
-        batch_tool = scene.nms_batch_tool
-        selected_objects = list(context.selected_objects)
-
-        if not selected_objects:
-            self.report({'WARNING'}, "Select the objects to replace first")
-            return {'CANCELLED'}
-
         # the id comes from the browser, but the browser can be showing a list
         # built before the part dictionary was reloaded
         if self.object_id not in dictionary.get_nice_names_diictionary():
             report_error(self,{'ERROR'}, f"{self.object_id} is not a part that can be built")
             return {'CANCELLED'}
 
-        replaced = batch_tool.batch_replace_with_object_id(
-            self.object_id, selected_objects
-        )
+        with placement_view(context):
+            selected = list(bpy.context.selected_objects)
+            if not selected:
+                self.report({'WARNING'}, "Select the objects to replace first")
+                return {'CANCELLED'}
+            replaced = bpy.context.scene.nms_batch_tool.batch_replace_with_object_id(self.object_id, selected)
+            if replaced:
+                blend_utils.select(replaced)
         self.report({'INFO'}, f"Replaced {len(replaced or [])} objects")
         return {'FINISHED'}
         

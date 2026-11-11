@@ -43,7 +43,7 @@ def objects(context):
     if not names:
         return None
     source, target = (context.scene.objects.get(n) for n in names)
-    if source is None or target is None or set(context.selected_objects) != {source, target}:
+    if source is None or target is None or context.active_object != source or context.selected_objects != [source]:
         return None
     return source, target
 
@@ -77,6 +77,9 @@ def options(source, target):
 def start(context, source, target):
     if not options(source, target):
         return False
+    from .utils import blend_utils
+    if context.active_object != source or context.selected_objects != [source]:
+        blend_utils.select(source)
     SESSION[context.scene.name] = (source.name, target.name)
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
@@ -116,9 +119,6 @@ def place_initial(context,source,target):
     if target is None:return False
     choices=options(source,target)
     if not choices or not place_at(source,target,choices[0][0]):return False
-    for obj in tuple(context.selected_objects):obj.select_set(False)
-    source.select_set(True);target.select_set(True)
-    context.view_layer.objects.active=target
     start(context,source,target)
     return True
 
@@ -147,8 +147,8 @@ class BBE_OT_click_snap(bpy.types.Operator):
             return {'CANCELLED'}
         source, target = pair
         if not place_at(source,target,self.target_key,cycle=True):return {'CANCELLED'}
-        source.select_set(True); target.select_set(True)
-        context.view_layer.objects.active = target
+        from .utils import blend_utils
+        blend_utils.select(source)
         return {'FINISHED'}
 
 

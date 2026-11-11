@@ -16,7 +16,11 @@
       "parts": [
         "B_GEN_1",
         "B_GEN_0",
-        "B_GEN_2"
+        "B_GEN_2",
+        "B_GEN_4",
+        "B_GEN_5",
+        "B_GEN_6",
+        "B_GEN_6_1"
       ]
     },
     {
@@ -47,7 +51,22 @@
         "B_WNG_H",
         "B_WNG_H_R",
         "B_WNG_L",
-        "B_WNG_L_R"
+        "B_WNG_L_R",
+        "B_TRU_J",
+        "B_WNG_S",
+        "B_WNG_S_R",
+        "B_WNG_W",
+        "B_WNG_W_B",
+        "B_WNG_W_R",
+        "B_WNG_W_T",
+        "B_WNG_X",
+        "B_WNG_X_B",
+        "B_WNG_X_R",
+        "B_WNG_X_T",
+        "B_WNG_Y",
+        "B_WNG_Y_B",
+        "B_WNG_Y_R",
+        "B_WNG_Y_T"
       ]
     },
     {
@@ -58,7 +77,9 @@
         "B_TUR_C",
         "B_TUR_D",
         "B_TUR_E",
-        "B_DECO_I"
+        "B_DECO_I",
+        "B_TUR_F",
+        "B_TUR_G"
       ]
     },
     {
@@ -79,7 +100,8 @@
         "B_LND_B",
         "B_LND_C",
         "B_WNG_B",
-        "B_WNG_B_R"
+        "B_WNG_B_R",
+        "B_LAN_B"
       ]
     },
     {
@@ -100,7 +122,17 @@
       "parts": [
         "B_COK_A",
         "B_COK_B",
-        "B_COK_D"
+        "B_COK_D",
+        "B_COK_C1",
+        "B_COK_C2",
+        "B_COK_C3",
+        "B_COK_C4",
+        "B_COK_C5",
+        "B_COK_C6",
+        "B_COK_C7",
+        "B_COK_C8",
+        "B_COK_C9",
+        "B_COK_E"
       ]
     }
   ]

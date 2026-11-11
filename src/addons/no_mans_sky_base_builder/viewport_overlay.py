@@ -3,6 +3,7 @@ import blf
 import re
 from .utils import dictionary
 from .part import Part
+from . import part_counts
 
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
 
@@ -51,9 +52,8 @@ def draw_table(font_id,title, data_dict, start_x, start_y, line_spacing=15, colu
 
 def display_base_status(font_id, start_x = 20, start_y = 20):
     
-    build_tool = bpy.context.scene.nms_build_tool
     nms_base_tool = bpy.context.scene.nms_base_tool
-    part_count = build_tool.get_part_count()
+    part_count = part_counts.displayed(bpy.context.scene)
     
     base_data = {}
     

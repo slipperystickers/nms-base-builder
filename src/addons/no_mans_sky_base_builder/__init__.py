@@ -34,6 +34,7 @@ from .tools import batch_tool_operators, build_tool_operators, prooperties_opera
 from .tools_menu import base_builder_menu, base_builder_menu_operators
 from .tools.batch_tool import BatchTool
 from .tools.batch_tool_presentation import NMS_PT_batch_tools_panel
+from . import part_counts
 from .tools.build_tool import BuildTool
 from .tools.build_tool_presentation import NMS_PT_tools_panel
 from .tools.properties import Properties
@@ -111,24 +112,18 @@ def ShowMessageBox(message="", title="Message Box", icon="INFO"):
 
 
 def get_line_type_from_enum(context):
-    line_object = "U_POWERLINE"
-    scene = context.scene
-    nms_tool = scene.nms_main
-    line_value = nms_tool.line_switch
-    if line_value == "AUTO":
-        from .cable_connections import SRT_IDS
-        selected = context.selected_objects
-        if len(selected) == 2 and all(o.get('ObjectID') in SRT_IDS for o in selected):
-            return "U_PORTALLINE"
-    if line_value == "TELEPORT":
-        line_object = "U_PORTALLINE"
-    elif line_value == "PIPE":
-        line_object = "U_PIPELINE"
-    elif line_value == "BYTEBEAT":
-        line_object = "U_BYTEBEATLINE"
+    return {"POWER": "U_POWERLINE", "TELEPORT": "U_PORTALLINE",
+            "BYTEBEAT": "U_BYTEBEATLINE"}[context.scene.nms_main.line_switch]
 
-    print("line value is :", line_value)
-    return line_object
+
+def cable_choice(settings):
+    # Older scenes may contain the retired Pipe (3) or Automatic (4) value.
+    value = settings.get("line_switch", 0)
+    return value if value in (0, 1, 2) else 0
+
+
+def set_cable_choice(settings, value):
+    settings["line_switch"] = value
 
 
 # Core Settings Class
@@ -143,14 +138,11 @@ class NMSMain(PropertyGroup):
         name="line_switch",
         description="Decide what type of cable to build",
         items=[
-            ("AUTO", "Automatic", "Teleport cable for two SRTs; electrical wire for other devices", 4),
             ("POWER", "Electrical Wire", "Electrical Wire", 0),
             ("TELEPORT", "Teleport Wire", "Teleport Wire", 1),
             ("BYTEBEAT", "Byte-Beat Cable", "Byte-Beat Cable", 2),
-            ("PIPE", "Pipe", "Pipe", 3),
         ],
-        #options={"ENUM_FLAG"},
-        default="AUTO",
+        get=cable_choice, set=set_cable_choice, default="POWER",
     )
 
     preset_name: StringProperty(
@@ -692,15 +684,16 @@ class NMS_PT_hero_panel(Panel):
         fourth_column.operator("object.nms_visit_patreon", text = "Patreon", icon_value = pateron_icon.icon_id)
         fourth_column.operator("object.nms_visit_steam_games", text = "Steam Games", icon_value = steam_icon.icon_id)
 
-        wasd_navigation.draw_controls(layout, context)
-        from .save_editor.function_help import help_button
-        help_button(layout, text='BBE Feature Help')
+        from .tools_menu.base_builder_menu_presentation import draw_builder_contents
+        layout.operator('object.nms_launch_asset_browser_window', text='Assets', **icons.ui_icon('ASSET_MANAGER'))
+        draw_builder_contents(layout, context)
 
         workspace_row = layout.row(align=True)
         workspace_box = workspace_row.box()
         workspace_column = workspace_box.column(align = False)
         workspace_label_row = workspace_column.row(align = True)
         workspace_label_row.label(text = "Workspace")
+        workspace_label_row.popover(panel='VIEW3D_PT_bbe_toolbar_settings', text='', icon='PREFERENCES')
 
         workspace_column_2 = workspace_column.column(align = True)
         workspace_cleanup_row = workspace_column_2.row(align = True)
@@ -749,49 +742,8 @@ class NMS_PT_file_buttons_panel(Panel):
 
     def draw(self, context):
 
-        layout = self.layout
-        scene = context.scene
-        nms_tool = scene.nms_main
-        base_props = scene.nms_base_tool
-
-        file_col = layout.column(align = True)
-        file_row = file_col.row(align=True)
-        file_box = file_row.box()
-        first_column = file_box.column(align=True)
-        first_column.scale_x = 0.5 if base_props.string_base_type == "PlayerShipBase" else 1.0
-        first_column.label(text="Metadata", **icons.ui_icon("PROPERTIES"))
-        first_column.label(text="Ship Name" if base_props.string_base_type == "PlayerShipBase" else "Base Name")
-        build_metadata.draw_name(first_column, base_props)
-        first_row = first_column.row(align = True)
-        first_row.enabled = False
-        fc_1 = first_row.column(align = True)
-        fc_1.label(text="Basetype")
-        fc_1.prop(base_props, "string_base_type", text = "")
-
-        if base_props.string_base_type == "PlayerShipBase":
-            fc_2 = first_row.column(align = True)
-            fc_2.label(text="Userdata")
-            fc_2.prop(base_props, "string_userdata", text = "")
-
-        clipboard_box = file_row.box()
-        clipboard_box.label(text="Import & Export", **icons.ui_icon("IMPORT"))
-        second_column = clipboard_box.column(align=False)
-        second_column.operator("object.nms_import_nms_data", **icons.ui_icon("PASTEDOWN"))
-        second_column.separator()
-        second_column.prop(nms_tool,"check_export_objects_only", text = "Objects only")
-        second_column.operator("object.nms_export_nms_data", **icons.ui_icon("COPYDOWN"))
-
-        file_box = layout.box()
-        file_column = file_box.column(align = True)
-
-        file_column.label(text="Scene")
-        file_column.operator("object.nms_new_file", text="Clear Build Scene...", **icons.ui_icon("FILE_NEW"))
-        file_column.separator()
-        file_column.label(text="Build files")
-        file_column.operator("object.nms_save_data", text="Save Project JSON...", **icons.ui_icon("FILE_TICK"))
-        file_column.operator("bbe.import_build_file", text="Import Build from File...", **icons.ui_icon("IMPORT"))
-
-
+        from .tools_menu.base_builder_menu_presentation import draw_build_files
+        draw_build_files(self.layout)
 
 
 class NMS_PT_station_transfer_reference(Panel):
@@ -871,11 +823,13 @@ def draw_colour_palette(layout, context, *, horizontal=False):
     selected = selected_colour_row(context)
     colours = _material.get_colours_from_palette(nms_tool.material_switch)
     pcoll = preview_collections.get("main")
+    from .save_editor.function_help import corner_help
     if selected is not None:
         current_icon = pcoll.get(os.path.splitext(selected[9])[0]) if pcoll else None
         current = layout.row(align=True)
         current.label(text=f'Current: {selected[5]}', icon_value=current_icon.icon_id if current_icon else 0)
         current.label(text=selected[2])
+        corner_help(current, 'COLOUR')
     if horizontal:
         colour_area = layout.row(align=True)
         palette = colour_area.row(align=True)
@@ -885,7 +839,10 @@ def draw_colour_palette(layout, context, *, horizontal=False):
         grid.scale_x = 1.0
     else:
         colour_area = layout.box().column(align=False)
-        colour_area.row(align=True).prop(nms_tool, "material_switch", text="Palette")
+        header = colour_area.row(align=True)
+        header.prop(nms_tool, "material_switch", text="Palette")
+        if selected is None:
+            corner_help(header, 'COLOUR')
         colour_area.separator()
         grid = colour_area.grid_flow(columns=12, even_columns=True, align=True)
         grid.scale_x = 0.6
@@ -935,25 +892,27 @@ class NMS_PT_logic_panel(Panel):
         box = layout.box()
         col = box.column(align = True)
         enum_row = col.row(align = True)
+        from .save_editor.function_help import corner_help
         enum_row.prop(nms_tool, "line_switch", text = "Cable")
+        corner_help(enum_row, 'LOGIC')
 
+        col.operator_context = 'INVOKE_DEFAULT'
+        place = col.operator('bbe.start_cable_connection', text='Place Cables', icon='CURVE_PATH')
+        place.kind = get_line_type_from_enum(context)
+        place.repeat_placement = True
         col.separator()
-        col.label(text = "Operations")
-        row = col.row(align = True)
-        operations_col_1 = row.column(align = True)
-        operations_col_1.operator("object.nms_point", **icons.ui_icon("EMPTY_DATA"))
-        operations_col_1.operator("object.nms_divide", **icons.ui_icon("LINCURVE"))
-
-        operations_col_2 = row.column(align = True)
-        operations_col_2.operator("object.nms_connect", **icons.ui_icon("PARTICLES"))
-        operations_col_2.operator("object.nms_split", **icons.ui_icon("MOD_PHYSICS"))
-
+        col.label(text="Operations")
+        row = col.row(align=True)
+        point_row = row.row(align=True)
+        point_row.enabled = nms_tool.line_switch != 'TELEPORT'
+        point_row.operator("object.nms_point", **icons.ui_icon("EMPTY_DATA"))
+        row.operator("object.nms_connect", **icons.ui_icon("PARTICLES"))
+        row = col.row(align=True)
+        row.operator("object.nms_divide", **icons.ui_icon("LINCURVE"))
+        row.operator("object.nms_split", **icons.ui_icon("MOD_PHYSICS"))
         col.separator()
         col.operator('bbe.repair_srt_connections', icon='FILE_REFRESH')
 
-        operations_col_3 = row.column(align = True)
-        operations_col_3.operator("object.nms_select_connected", **icons.ui_icon("RESTRICT_SELECT_OFF"))
-        operations_col_3.operator("object.nms_select_floating", **icons.ui_icon("RESTRICT_INSTANCED_ON"))
         logic_col= box.column(align = True)
         logic_col.label(text="Logic")
         logic_row_1 = logic_col.row(align = True)
@@ -992,7 +951,10 @@ class NMS_PT_build_panel(Panel):
         main_col = build_column.box().column(align = True)
 
         presets_box = main_col.column(align = True)
-        presets_box.label(text = "Prefabs")
+        from .save_editor.function_help import corner_help
+        heading = presets_box.row(align=True)
+        heading.label(text = "Prefabs")
+        corner_help(heading, 'PREFABS')
         preset_row = presets_box.row(align = True)
         preset_row.operator("object.nms_save_as_preset", **icons.ui_icon("SCENE_DATA"))
         preset_row.operator("object.nms_split_preset", **icons.ui_icon("MOD_EXPLODE"))
@@ -1373,6 +1335,8 @@ class PresetsMenu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
+        from .save_editor.function_help import corner_help
+        corner_help(layout, 'PREFABS')
         layout.operator("object.nms_visit_prefab_community")
         layout.operator("object.nms_visit_github")
 
@@ -1612,168 +1576,153 @@ class ApplyDefaultColour(bpy.types.Operator):
 
 # Logic Operators ---
 class Point(bpy.types.Operator):
-    """Create a new point controller used to create logic cables.\nSelect this twice to create a cables between 2 points."""
+    """Click a cable to insert a junction, or click empty space to start a new path"""
 
     bl_idname = "object.nms_point"
     bl_label = "New Point"
-    bl_options = {"UNDO", "REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and get_line_type_from_enum(context) != 'U_PORTALLINE'
 
     def execute(self, context):
-        # Get current selection.
-        selection = blend_utils.get_current_selection()
-
-        # Don't stack multiple for multiple clicks
-        if selection and context.scene.cursor.location == selection.location:
-            return {"CANCELLED"}
-
-        # Create a new point at the cursor.
-        point = line.Line.create_point(BUILDER, name="ARBITRARY_POINT")
-        point.location = context.scene.cursor.location
-
-        # If another powerline was already selected, connect it
-        if selection and "rig_item" in selection:
-            line_object = selection.get("power_line", "U_POWERLINE").split(".")[0]
-            power_line = BUILDER.add_part(line_object, build_rigs=False)
-            # Create controls.
-            power_line.build_rig(start=selection, end=point)
-
-        # Now select the new point.
-        blend_utils.select(point)
-        return {"FINISHED"}
+        kind = get_line_type_from_enum(context)
+        result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=kind, new_point=True)
+        return {'CANCELLED'} if result == {'CANCELLED'} else {'FINISHED'}
 
 
 class Connect(bpy.types.Operator):
-    """Form a cable between 2 objects that have cable connections."""
+    """Choose Chain or Fan, then click a power socket or empty space to supply the selection"""
 
     bl_idname = "object.nms_connect"
     bl_label = "Connect"
     bl_options = {"UNDO", "REGISTER"}
+    routing: EnumProperty(name="Routing", items=(
+        ('CHAIN', 'Chain (Series)', 'Connect consecutive devices'),
+        ('FAN', 'Fan (Parallel)', 'Connect each device directly to the common start'),
+    ), default='FAN', options={'SKIP_SAVE'})
+
+    def invoke(self, context, event):
+        from . import cable_connections
+        electrical = get_line_type_from_enum(context) == cable_connections.POWER
+        selection = cable_connections.power_devices(context.selected_objects) if electrical else context.selected_objects
+        if len(selection) < (2 if electrical else 3):
+            return self.execute(context)
+
+        def draw_choices(menu, _context):
+            row = menu.layout.row(align=True)
+            row.operator_context = 'EXEC_DEFAULT'
+            for mode, label in (('CHAIN', 'Chain (Series)'), ('FAN', 'Fan (Parallel)')):
+                row.operator("object.nms_connect", text=label).routing = mode
+
+        context.window_manager.popup_menu(draw_choices, title="Connect selected devices")
+        return {'FINISHED'}
+
+    @classmethod
+    def description(cls, context, properties):
+        if get_line_type_from_enum(context) == 'U_POWERLINE':
+            if properties.is_property_set('routing'):
+                if properties.routing == 'CHAIN':
+                    return 'Click a start. Visit the nearest remaining device at each step, carrying power through the same socket'
+                return 'Click a start. Run a separate wire from that point to each selected device'
+            return 'Choose Chain or Fan, then click a power socket or empty space. Logic devices receive power on IN'
+        return 'Connect the selected devices with the chosen cable type'
 
     def execute(self, context):
         from . import cable_connections, cable_targets
         kind = get_line_type_from_enum(context)
-        if kind in cable_connections.KINDS:
-            try:
-                cables = cable_connections.connect_selected(context, kind, BUILDER)
-            except ValueError as error:
-                self.report({'WARNING'}, str(error))
-                return {'CANCELLED'}
-            cable_targets.cancel(context)
-            self.report({'INFO'}, f'Connected {len(cables)} ' + ('teleport cable(s).' if kind == cable_connections.TELEPORT else 'electrical cable(s).'))
-            return {'FINISHED'}
-        # Validate selection.
-        selected_objects = [
-            BUILDER.get_builder_object_from_bpy_object(o)
-            for o in bpy.context.selected_objects
-        ]
-        selected_objects = [o for o in selected_objects if o.has_snap_point("POWER")]
-        if len(selected_objects) < 2:
-            message = "Make sure you have two or more electric points selected."
-            ShowMessageBox(message=message, title="Connect")
-            return {"FINISHED"}
-
-        # Test this after selection for better error reporting
-        if not bpy.context.active_object:
-            message = "Make sure one object is the active object (shift select the object to connect everything to)."
-            ShowMessageBox(message=message, title="Connect")
-            return {"FINISHED"}
-
-        active_object = BUILDER.get_builder_object_from_bpy_object(
-            bpy.context.active_object
-        )
-        if not active_object.has_snap_point("POWER"):
-            message = "Make sure the active object supports electrical connections."
-            ShowMessageBox(message=message, title="Connect")
-            return {"FINISHED"}
-
-        for selected_object in selected_objects:
-            if selected_object is active_object:
-                continue
-            if selected_object.name == active_object.name:
-                continue
-            # Build and perform connection.
-            start_point, end_point = line.Line.generate_control_points(
-                active_object, selected_object, BUILDER, line_id=kind
-            )
-            if not start_point or not end_point:
-                # should have been tested by filtering selected_objects above
-                continue
-
-            # Re-obtain objects
-            start_point = blend_utils.get_item_by_name(start_point.name)
-            end_point = blend_utils.get_item_by_name(end_point.name)
-
-            # Create new power line.
-            line_object_id = get_line_type_from_enum(context)
-
-            # if "power_line" in start_point:
-            #     line_object_id = start_point["power_line"].split(".")[0]
-            power_line = BUILDER.add_part(line_object_id, build_rigs=False)
-            # Create controls.
-            power_line.build_rig(start=start_point, end=end_point)
-
-        return {"FINISHED"}
+        selected = (cable_connections.power_devices(context.selected_objects) if kind == cable_connections.POWER
+                    else context.selected_objects)
+        if len(selected) < 2:
+            self.report({'WARNING'}, 'Select at least two devices or junctions.')
+            return {'CANCELLED'}
+        sockets = [cable_connections.local_sockets(obj, kind) for obj in selected]
+        if not all(sockets):
+            self.report({'WARNING'}, 'Each selected object needs a compatible ' + cable_connections.LABELS[kind] + ' socket.')
+            return {'CANCELLED'}
+        if kind == cable_connections.POWER:
+            result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=kind, group_power=True,
+                                                       chain=self.routing == 'CHAIN')
+            return {'CANCELLED'} if result == {'CANCELLED'} else {'FINISHED'}
+        if context.active_object not in selected:
+            context.view_layer.objects.active = selected[0]
+        if any(len(points) > 1 for points in sockets):
+            result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=kind, selected_only=True, chain=self.routing == 'CHAIN')
+            return {'CANCELLED'} if result == {'CANCELLED'} else {'FINISHED'}
+        try:
+            cables = cable_connections.connect_selected(context, kind, BUILDER, chain=self.routing == 'CHAIN')
+        except ValueError as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        cable_targets.cancel(context)
+        self.report({'INFO'}, f'Connected {len(cables)} {cable_connections.LABELS[kind]} cable(s).')
+        return {'FINISHED'}
 
 
 class Divide(bpy.types.Operator):
-    """Divide a selected cable into 2 cables."""
+    """Insert junctions along the selected cable and click a destination for each branch"""
 
     bl_idname = "object.nms_divide"
     bl_label = "Divide"
-    bl_options = {"UNDO", "REGISTER"}
+    bl_options = {"UNDO"}
+    layout_mode: EnumProperty(name="Branch starts", items=(
+        ('SPACED', 'Evenly spaced', 'Insert a separate junction for each branch'),
+        ('MIDPOINT', 'Shared midpoint', 'Start all branches at one junction halfway along the cable'),
+    ), default='SPACED', options={'SKIP_SAVE'})
+    starts: IntProperty(name="Branches", min=1, max=64, default=1, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        from . import cable_connections
+        obj = context.active_object
+        return (context.mode == 'OBJECT' and obj is not None and obj.select_get()
+                and obj.get('ObjectID') == get_line_type_from_enum(context)
+                and all(cable_connections.endpoints(obj)))
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=280, confirm_text="Divide")
+
+    def draw(self, context):
+        self.layout.prop(self, "starts")
+        self.layout.row(align=True).prop(self, "layout_mode", expand=True)
 
     def execute(self, context):
-        # Get Selected item.
-        target = blend_utils.get_current_selection()
-
-        # Validate
-        invalid_message = "Make sure you have a powerline item selected."
-        title = "Divide"
-        if not target:
-            ShowMessageBox(message=invalid_message, title=title)
-            return {"FINISHED"}
-        if "ObjectID" not in target:
-            ShowMessageBox(message=invalid_message, title=title)
-            return {"FINISHED"}
-        valid_parts = ["U_POWERLINE", "U_PIPELINE", "U_PORTALLINE", "U_BYTEBEATLINE"]
-        if target["ObjectID"] not in valid_parts:
-            ShowMessageBox(message=invalid_message, title=title)
-            return {"FINISHED"}
-
-        # Perform split.
-        power_line = BUILDER.get_builder_object_from_bpy_object(target)
-        power_line.divide()
-        return {"FINISHED"}
+        from . import cable_connections, cable_targets
+        obj = context.active_object
+        kind = obj['ObjectID']
+        try:
+            if self.layout_mode == 'MIDPOINT':
+                points = cable_connections.subdivide(obj, [.5], BUILDER) * self.starts
+            else:
+                fractions = [i / (self.starts + 1) for i in range(1, self.starts + 1)]
+                points = cable_connections.subdivide(obj, fractions, BUILDER)
+        except ValueError as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        blend_utils.select(points[0])
+        result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=kind, source_name=points[0].name)
+        if result != {'CANCELLED'}:
+            cable_targets.session(context)['next_starts'] = points[1:]
+        return {'FINISHED'}
 
 
 class Split(bpy.types.Operator):
-    """Divide a selected cable into 2 cables with a gap between them."""
+    """Remove direct cables of the chosen type between selected devices or junctions"""
 
     bl_idname = "object.nms_split"
-    bl_label = "Split"
+    bl_label = "Disconnect"
+    bl_options = {"UNDO"}
 
     def execute(self, context):
-        # Get Selected item.
-        target = blend_utils.get_current_selection()
-
-        # Validate
-        invalid_message = "Make sure you have a powerline item selected."
-        title = "Split"
-        if not target:
-            ShowMessageBox(message=invalid_message, title=title)
-            return {"FINISHED"}
-        if "ObjectID" not in target:
-            ShowMessageBox(message=invalid_message, title=title)
-            return {"FINISHED"}
-        valid_parts = ["U_POWERLINE", "U_PIPELINE", "U_PORTALLINE", "U_BYTEBEATLINE"]
-        if target["ObjectID"] not in valid_parts:
-            ShowMessageBox(message=invalid_message, title=title)
-            return {"FINISHED"}
-
-        # Perform split.
-        power_line = BUILDER.get_builder_object_from_bpy_object(target)
-        power_line.split()
-        return {"FINISHED"}
+        from . import cable_connections, cable_targets
+        kind = get_line_type_from_enum(context)
+        count = cable_connections.disconnect_selected(context, kind)
+        if not count:
+            self.report({'INFO'}, 'No matching cable between the selected endpoints.')
+            return {'CANCELLED'}
+        cable_targets.cancel(context)
+        self.report({'INFO'}, f'Removed {count} {cable_connections.LABELS[kind]} cable(s).')
+        return {'FINISHED'}
 
 
 class SelectConnected(bpy.types.Operator):
@@ -2440,6 +2389,7 @@ def register_core():
     schedule_prefab_catalogue()
     bpy.types.Scene.nms_save_data = bpy.props.PointerProperty(type=SaveManager)
     bpy.types.Scene.nms_build_tool = bpy.props.PointerProperty(type=BuildTool)
+    part_counts.register()
     bpy.types.Scene.nms_properties = bpy.props.PointerProperty(type=Properties)
     bpy.types.Scene.nms_batch_tool = bpy.props.PointerProperty(type=BatchTool)
     bpy.types.Scene.nms_asset_browser = bpy.props.PointerProperty(type=AssetBrowser)
@@ -2588,6 +2538,7 @@ def unregister():
     del bpy.types.Scene.nms_main
     del bpy.types.Scene.nms_base_tool
     del bpy.types.Scene.nms_save_data
+    part_counts.unregister()
     del bpy.types.Scene.nms_build_tool
     del bpy.types.Scene.nms_properties
     del bpy.types.Scene.nms_batch_tool

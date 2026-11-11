@@ -34,9 +34,9 @@ bpy.context.scene.bbe_detailed_proxies = True
 before = builder.add_part('B_GEN_5').object
 transform = before.matrix_world.copy()
 old_mesh = before.data
-assert str(old_root) in old_mesh.get(builder.MESH_SOURCE_TAG, '')
+assert str(old_root.resolve()) in old_mesh.get(builder.MESH_SOURCE_TAG, '')
 gravity = builder.add_part('GRAV_WALL').object
-assert gravity.data.get(builder.MESH_TAG) is None  # Repaired simple fallback.
+assert not before.data.get(module('utils.corvette_trim').TAG)
 with patch.object(hd, 'additions_specification', return_value=spec), \
         patch.object(ui, 'bpy', SimpleNamespace(app=SimpleNamespace(background=False, online_access=True))):
     assert ui.check_installed_updates()
@@ -55,6 +55,7 @@ assert before.matrix_world == transform
 assert before.data is not old_mesh, 'Existing detailed mesh was not refreshed'
 assert spec['id'] in before.data.get(builder.MESH_SOURCE_TAG, '')
 assert gravity.data.get(builder.MESH_TAG) == 'GRAV_WALL'
+assert before.data.get(module('utils.corvette_trim').TAG)
 assert not hd.pending_specs()
 report('hd_release_upgrade', dict(old=old_root.name, new=spec['id'],
        ready=hd.ready(), existing_mesh_refreshed=True,

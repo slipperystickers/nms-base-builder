@@ -1,9 +1,4 @@
-"""The Save Manager sidebar panel, and the save manager UI itself.
-
-draw_save_manager() holds the whole UI. The "Save Manager" dropdown in the
-viewport header (presentation/save_manager_menu.py) draws the same function
-into its popover, so the sidebar and the dropdown cannot drift apart.
-"""
+"""Shared Save Manager controls for the viewport header and sidebar."""
 from ..furby_errors import report_error
 
 import bpy
@@ -162,58 +157,7 @@ def get_save_folder_path(context):
         return None
     return addon.preferences.nms_save_folder_path
 
-def draw_pinned_base(container, save_data, base_props):
-    """Draw the pinned base UI section if a base is pinned."""
-    if not save_data.pinned_base_check:
-        return
-
-    pinned_base_type = save_data.get_base_type_string(save_data.pinned_base_type)
-    pinned_box = container
-
-    pinned_content_row = pinned_box.row(align=False)
-    pinned_text_col = pinned_content_row.column(align=False)
-    pinned_buttons_col = pinned_content_row.column(align=True)
-
-    pinned_text_col.label(
-        text=f"{base_props.string_base} ({pinned_base_type})", **icons.ui_icon("PINNED")
-    )
-    pinned_text_condensed_column = pinned_text_col.column(align=True)
-    pinned_text_condensed_column.label(
-        text=f"{save_data.pinned_save_slot_name}, (...{save_data.pinned_save_account[-3:]})"
-    )
-
-    pinned_buttons_col.scale_x = 0.7
-    pinned_buttons_col.operator(
-        "object.nms_unpin_base", **icons.ui_icon("UNPINNED"), text=f"Unpin {pinned_base_type}"
-    )
-    pinned_ready = (save_data.pinned_base_type != BaseType.CORVETTE or
-                    (save_data.get_current_slot_data() is not None and
-                     save_data.nms_base_type == BaseType.CORVETTE))
-    pinned_import = pinned_buttons_col.column(align=True)
-    pinned_import.enabled = pinned_ready
-    pinned_import.operator(
-        "object.import_pinned_base", **icons.ui_icon("IMPORT"), text="Import from Save"
-    )
-
-    pinned_export_button_row = pinned_box.row(align=False)
-    pinned_export_button_row.enabled = pinned_ready
-    pinned_export_button_row.operator(
-        "object.export_pinned_base", **icons.ui_icon("FILE_TICK"), text="Export to Save"
-    )
-    pinned_export_button_backup_row = pinned_box.row(align=True)
-    pinned_export_button_backup_row.scale_x = 0.7
-    pinned_export_button_backup_row.operator(
-        "object.make_pinned_savefile_backup",
-        **icons.ui_icon("COLLECTION_NEW"),
-        text="Backup Save files",
-    )
-    if save_data.pinned_base_type == BaseType.CORVETTE:
-        pinned_optimize = pinned_box.row()
-        pinned_optimize.enabled = pinned_ready
-        corvette_optimizer.draw_row(pinned_optimize, pinned=True)
-    
-def draw_base_picker(container, save_data):
-    
+def draw_base_picker(container, save_data, narrow=False):
     save_folder_path = get_save_folder_path(bpy.context)
     
     # Make a separate section to display elements related to selecting bases.
@@ -221,6 +165,8 @@ def draw_base_picker(container, save_data):
     sf_column = save_folder_box.column(align=True)
     sf_enable_row = sf_column.row(align=True)
     sf_enable_row.label(text="Select Save")
+    if save_data.check_plugin_enabled:
+        sf_enable_row.label(text=f'Backups: {backup_policy.root_directory()}')
     sf_enable_row.operator_context = 'INVOKE_DEFAULT'
     sf_enable_row.operator('bbe.backup_settings', text='', **icons.ui_icon('PREFERENCES'))
 
@@ -269,15 +215,18 @@ def draw_base_picker(container, save_data):
 
     sf_column.separator()
     # Display list of accounts, will display steam ids for recognition.
-    sf_column.label(text="1. Account")
-    sf_column.prop(save_data, "nms_account_selected", **icons.ui_icon("COMMUNITY"))
+    account_row = sf_column.split(factor=0.20, align=True)
+    account_row.label(text="1. Account")
+    account_row.prop(save_data, "nms_account_selected", text="", **icons.ui_icon("COMMUNITY"))
     # Account selection only populates the save-slot list. Make the second
     # required choice visible before the build controls can be shown.
-    sf_column.label(text="2. Save Slot")
-    slot_row = sf_column.row(align=True)
+    slot_row = sf_column.split(factor=0.20, align=True)
     slot_row.alert = save_data.nms_account_selected != 'Default' and save_data.nms_save_slot == 'Default'
     slot_row.enabled = save_data.nms_account_selected != 'Default'
-    slot_row.prop(save_data, "nms_save_slot", **icons.ui_icon("LINENUMBERS_ON"))
+    slot_row.label(text="2. Save Slot")
+    slot_row = (slot_row.split(factor=0.77, align=True) if save_data.is_base_data_loaded()
+                else slot_row.row(align=True))
+    slot_row.prop(save_data, "nms_save_slot", text="", **icons.ui_icon("LINENUMBERS_ON"))
     if save_data.get_current_slot_data() is not None and not save_data.is_base_data_loaded():
         slot_row.operator('bbe.refresh_save_counts', text='Refresh Save', **icons.ui_icon('FILE_REFRESH'))
     if save_data.nms_account_selected != 'Default' and save_data.nms_save_slot == 'Default':
@@ -296,79 +245,58 @@ def draw_base_picker(container, save_data):
         return
 
     # Display backup buttons when a slot is selected.
-    base_type = save_data.get_base_type_string(save_data.nms_base_type)
+    base_type = ("External Base" if save_data.nms_base_type == BaseType.EXTERNAL_BASE
+                 else save_data.get_base_type_string(save_data.nms_base_type))
+    slot_row.label(text=f"{int(save_data.get_total_parts_count())} parts")
     backup_row = sf_column.row(align=True)
-    backup_row.operator(
-        "object.make_savefile_backup", **icons.ui_icon("COLLECTION_NEW"), text="Backup Saves"
-    )
-    backup_row.operator(
-        "object.open_backup_folder", **icons.ui_icon("FOLDER_REDIRECT"), text="Open Slot Backups"
-    )
-    try:
-        path = backup_policy.directory(save_data.get_current_slot_data()['saves'])
-        sf_column.label(text=f'Backups: {path}', **icons.ui_icon('FILE_FOLDER'))
-    except (KeyError, TypeError, ValueError):
-        pass
-    duplicate_row = sf_column.row(align=True)
-    duplicate_row.operator_context = 'INVOKE_DEFAULT'
-    duplicate_row.operator('bbe.ship_duplicate', **icons.ui_icon('DUPLICATE'), text='Duplicate Save...')
-
-    sf_column.separator()
-    slot_total = int(save_data.get_total_parts_count())
-    count_row = sf_column.row(align=True)
-    count_row.label(text=f"\U0001F4E6 Save slot total (owned builds): {slot_total}")
-    count_row.operator('bbe.refresh_save_counts', text='Refresh Save', **icons.ui_icon('FILE_REFRESH'))
+    backup_row.operator_context = 'INVOKE_DEFAULT'
+    backup_row.operator("object.make_savefile_backup", **icons.ui_icon("COLLECTION_NEW"), text="Backup")
+    backup_row.operator("object.open_backup_folder", **icons.ui_icon("FOLDER_REDIRECT"), text="Slot Backups")
+    actions = sf_column.row(align=True) if narrow else backup_row
+    actions.operator_context = 'INVOKE_DEFAULT'
+    actions.operator('bbe.ship_duplicate', **icons.ui_icon('DUPLICATE'), text='Duplicate...')
+    actions.operator('bbe.refresh_save_counts', **icons.ui_icon('FILE_REFRESH'), text='Refresh Save')
     source = save_data.extracted_base_data
     if source.get('source_file'):
         read_at = time.strftime('%b %d, %I:%M %p', time.localtime(source['source_mtime']))
         sf_column.label(text=f"Read from {source['source_file']} ({read_at})", **icons.ui_icon('INFO'))
-    sf_column.label(text=f"Current Blender scene: {bpy.context.scene.nms_build_tool.get_part_count()} parts")
     se_column = sf_column.column(align=True)
     se_column.label(text="Base Type:")
     # Radio buttons to select type of base.
     base_type_row = se_column.row(align=True)
-    base_type_row.prop(save_data, "nms_base_type", expand=True, text="base type")
+    for kind in (BaseType.CORVETTE, BaseType.BASE, BaseType.SPACE_BASE, BaseType.STATION, BaseType.EXTERNAL_BASE):
+        base_type_row.prop_enum(save_data, "nms_base_type", kind)
     se_column.separator()
 
     # List of bases/corvettes.
-    se_column.label(text=f"{base_type} Selected:")
-
-    # Show the base list in red when no base/corvette is selected.
-    base_index_row = se_column.row(align=True)
+    compact_ship = not narrow and save_data.nms_base_type == BaseType.CORVETTE
+    if compact_ship:
+        fields = se_column.split(factor=0.58, align=True)
+        picker = fields.column(align=True)
+        name_field = fields.column(align=True)
+        name_field.label(text='Ship Name')
+    else:
+        picker = name_field = se_column
+    picker.label(text=f"{base_type} Selected:")
+    base_index_row = picker.row(align=True)
     selected = save_data.has_selected_base()
     base_index_row.alert = not selected
     if save_data.nms_base_type == BaseType.CORVETTE:
         from . import corvette_io
         corvette_io.draw_picker(base_index_row, save_data)
+        add = picker.row(align=True)
+        add.operator_context = 'INVOKE_DEFAULT'
+        add.operator('bbe.io_add_minimal_corvette', text='Add Minimal Corvette', icon='ADD')
     else:
         base_index_row.prop(save_data, "nms_base_index", text="", **icons.ui_icon("GEOMETRY_SET"))
     selected_data = save_data.get_current_base_identifiers() if selected else None
     if save_data.nms_base_type == BaseType.CORVETTE:
-        if selected_data is not None:
-            slot = selected_data.user_data
-            position = f'Slot {slot + 1}' if type(slot) is int and 0 <= slot < 12 else 'Unlinked build'
-            se_column.label(text=f'{position}: {selected_data.parts_count} parts')
         # Edit the existing scene metadata used by both export paths. The saved
         # name is only a placeholder; choosing a destination must not rename
         # the current Blender design or write anything into the game save.
         from .. import build_metadata
-        build_metadata.draw_name(se_column, bpy.context.scene.nms_base_tool, text='Ship Name',
+        build_metadata.draw_name(name_field, bpy.context.scene.nms_base_tool, text='' if compact_ship else 'Ship Name',
                        placeholder=selected_data.base_name if selected_data else 'Name for exported Corvette')
-    elif selected_data is not None:
-        se_column.label(text=f"Selected {base_type} in save: {selected_data.parts_count} parts")
-    if selected_data is not None and selected_data.base_type != BaseType.EXTERNAL_BASE:
-        se_column.label(text=f"Other owned builds in save: {slot_total - selected_data.parts_count} parts")
-
-    # Display buttons when a base is selected from the list.
-    if selected and save_data.nms_base_type != BaseType.EXTERNAL_BASE:
-        # Pin a base without importing it to the scene, so that save data can
-        # be updated to the location marked by it.
-        base_index_pin_row = base_index_row.row(align=True)
-        base_index_pin_row.scale_x = 0.6
-        base_index_pin_row.operator(
-            "object.nms_pin_base", **icons.ui_icon("PINNED"), text=" Pin for easy-access"
-        )
-
     if save_data.nms_base_type == BaseType.CORVETTE:
         corvette_io.draw_status(se_column, save_data)
         if save_data.extracted_base_data.get('missing_corvettes'):
@@ -391,12 +319,6 @@ def draw_base_picker(container, save_data):
         export_row.operator('bbe.corvette_export' if is_corvette else 'object.nms_export_base_to_save',
                             **icons.ui_icon('EXPORT'), text='Export to Save...')
 
-    # Standalone file export uses the build currently in Blender, independent
-    # of save-slot selection and never writes the game save.
-    file_export = se_column.column(align=True)
-    file_export.operator('bbe.export_ship_file', text='Export Scene to .nmsship...', **icons.ui_icon('EXPORT'))
-    file_export.operator('bbe.export_base_file', text='Export Scene to .nmsbase...', **icons.ui_icon('EXPORT'))
-
     if any(obj.get('ObjectID') == 'BASE_BUBPIPE_L' for obj in bpy.context.scene.objects):
         warning = se_column.column(align=True)
         warning.alert = True
@@ -407,16 +329,11 @@ def draw_base_picker(container, save_data):
         station_reference.draw(se_column, bpy.context)
     elif save_data.nms_base_type == BaseType.CORVETTE:
         optimize_row = se_column.row()
+        optimize_row.scale_y = 1.4
         corvette_optimizer.draw_row(optimize_row)
 
 
 def draw_save_manager(layout, context):
-    """The entire save manager UI, drawn into whatever layout is passed in.
-
-    Shared by the sidebar panel below and the header dropdown in
-    presentation/save_manager_menu.py, so it takes a layout rather than
-    reading self.layout off a particular panel.
-    """
     save_data = get_save_data(context)
     base_props = getattr(context.scene, "nms_base_tool", None)
     save_folder_path = get_save_folder_path(context)
@@ -425,12 +342,25 @@ def draw_save_manager(layout, context):
         layout.label(text="Save Manager unavailable", **icons.ui_icon("ERROR"))
         return
 
-    # Display data related to a pinned base on top if there is any within a
-    # blend file.
-    if save_data.pinned_base_check:
-        draw_pinned_base(layout.box(),save_data,base_props)
-
-    draw_base_picker(layout.box(), save_data)
+    region = context.region
+    narrow = (region and region.type == 'UI' and
+              region.width < 400 * context.preferences.system.ui_scale)
+    draw_base_picker(layout.box(), save_data, narrow)
+    if not save_data.check_plugin_enabled:
+        layout.label(text="Enable to choose a save and access its tools.", **icons.ui_icon("INFO"))
+    elif save_data.get_current_slot_data() is not None:
+        layout.separator()
+        advanced = layout.column(align=True)
+        advanced.label(text='Advanced save tools', **icons.ui_icon('WARNING_LARGE'))
+        advanced.operator_context = 'INVOKE_DEFAULT'
+        ship = advanced.column(align=True)
+        ship.enabled = save_data.nms_base_type == BaseType.CORVETTE
+        ship.operator('bbe.ship_management', text='Ship Management (Beta)',
+                      **icons.ui_icon('OUTLINER_OB_LIGHTPROBE'))
+        advanced.operator('bbe.buildable_unlocks', text='Account Item Unlock and Currency Modify',
+                          **icons.ui_icon('UNLOCKED'))
+        advanced.operator('bbe.raw_save_json', text='Raw Save JSON Viewer / Editor',
+                          **icons.ui_icon('TEXT'))
 
 
 # Save Editor Panel ---
@@ -449,6 +379,10 @@ class NMS_PT_save_editor_panel(Panel):
 
     def draw_header(self, context):
         icons.draw_panel_icon(self.layout, 'save')
+
+    def draw_header_preset(self, context):
+        from .function_help import corner_help
+        corner_help(self.layout, 'IO')
 
     def draw(self, context):
         draw_save_manager(self.layout, context)

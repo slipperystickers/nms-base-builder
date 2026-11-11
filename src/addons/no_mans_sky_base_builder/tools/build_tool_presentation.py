@@ -23,18 +23,11 @@ class NMS_PT_tools_panel(Panel):
     def draw(self, context):
         layout = self.layout
         from ..save_editor.corvette_optimizer import draw_cockpit_controls
-        draw_cockpit_controls(layout)
-        from .properties_presentation import draw_compact_transforms
-        draw_compact_transforms(layout, context)
         scene = context.scene
         nms_tool = scene.nms_main
         build_tool = context.scene.nms_build_tool
         selected_tube = context.active_object
         is_tube = selected_tube is not None and selected_tube.get('ObjectID') == 'BASE_BUBPIPE'
-        is_popover = getattr(self, 'toolbar_group', '') == 'builder_tools'
-        if is_popover:
-            layout.ui_units_x = 20
-
         # Split into two columns of equal widths.
         #split = layout.split(factor=0.5)
         #tools_column, snap_column = (split.column(align = True), split.column(align = True))
@@ -52,14 +45,22 @@ class NMS_PT_tools_panel(Panel):
         part_count_section.scale_x = 0.5
         splitter = part_count_section.split(factor=0.7)
         splitter.label(text="Part Count:" )# , icon = "GEOMETRY_NODES"
-        part_count = build_tool.get_part_count()
+        from .. import part_counts
+        part_count = part_counts.displayed(scene)
         splitter.label(text="{}".format(part_count))
+        from ..save_editor.function_help import corner_help
+        corner_help(part_row, 'BUILDER')
+        draw_cockpit_controls(part_box)
         
         
         
         # Create Snapping box.
         snap_box = tools_column.box()
         snap_col = snap_box.column(align=True)
+        from ..utils.asset_browser_utils import auto_snap_enabled
+        enabled = auto_snap_enabled()
+        snap_col.operator('bbe.toggle_auto_snap', text='Auto-Snap',
+                          icon='CHECKBOX_HLT' if enabled else 'CHECKBOX_DEHLT', depress=enabled)
         
         snap_button_row = snap_col.row(align = True)
         snap_button_split = snap_button_row.split(factor=0.277777)

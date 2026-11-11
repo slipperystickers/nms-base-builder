@@ -19,13 +19,25 @@ BUILDER = builder.get_builder()
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
 
 
+def duplication_selection(objects):
+    guides = [obj for obj in objects if is_bezier_or_nurbs_path(obj)]
+    if len(guides) != 1:
+        return None, []
+    guide = guides[0]
+    seeds = [obj for obj in objects if obj != guide]
+    if any(obj.type != 'MESH' or obj.get('curve_parent') or
+           not (obj.get('ObjectID') or obj.get('GroupID')) for obj in seeds):
+        return guide, []
+    return guide, seeds
+
+
 def show_duplicate_selection_help(context):
     """Explain the required selection at either curve duplication entry point."""
     def draw(self, _context):
-        self.layout.label(text="Place an object, then select both the object and the curve.")
-        self.layout.label(text="Hold Shift while clicking to select both.")
+        self.layout.label(text="Select one curve and the parts to repeat, or one existing group.")
+        self.layout.label(text="Multiple parts will be grouped automatically.")
         self.layout.label(text="Then click Duplicate Along Curve.")
-    context.window_manager.popup_menu(draw, title="Select an Object and a Curve", icon='INFO')
+    context.window_manager.popup_menu(draw, title="Select Parts and a Curve", icon='INFO')
 
 
 class Curve:
@@ -540,6 +552,7 @@ def apply_curve_transforms_and_detach(curve):
         if prop in curve:
             del curve[prop]
         
+    curve.hide_select = False
     return curve, duplicates
 
 # make all objects linked ao a curve unselectable
@@ -589,7 +602,7 @@ def select_children_of_curve(curve):
     #curve["initial_curve_scale"] = 1
     
     # Curve Studio guides must remain clickable while their objects are edited.
-    curve.hide_select = not curve.get('bbe_easy_curve', False)
+    curve.hide_select = False
     curve[Curve.PROP_PARENT_SELECTED] = False
     #blend_utils.select(children)
     return children
@@ -625,8 +638,7 @@ def delete_curve_and_children(curve):
     if not is_bezier_or_nurbs_path(curve):
         raise TypeError("Object is not a curve")
     
-    if not curve[Curve.PROP_HAS_LINKED_OBJECTS]:
-        return TypeError("Object has no linked children")
+
 
     # Delete all linked objects first - in one batch, see removeobjects_from_curve
     doomed = [obj for obj in bpy.data.objects

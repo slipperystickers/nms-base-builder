@@ -342,10 +342,11 @@ def after_load(_unused):
     # only the informational popup needs to wait for the UI event loop.
     _repair_saved_hd_textures(before_draw=True)
     from .part_overrides.fossil_models import refresh_scene
-    from .utils import room_glass, light_fissure
+    from .utils import room_glass, light_fissure, corvette_trim
     for scene in bpy.data.scenes:
         with bpy.context.temp_override(scene=scene, view_layer=scene.view_layers[0]):
             refresh_scene(scene)
+            corvette_trim.refresh_scene(scene)
             room_glass.refresh_scene(scene)
             light_fissure.refresh_scene(scene)
 

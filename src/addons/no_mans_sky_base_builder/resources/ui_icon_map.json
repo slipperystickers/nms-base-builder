@@ -25,6 +25,7 @@
     "ARROW_LEFTRIGHT": "mirror",
     "MOD_MIRROR": "mirror",
     "MOD_DASH": "curve",
+    "OUTLINER_DATA_GREASEPENCIL": "draw_smooth_curve",
     "NORMALIZE_FCURVES": "curve",
     "LINCURVE": "curve",
     "MOD_NOISE": "random",

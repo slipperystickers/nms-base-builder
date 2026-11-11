@@ -213,7 +213,7 @@ def assign_bytebeat_material(item):
     Args:
         item (bpy.Object): The Blender object to assign the material to.
     """
-    material = validate_material("bytebeat_material", [0.8, 0.0, 0.8, 0.5])
+    material = validate_material("bytebeat_material", [1.0, 0.04, 0.3, 1.0])
     set_material(item, material)
 
 

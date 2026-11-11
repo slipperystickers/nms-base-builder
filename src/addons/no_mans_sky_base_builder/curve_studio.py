@@ -1,8 +1,129 @@
 """Curve Studio workflow over BBE's existing followers and Blender transforms."""
 import math
 import bpy
+from bpy.app.handlers import persistent
 from mathutils import Vector, Matrix, Quaternion
 from .utils import curve, curve_utils
+
+# Keep the baseline with Blender's undo state, including named custom orientations.
+# Save handlers temporarily remove the override so files open with the user's settings.
+_TRANSFORM_SESSION = 'bbe_curve_transform_session'
+_save_resume = {}
+_history_pending = False
+
+
+def transform_settings(scene):
+    return scene.transform_orientation_slots[0].type, scene.tool_settings.transform_pivot_point
+
+
+def set_transform_settings(scene, orientation, pivot):
+    slot = scene.transform_orientation_slots[0]
+    try:
+        slot.type = orientation
+    except TypeError:
+        # The user may have removed the custom orientation during the edit.
+        slot.type = 'GLOBAL'
+    scene.tool_settings.transform_pivot_point = pivot
+
+
+def end_transform_session(scene):
+    session = scene.get(_TRANSFORM_SESSION)
+    if session is not None:
+        orientation, pivot = session['orientation'], session['pivot']
+        del scene[_TRANSFORM_SESSION]
+        set_transform_settings(scene, orientation, pivot)
+
+
+def session_visible(scene, session):
+    window = next((w for w in bpy.context.window_manager.windows
+                   if str(w.as_pointer()) == session['window']), None)
+    if (window is None or window.scene != scene or window.workspace.session_uid != session['workspace']
+            or not getattr(scene, 'bbe_curve_helper', False)):
+        return False
+    layer = window.view_layer
+    obj = layer.objects.active
+    if obj is None or obj.mode != 'OBJECT' or not obj.select_get(view_layer=layer):
+        return False
+    if obj.type != 'CURVE' or obj.get('ObjectID'):
+        parent_name = obj.get('curve_parent')
+        obj = scene.objects.get(parent_name) if parent_name else obj.parent
+    return obj is not None and obj.session_uid == session['guide']
+
+
+def restore_if_left(scene):
+    """Restore a finished session. Return True while Studio owns the controls."""
+    session = scene.get(_TRANSFORM_SESSION)
+    if session is None:
+        return False
+    if session_visible(scene, session):
+        return True
+    end_transform_session(scene)
+    return False
+
+
+def watch_transforms():
+    global _history_pending
+    from . import undo_guard
+    if not undo_guard.history_ready():
+        return .1
+    watching = False
+    for scene in bpy.data.scenes:
+        if _TRANSFORM_SESSION in scene and restore_if_left(scene):
+            session = scene[_TRANSFORM_SESSION]
+            if _history_pending:
+                scene.tool_settings.transform_pivot_point = session['studio_pivot']
+            elif session['studio_pivot'] != scene.tool_settings.transform_pivot_point:
+                session['studio_pivot'] = scene.tool_settings.transform_pivot_point
+            watching = True
+    _history_pending = False
+    return .1 if watching else None
+
+
+@persistent
+def start_transform_watch(*_):
+    if not bpy.app.timers.is_registered(watch_transforms):
+        bpy.app.timers.register(watch_transforms, first_interval=.05)
+
+
+def begin_transform_session(context, guide):
+    scene = context.scene
+    record = scene.get(_TRANSFORM_SESSION)
+    if record is not None:
+        if (record['guide'] == guide.session_uid and record['window'] == str(context.window.as_pointer())
+                and record['workspace'] == context.workspace.session_uid):
+            return False
+        end_transform_session(scene)
+    from . import bubble_preview
+    bubble_preview.release_joint_pivot(scene)
+    orientation, pivot = transform_settings(scene)
+    scene[_TRANSFORM_SESSION] = dict(orientation=orientation, pivot=pivot, guide=guide.session_uid,
+                                     studio_pivot=pivot, window=str(context.window.as_pointer()),
+                                     workspace=context.workspace.session_uid)
+    start_transform_watch()
+    return True
+
+
+@persistent
+def suspend_for_save(*_):
+    _save_resume.clear()
+    for scene in bpy.data.scenes:
+        session = scene.get(_TRANSFORM_SESSION)
+        if session is not None:
+            if session_visible(scene, session):
+                _save_resume[scene.session_uid] = (session.to_dict(), transform_settings(scene))
+            end_transform_session(scene)
+
+
+@persistent
+def resume_after_save(*_):
+    for scene in bpy.data.scenes:
+        saved = _save_resume.get(scene.session_uid)
+        if saved and session_visible(scene, saved[0]):
+            scene[_TRANSFORM_SESSION] = saved[0]
+            set_transform_settings(scene, *saved[1])
+            start_transform_watch()
+    _save_resume.clear()
+
 
 def prepare_frame(obj):
     """Keep planar paths in local XY, so path-up is their face normal."""
@@ -56,10 +177,9 @@ def select_children(context,obj):
     choose(context,children)
     if children:context.scene.nms_properties.set_active_obect(children[0])
     if children:
-        if not obj.get('bbe_studio_defaults_applied'):
-            context.scene.transform_orientation_slots[0].type='LOCAL'
-            context.scene.tool_settings.transform_pivot_point='INDIVIDUAL_ORIGINS'
-            obj['bbe_studio_defaults_applied']=True
+        if begin_transform_session(context, obj):
+            set_transform_settings(context.scene, 'LOCAL', 'INDIVIDUAL_ORIGINS')
+            context.scene[_TRANSFORM_SESSION]['studio_pivot'] = 'INDIVIDUAL_ORIGINS'
         set_native_tool(context,obj,obj.get('bbe_studio_tool','MOVE'))
 
 def set_native_tool(context,obj,kind):
@@ -169,7 +289,7 @@ class BBE_OT_studio_action(bpy.types.Operator):
     def description(cls,context,props):
         return {'CHILDREN':'Edit all objects on this curve; click one object afterward to adjust it alone',
           'PARENT':'Return to shaping the curve', 'ALL':'Select all objects on this curve',
-          'DUPLICATE':'Select a part and its curve, then create linked copies using the existing BBE tool',
+          'DUPLICATE':'Repeat the selected parts together along the curve',
           'WORLD':'World axes: use the same scene directions for every object',
           'LOCAL':'Local axes: use the objects own directions',
           'EACH':'Individual origins: rotate or scale every selected object about itself',
@@ -190,15 +310,13 @@ class BBE_OT_studio_action(bpy.types.Operator):
             if self.action=='DUPLICATE':curve.show_duplicate_selection_help(context)
             return {'CANCELLED'}
         a=self.action
+        if a in {'WORLD','LOCAL','EACH','TOGETHER','AXES','PIVOT'}:
+            begin_transform_session(context, obj)
         if a=='PARENT':select_parent(context,obj)
         elif a in {'CHILDREN','ALL'}:select_children(context,obj)
         elif a=='DUPLICATE':
-            seeds=[o for o in context.selected_objects if o!=obj and (o.get('ObjectID') or o.get('GroupID')) and not o.get('curve_parent')]
-            if len(seeds)!=1:
-                curve.show_duplicate_selection_help(context)
+            if context.scene.nms_build_tool.duplicate_along_curve(10, 1) == {'CANCELLED'}:
                 return {'CANCELLED'}
-            choose(context,[obj,seeds[0]])
-            context.scene.nms_build_tool.duplicate_along_curve(10,1)
             select_children(context,context.active_object)
         elif a in {'WORLD','LOCAL'}:context.scene.transform_orientation_slots[0].type='GLOBAL' if a=='WORLD' else 'LOCAL'
         elif a in {'EACH','TOGETHER'}:context.scene.tool_settings.transform_pivot_point='INDIVIDUAL_ORIGINS' if a=='EACH' else 'MEDIAN_POINT'
@@ -229,6 +347,8 @@ class BBE_OT_studio_action(bpy.types.Operator):
         elif a=='DETACH':
             select_parent(context,obj)
             return bpy.ops.object.nms_curve_break_apart()
+        if a in {'EACH','TOGETHER','PIVOT'}:
+            context.scene[_TRANSFORM_SESSION]['studio_pivot'] = context.scene.tool_settings.transform_pivot_point
         context.area.tag_redraw() if context.area else None
         return {'FINISHED'}
 
@@ -258,8 +378,12 @@ class BBE_OT_studio_transform(bpy.types.Operator):
         from .curve_tools import active_curve
         obj=active_curve(context)
         if not child_mode(context,obj):return {'CANCELLED'}
+        if self.properties.is_property_set('axes') or self.properties.is_property_set('center'):
+            begin_transform_session(context, obj)
         if self.properties.is_property_set('axes'):context.scene.transform_orientation_slots[0].type=self.axes
-        if self.properties.is_property_set('center'):context.scene.tool_settings.transform_pivot_point=self.center
+        if self.properties.is_property_set('center'):
+            context.scene.tool_settings.transform_pivot_point=self.center
+            context.scene[_TRANSFORM_SESSION]['studio_pivot'] = self.center
         apply_transform(context,self.kind,self.move if self.kind=='MOVE' else self.angle if self.kind=='ROTATE' else self.size,self.axis)
         context.view_layer.update()
         for child in context.selected_objects:
@@ -267,7 +391,47 @@ class BBE_OT_studio_transform(bpy.types.Operator):
         return {'FINISHED'}
 
 CLASSES=(BBE_OT_studio_action,BBE_OT_studio_transform,BBE_OT_studio_drag)
+@persistent
+def before_history(*_):
+    # Blender keeps the live pivot across memfile undo even when it restores
+    # the orientation and scene properties. Leave the baseline for ordinary edits.
+    for scene in bpy.data.scenes:
+        session = scene.get(_TRANSFORM_SESSION)
+        if session is not None:
+            scene.tool_settings.transform_pivot_point = session['pivot']
+
+
+@persistent
+def after_history(*_):
+    global _history_pending
+    _history_pending = True
+    start_transform_watch()
+
+
+_handlers = (
+    (bpy.app.handlers.undo_pre, before_history),
+    (bpy.app.handlers.redo_pre, before_history),
+    (bpy.app.handlers.undo_post, after_history),
+    (bpy.app.handlers.redo_post, after_history),
+    (bpy.app.handlers.load_post, start_transform_watch),
+    (bpy.app.handlers.save_pre, suspend_for_save),
+    (bpy.app.handlers.save_post, resume_after_save),
+    (bpy.app.handlers.save_post_fail, resume_after_save),
+)
+
+
 def register():
     for cls in CLASSES:bpy.utils.register_class(cls)
+    for handlers, callback in _handlers:
+        handlers.append(callback)
+
+
 def unregister():
+    for handlers, callback in _handlers:
+        handlers.remove(callback)
+    if bpy.app.timers.is_registered(watch_transforms):
+        bpy.app.timers.unregister(watch_transforms)
+    for scene in bpy.data.scenes:
+        end_transform_session(scene)
+    _save_resume.clear()
     for cls in reversed(CLASSES):bpy.utils.unregister_class(cls)

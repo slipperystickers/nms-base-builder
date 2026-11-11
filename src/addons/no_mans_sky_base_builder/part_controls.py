@@ -4,7 +4,7 @@ import gpu
 from bpy.app.handlers import persistent
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Matrix, Vector
-from . import snap_markers
+from . import cable_connections, door_circuit, snap_markers
 
 ROOF='BBE Interior Cutaway'
 BEAM='BBE Magnetic Beam'
@@ -68,14 +68,26 @@ def update_roof(obj,context=None):
     if not enclosed(obj):return
     modifier=obj.modifiers.get(ROOF)
     if modifier is None and obj.bbe_hide_ceiling:
-        modifier=obj.modifiers.new(ROOF,'NODES');modifier.node_group=roof_group()
+        modifier=obj.modifiers.new(ROOF,'NODES')
+    if modifier is not None and modifier.node_group is None:
+        modifier.node_group=roof_group()
     if modifier is not None:
         modifier.show_viewport=obj.bbe_hide_ceiling
         modifier.show_render=False
         for item in modifier.node_group.interface.items_tree:
             if item.item_type=='SOCKET' and item.in_out=='INPUT' and item.name=='Opening Height':
-                modifier[item.identifier]=obj.bbe_ceiling_height
-        obj.update_tag()
+                interface = getattr(modifier, 'properties', None)
+                if hasattr(interface, 'inputs'):
+                    # Blender 5.2 stores each socket value inside its input record.
+                    interface.inputs[item.identifier]['value'] = obj.bbe_ceiling_height
+                else:
+                    modifier[item.identifier] = obj.bbe_ceiling_height
+        obj.update_tag(refresh={'DATA'})
+        if context and context.window_manager:
+            for window in context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type == 'VIEW_3D':
+                        area.tag_redraw()
 
 
 def beam_materials(obj):
@@ -111,14 +123,132 @@ def update_beam(obj,context=None):
     if modifier.show_render!=enabled:modifier.show_render=enabled
 
 
+def display_settings(obj):
+    if obj.get('ObjectID') in BEAM_IDS and obj.bbe_show_magnetic_beam:
+        return {'bbe_show_magnetic_beam': True}
+    if enclosed(obj):
+        return {key: getattr(obj, key) for key in ('bbe_hide_ceiling', 'bbe_ceiling_height')
+                if obj.is_property_set(key)}
+    return {}
+
+
+def restore_display(obj, entry):
+    for key, value in entry.get('display', {}).items():
+        if key in ('bbe_hide_ceiling', 'bbe_ceiling_height', 'bbe_show_magnetic_beam'):
+            setattr(obj, key, value)
+
+
+_GROUP_ROOF = 'BBE Group Cutaway'
+_ROOF_MODE = 'bbe_group_roof_mode'
+
+
+def group_roof_modifier(obj):
+    if _ROOF_MODE not in obj.data.attributes or obj.modifiers.get(_GROUP_ROOF):
+        return
+    group = bpy.data.node_groups.get(_GROUP_ROOF)
+    if group is None:
+        group, _, delete = node_group(_GROUP_ROOF)
+        mode = group.nodes.new('GeometryNodeInputNamedAttribute')
+        mode.data_type = 'INT'
+        mode.inputs['Name'].default_value = _ROOF_MODE
+        viewport = group.nodes.new('GeometryNodeIsViewport')
+        switch = group.nodes.new('GeometryNodeSwitch')
+        switch.input_type = 'INT'
+        switch.inputs['True'].default_value = 1   # Full room is render-only.
+        switch.inputs['False'].default_value = 2  # Cutaway is viewport-only.
+        group.links.new(viewport.outputs[0], switch.inputs['Switch'])
+        compare = group.nodes.new('FunctionNodeCompare')
+        compare.data_type = 'INT'
+        compare.operation = 'EQUAL'
+        inputs = [i for i in compare.inputs if i.enabled and i.name in ('A', 'B')]
+        group.links.new(mode.outputs['Attribute'], inputs[0])
+        group.links.new(switch.outputs[0], inputs[1])
+        group.links.new(compare.outputs[0], delete.inputs['Selection'])
+    obj.modifiers.new(_GROUP_ROOF, 'NODES').node_group = group
+
+
+def merge_display_parts(objects):
+    """Join each child's display geometry, retaining complete rooms for renders."""
+    from .utils import blend_utils
+    temporary, meshes, sources = [], [], []
+
+    def scratch(obj):
+        part = obj.copy()
+        temporary.append(part)
+        obj.users_collection[0].objects.link(part)
+        if 'ObjectID' in part:
+            del part['ObjectID']
+        return part
+
+    def mark(mesh, mode):
+        from array import array
+        attr = mesh.attributes.new(_ROOF_MODE, 'INT', 'FACE')
+        attr.data.foreach_set('value', array('i', [mode]) * len(mesh.polygons))
+
+    try:
+        for obj in objects:
+            is_roof = enclosed(obj) and obj.bbe_hide_ceiling
+            is_beam = obj.get('ObjectID') in BEAM_IDS and not obj.bbe_show_magnetic_beam
+            if not (is_roof or is_beam):
+                sources.append(obj)
+                continue
+            if is_beam:
+                update_beam(obj)
+            else:
+                update_roof(obj)
+            display = scratch(obj)
+            for modifier in list(display.modifiers):
+                if modifier.name not in (BEAM, ROOF):
+                    display.modifiers.remove(modifier)
+            graph = bpy.context.evaluated_depsgraph_get()
+            evaluated = display.evaluated_get(graph)
+            mesh = bpy.data.meshes.new_from_object(evaluated, preserve_all_data_layers=True, depsgraph=graph)
+            meshes.append(mesh)
+            display.modifiers.clear()
+            for key, value in obj.data.items():
+                if key not in mesh:
+                    mesh[key] = value
+            display.data = mesh
+            sources.append(display)
+            if is_roof:
+                mark(mesh, 2)
+                full = scratch(obj)
+                full.modifiers.clear()
+                full.data = obj.data.copy()
+                meshes.append(full.data)
+                mark(full.data, 1)
+                sources.append(full)
+        merged = blend_utils.merge_objects(sources, 'Grouped_Objects')
+        if merged:
+            for name in (ROOF, BEAM):
+                modifier = merged.modifiers.get(name)
+                if modifier:
+                    merged.modifiers.remove(modifier)
+            group_roof_modifier(merged)
+        return merged
+    finally:
+        if temporary:
+            bpy.data.batch_remove(temporary)
+        for mesh in meshes:
+            if not mesh.users:
+                bpy.data.meshes.remove(mesh)
+
+
 class BBE_OT_part_display(bpy.types.Operator):
     bl_idname='bbe.part_display';bl_label='Part Display';bl_options={'REGISTER','UNDO'}
     bl_description='Open the interior for decorating, or toggle the magnetic beam; game exports retain the complete part'
+    owner: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     def invoke(self,context,event):
-        self.object=context.active_object
+        self.object = context.scene.objects.get(self.owner) if self.owner else context.active_object
+        if self.object is None:
+            return {'CANCELLED'}
         return context.window_manager.invoke_popup(self,width=290)
     def draw(self,context):
         obj=self.object
+        from .save_editor.function_help import corner_help
+        heading = self.layout.row(align=True)
+        heading.label(text=obj.name, icon='OBJECT_DATA')
+        corner_help(heading, 'PART_DISPLAY')
         if enclosed(obj):
             self.layout.prop(obj,'bbe_hide_ceiling',text='Hide Ceiling / Roof')
             if obj.bbe_hide_ceiling:
@@ -158,23 +288,56 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
         from . import curve_surface,cable_targets
         if context.mode!='OBJECT' or curve_surface._sessions or cable_targets.session(context):return False
         obj=context.active_object
-        return obj is not None and obj.select_get() and (enclosed(obj) or obj.get('ObjectID') in BEAM_IDS or snap_markers.selected_pair(context) is not None)
+        return obj is not None and obj.select_get() and (enclosed(obj) or obj.get('ObjectID') in BEAM_IDS or snap_markers.selected_pair(context) is not None
+            or bool(cable_connections.local_sockets(obj, cable_connections.BYTEBEAT))
+            or bool(cable_connections.local_sockets(obj, cable_connections.POWER)))
     def setup(self,context):
         self.snap=self.gizmos.new('BBE_GT_part_button');self.snap.use_tooltip=True
         self.display=self.gizmos.new('BBE_GT_part_button');self.display.use_tooltip=True
+        self.wiring=self.gizmos.new('BBE_GT_part_button');self.wiring.use_tooltip=True
+        self.prox=self.gizmos.new('BBE_GT_part_button');self.prox.use_tooltip=True
+        self.beat=self.gizmos.new('BBE_GT_part_button');self.beat.use_tooltip=True
     def draw_prepare(self,context):
         obj=context.active_object;scale=context.preferences.system.ui_scale
         point=location_3d_to_region_2d(context.region,context.region_data,obj.matrix_world.translation)
-        self.snap.hide=self.display.hide=True
+        self.snap.hide=self.display.hide=self.wiring.hide=self.beat.hide=self.prox.hide=True
         if point is None:return
-        x=max(10,min(context.region.width-120*scale,point.x+30*scale));y=max(12,min(context.region.height-70*scale,point.y+25*scale))
+        x=max(10,min(context.region.width-120*scale,point.x+30*scale));y=max(12,min(context.region.height-100*scale,point.y+25*scale))
         if snap_markers.selected_pair(context) and snap_markers.objects(context) is None:
             self.snap.hide=False;self.snap.label='Snap';self.snap.width=70*scale;self.snap.height=25*scale
             self.snap.matrix_basis=Matrix.Translation((x,y,0));self.snap.target_set_operator('bbe.quick_snap');y+=30*scale
         if enclosed(obj) or obj.get('ObjectID') in BEAM_IDS:
             self.display.hide=False;self.display.label='Interior' if enclosed(obj) else 'Beam Options'
             self.display.width=105*scale;self.display.height=25*scale
-            self.display.matrix_basis=Matrix.Translation((x,y,0));self.display.target_set_operator('bbe.part_display')
+            self.display.matrix_basis=Matrix.Translation((x,y,0));self.display.target_set_operator('bbe.part_display').owner=obj.name
+            y += 30 * scale
+        if cable_connections.local_sockets(obj, cable_connections.POWER):
+            self.wiring.hide = False
+            self.wiring.label = '+Attach Wiring'
+            self.wiring.width = 110 * scale
+            self.wiring.height = 25 * scale
+            self.wiring.matrix_basis = Matrix.Translation((x, y, 0))
+            op = self.wiring.target_set_operator('bbe.start_cable_connection')
+            op.kind = cable_connections.POWER
+            op.source_name = obj.name
+            y += 30 * scale
+        if obj.get('ObjectID') in door_circuit.DOORS:
+            self.prox.hide = False
+            self.prox.label = '+Prox Control'
+            self.prox.width = 110 * scale
+            self.prox.height = 25 * scale
+            self.prox.matrix_basis = Matrix.Translation((x, y, 0))
+            self.prox.target_set_operator('bbe.add_door_proximity').owner = obj.name
+            y += 30 * scale
+        if cable_connections.local_sockets(obj, cable_connections.BYTEBEAT):
+            self.beat.hide = False
+            self.beat.label = '+Attach ByteBeat'
+            self.beat.width = 115 * scale
+            self.beat.height = 25 * scale
+            self.beat.matrix_basis = Matrix.Translation((x,y,0))
+            op = self.beat.target_set_operator('bbe.start_cable_connection')
+            op.kind = cable_connections.BYTEBEAT
+            op.source_name = obj.name
 
 
 @persistent
@@ -193,9 +356,10 @@ def changed(scene,depsgraph):
 def loaded(*args):
     for obj in bpy.data.objects:
         if obj.get('ObjectID') in BEAM_IDS:update_beam(obj)
+        if enclosed(obj) and obj.bbe_hide_ceiling:update_roof(obj)
 
 
-CLASSES=(BBE_OT_part_display,BBE_GT_part_button,BBE_GGT_part_controls)
+CLASSES=(door_circuit.BBE_OT_door_proximity,BBE_OT_part_display,BBE_GT_part_button,BBE_GGT_part_controls)
 def register():
     bpy.types.Object.bbe_hide_ceiling=bpy.props.BoolProperty(name='Hide Ceiling',default=False,update=update_roof)
     bpy.types.Object.bbe_ceiling_height=bpy.props.FloatProperty(name='Opening Height',default=.65,min=.15,max=.95,subtype='FACTOR',update=update_roof)

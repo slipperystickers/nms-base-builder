@@ -51,4 +51,6 @@ for variant in variants:
   mesh=b.meshes[0];mesh.name='BBE Magnetic '+variant+' '+quality
   mesh['bbe_magnetic_variant']=variant;mesh['bbe_magnetic_quality']=quality
   mesh['bbe_magnetic_revision']=2
-  bpy.data.libraries.write(str(dest/(variant+'_'+quality+'.blend')),{mesh},path_remap='NONE',fake_user=True,compress=True)
+  folder = dest if quality == 'simple' else dest.parent / 'hd_additions/magnetic_mounts'
+  folder.mkdir(exist_ok=True)
+  bpy.data.libraries.write(str(folder/(variant+'_'+quality+'.blend')),{mesh},path_remap='NONE',fake_user=True,compress=True)

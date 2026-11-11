@@ -698,6 +698,11 @@ def _restore_joint_rotation_guard():
     _joint_pivot_sessions.clear()
 
 
+def release_joint_pivot(scene):
+    if scene.as_pointer() in _joint_pivot_sessions:
+        _restore_joint_rotation_guard()
+
+
 def _set_joint_pivot(scene, target, socket):
     point = _joint_point(target, socket)
     axis = (target.matrix_world.to_3x3() @ _ARMS[socket]).normalized()
@@ -750,6 +755,10 @@ def _sync_joint_rotation_guard():
     _sync_elbow_controls(context)
     joint = _active_tube_joint(context)
     if joint:
+        from . import curve_studio
+        # Hand the scene controls back before a newly selected joint borrows them.
+        if curve_studio.restore_if_left(scene):
+            return 0.1
         _joint_pivot_sessions[scene.as_pointer()] = (
             scene, selection, scene.cursor.matrix.copy(),
             scene.tool_settings.transform_pivot_point,

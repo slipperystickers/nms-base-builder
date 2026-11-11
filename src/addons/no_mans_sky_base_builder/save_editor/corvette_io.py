@@ -71,6 +71,8 @@ class BBE_MT_corvette_picker(bpy.types.Menu):
     bl_label = 'Select Corvette'
 
     def draw(self, context):
+        from .function_help import corner_help
+        corner_help(self.layout, 'PICK_SHIP')
         data = context.scene.nms_save_data
         for ctx in ('Main', 'Season'):
             builds = [b for b in entries(data) if b.save_context == ctx]
@@ -97,9 +99,13 @@ class BBE_MT_corvette_picker(bpy.types.Menu):
 
 def draw_picker(layout, data):
     selected = data.get_current_base_identifiers()
-    layout.alert = bool(selected and selected.issues) or selected is None
-    layout.menu('BBE_MT_corvette_picker', text=label(selected) if selected else 'Select Corvette',
-                icon='ERROR' if selected and selected.issues else 'DOWNARROW_HLT')
+    layout.alert = selected is None or bool(selected.issues)
+    if layout.alert:
+        # The enum field uses Blender's alert color and still opens our repair-aware menu.
+        layout.prop_with_menu(data, 'nms_base_index', text='', menu='BBE_MT_corvette_picker',
+                              icon='ERROR' if selected else 'NONE')
+    else:
+        layout.menu('BBE_MT_corvette_picker', text=label(selected), icon='DOWNARROW_HLT')
 
 
 def draw_status(layout, data):

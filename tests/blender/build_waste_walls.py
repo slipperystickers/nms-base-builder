@@ -84,4 +84,8 @@ for mesh in meshes:
             im.user_remap(images[key])
         else:
             images[key]=im
-bpy.data.libraries.write(str(dest/'waste_walls.blend'),meshes,path_remap='NONE',fake_user=True,compress=True)
+for quality in ('simple', 'detailed'):
+    folder = dest if quality == 'simple' else dest.parent / 'hd_additions/waste_walls'
+    folder.mkdir(exist_ok=True)
+    bpy.data.libraries.write(str(folder / (quality + '.blend')), {m for m in meshes if m.name.endswith(' ' + quality)},
+                             path_remap='NONE', fake_user=True, compress=True)

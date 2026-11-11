@@ -8,6 +8,8 @@ class U_BYTEBEATLINE(line.Line):
 
         if not materials_v2.is_high_res(self.object):
             material.assign_bytebeat_material(self.object)
+        from .. import cable_connections
+        cable_connections.style(self.object)
 
     def retrieve_object_from_id(self, object_id):
         # Keep Line's special length/export math and endpoint rig. Only the
