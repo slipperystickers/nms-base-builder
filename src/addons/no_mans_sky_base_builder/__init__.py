@@ -1263,7 +1263,8 @@ class ExportData(bpy.types.Operator):
 
 class ExportObjectsData(bpy.types.Operator):
     bl_idname = "object.nms_export_nms_data_objects"
-    bl_label = "Export to Clipboard (Objects Only)"
+    bl_label = "Copy Objects to Clipboard"
+    bl_description = "Copy the current build's objects as a No Man's Sky Objects array for pasting into a save editor"
 
     def execute(self, context):
         scene = context.scene

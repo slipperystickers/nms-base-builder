@@ -1,3 +1,9 @@
+# 18.2.47
+
+**Copy Objects to Clipboard** is back in the top-bar I/O menu and the sidebar Import/Export panel. It copies the current build's objects as a JSON array ready to paste into a No Man's Sky save editor.
+
+Install the extension ZIP below or use BBE's updater. Existing Detailed Proxy packs carry over.
+
 # 18.2.46
 
 - Place electrical, teleport and pink ByteBeat cables with a live preview. Branch an electrical or ByteBeat cable at a clicked point and hide each cable type using its collection.

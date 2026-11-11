@@ -80,6 +80,7 @@ with patch.object(manager, 'get_save_data', return_value=save), patch.object(man
                 assert sidebar == header, (kind, width, sidebar, header)
                 ops = [name for action, name in sidebar if action == 'operator']
                 assert ops.count('object.nms_new_file') == 1
+                assert ops.count('object.nms_export_nms_data_objects') == 1
                 assert ops.count('bbe.export_ship_file') == ops.count('bbe.export_base_file') == 1
                 assert ('bbe.io_add_minimal_corvette' in ops) == (enabled and kind == manager.BaseType.CORVETTE)
                 assert ('bbe.optimizer_export' in ops) == (enabled and kind == manager.BaseType.CORVETTE)

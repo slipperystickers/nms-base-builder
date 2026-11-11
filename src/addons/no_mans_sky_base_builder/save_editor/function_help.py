@@ -74,6 +74,7 @@ TOPICS.update({
     )),
     'IO': ('Import and export', (
         ('Work with a file', 'Use Import Build from File to open a build. Save BBE Project JSON keeps an editable project. Export Corvette or Export Base writes a standalone file.'),
+        ('Copy objects', 'Copy Objects to Clipboard copies the current build as an Objects JSON array for pasting into a save editor.'),
         ('Clear the scene', 'Choose Clear Build Scene and confirm to remove objects and collections from the current Blender scene. Undo restores the build.'),
         ('Work with a game save', 'Choose an account and save slot, then a base type and a ship or base. Import from Save loads that build into Blender. Under Corvette, Add Minimal Corvette creates a starter ship in the chosen save.'),
         ('Save your ship', 'Check the selected destination before clicking Optimize & Export to Save. With a Corvette selected, that button backs up the slot and writes the ship immediately. Slot Backups opens the backup folder.'),
