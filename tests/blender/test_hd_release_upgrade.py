@@ -24,6 +24,8 @@ ui = module('hd_library_ui')
 builder = module('builder_v2')
 old_root = hd.additions_root()
 assert old_root and old_root.name != hd.additions_specification()['id']
+previous = next(p for p in hd.additions_specification()['compatible_previous'] if p['id'] == old_root.name)
+assert 'assets/B_GEN_5.blend' in previous['files']  # Also used when uninstalling a previous pack.
 assert hd.has_installed_content()
 assert [s['id'] for s in hd.pending_specs()] == [hd.additions_specification()['id']]
 
