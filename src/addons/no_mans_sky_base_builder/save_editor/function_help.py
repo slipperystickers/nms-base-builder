@@ -74,7 +74,7 @@ TOPICS.update({
     )),
     'IO': ('Import and export', (
         ('Work with a file', 'Use Import Build from File to open a build. Save BBE Project JSON keeps an editable project. Export Corvette or Export Base writes a standalone file.'),
-        ('Copy objects', 'Copy Objects to Clipboard copies the current build as an Objects JSON array for pasting into a save editor.'),
+        ('Copy objects', 'Copy Objects to Clipboard copies the current build as an Objects JSON array for pasting into a save editor. Import from Clipboard loads a copied build or replaces its parts from an Objects array.'),
         ('Clear the scene', 'Choose Clear Build Scene and confirm to remove objects and collections from the current Blender scene. Undo restores the build.'),
         ('Work with a game save', 'Choose an account and save slot, then a base type and a ship or base. Import from Save loads that build into Blender. Under Corvette, Add Minimal Corvette creates a starter ship in the chosen save.'),
         ('Save your ship', 'Check the selected destination before clicking Optimize & Export to Save. With a Corvette selected, that button backs up the slot and writes the ship immediately. Slot Backups opens the backup folder.'),
@@ -90,6 +90,7 @@ TOPICS.update({
     )),
     'PREFABS': ('Prefabs', (
         ('Reuse a build', 'Select the parts you want to reuse and choose Save As Prefab. Open the Prefab Folder to find your saved files. Get More Prefabs opens a choice of community sources.'),
+        ('Online catalogue', 'Click Browse or search by title, creator, description, or tag. Download a prefab to your local library, then click Place to add it to the scene. Upload Prefab shares a build file and optional thumbnail. Browsing, downloading and submitting do not require Discord.'),
         ('Edit a placed prefab', 'Select the prefab and use Split Prefab to Parts to work on its pieces. Use Group when you want selected scene parts to move together.'),
     )),
     'LOGIC': ('Cables and logic', (

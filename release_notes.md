@@ -1,5 +1,4 @@
-# Base Builder Extended 18.2.47
+# Base Builder Extended 18.2.48
 
-**Copy Objects to Clipboard** is back in the top-bar I/O menu and the sidebar Import/Export panel. It copies the current build's objects as a JSON array ready to paste into a No Man's Sky save editor.
-
-Install the extension ZIP below or use BBE's updater. Existing Detailed Proxy packs carry over.
+- **Import from Clipboard** is back beside **Copy Objects to Clipboard** in the top-bar I/O menu and the sidebar Import/Export panel.
+- Browse the **Online Prefab Catalogue** from the Prefabs menu. Search community builds, download and place them, or share your own prefab. No Discord login is required.

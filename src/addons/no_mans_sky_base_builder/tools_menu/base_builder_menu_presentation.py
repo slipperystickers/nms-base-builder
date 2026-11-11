@@ -40,7 +40,9 @@ def draw_build_files(layout):
     exports = files.row(align=True)
     exports.operator('bbe.export_ship_file', text='Export Corvette (.nmsship)...', **icons.ui_icon('EXPORT'))
     exports.operator('bbe.export_base_file', text='Export Base (.nmsbase)...', **icons.ui_icon('EXPORT'))
-    files.operator('object.nms_export_nms_data_objects', **icons.ui_icon('COPYDOWN'))
+    clipboard = files.split(factor=0.5, align=True)
+    clipboard.operator('object.nms_export_nms_data_objects', **icons.ui_icon('COPYDOWN'))
+    clipboard.operator('object.nms_import_nms_data', **icons.ui_icon('PASTEDOWN'))
     files.separator()
     clear = files.row()
     clear.operator_context = 'INVOKE_DEFAULT'

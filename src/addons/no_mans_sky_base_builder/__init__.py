@@ -969,9 +969,10 @@ class NMS_PT_build_panel(Panel):
         presets_v2_row.operator("object.nms_ungroup_objects", text = "Ungroup",  **icons.ui_icon("OUTLINER_DATA_POINTCLOUD"))
 
 
+        community_prefabs.draw(layout, context)
         catalogue = layout.box()
         heading = catalogue.row(align=True)
-        heading.label(text="Prefab Catalogue")
+        heading.label(text="Local Prefab Library")
         heading.operator("object.nms_refresh_prefabs", text="", **icons.ui_icon("FILE_REFRESH"))
         wm = context.window_manager
         if wm.bbe_prefabs:
@@ -1240,6 +1241,7 @@ class ExportShipFile(bpy.types.Operator):
 class ImportData(bpy.types.Operator):
     bl_idname = "object.nms_import_nms_data"
     bl_label = "Import from Clipboard"
+    bl_description = "Import a copied build or replace the current build parts with a copied Objects array"
     bl_options = {"UNDO", "REGISTER"}
 
     def execute(self, context):
@@ -2331,6 +2333,8 @@ classes = (
     UngroupObjects
 )
 
+from . import community_prefabs
+classes = classes + community_prefabs.classes
 classes = classes + build_metadata_ui.classes + asset_browser_presentation.classes + base_builder_menu.classes
 
 classes = classes  + save_editor_operators.classes + station_reference.classes + build_tool_operators.classes + batch_tool_operators.classes + prooperties_operators.classes + asset_browser_operators.classes + base_builder_menu_operators.classes
@@ -2383,6 +2387,7 @@ def register_core():
     bpy.types.Scene.nms_main = PointerProperty(type=NMSMain)
     bpy.types.Scene.nms_base_tool = PointerProperty(type = NMSBaseProperties)
     build_metadata_ui.register_handlers()
+    community_prefabs.register()
     bpy.types.WindowManager.bbe_prefabs = bpy.props.CollectionProperty(type=PartCollection, options={'SKIP_SAVE'})
     bpy.types.WindowManager.bbe_prefab_index = bpy.props.IntProperty(default=0, options={'SKIP_SAVE'})
     if schedule_prefab_catalogue not in bpy.app.handlers.load_post:
@@ -2468,6 +2473,7 @@ def unregister():
         bpy.app.timers.unregister(_refresh_prefab_catalogue_deferred)
     if schedule_prefab_catalogue in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(schedule_prefab_catalogue)
+    community_prefabs.unregister()
     del bpy.types.WindowManager.bbe_prefabs
     del bpy.types.WindowManager.bbe_prefab_index
     wasd_navigation.unregister()
