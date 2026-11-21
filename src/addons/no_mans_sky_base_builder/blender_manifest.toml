@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "no_mans_sky_base_builder"
-version = "18.2.118"
+version = "18.3.0"
 name = "Base Builder Extended"
 tagline = "A tool to assist with base building in No Mans Sky"
 maintainer = "DjMonkey <@djmonkeyuk>"
@@ -21,8 +21,6 @@ blender_version_min = "5.1.0"
 platforms = ["windows-x64"]
 wheels = [
     "./wheels/lz4-4.4.5-cp313-cp313-win_amd64.whl",
-    "./wheels/pyside6_essentials-6.11.1-1-cp310-abi3-win_amd64.whl",
-    "./wheels/shiboken6-6.11.1-cp310-abi3-win_amd64.whl",
 ]
 # # Optional: Blender version that the extension does not support, earlier versions are supported.
 # # This can be omitted and defined later on the extensions platform if an issue is found.

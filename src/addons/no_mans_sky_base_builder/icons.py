@@ -72,7 +72,8 @@ def get_asset_icons_pcol():
     Directly imports the compiled Qt resource module and populates
     a Blender preview collection.
     """
-    # Ensure Qt bindings are available
+    from . import qt_runtime
+    qt_runtime.activate()
     try:
         from PySide6 import QtCore
     except ImportError:

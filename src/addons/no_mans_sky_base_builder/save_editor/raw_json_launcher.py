@@ -29,10 +29,10 @@ class BBE_OT_raw_save_json(bpy.types.Operator):
             if not paths:
                 raise ValueError('The selected save slot has no readable save point')
             selected = max(paths, key=lambda path: (path.stat().st_mtime_ns, str(path)))
-            from .. import bbe_chat
+            from .. import bbe_chat, qt_runtime
             command = [bbe_chat._python_executable(),
                        str(Path(__file__).with_name('raw_json_window.py')),
-                       '--qt-site', bbe_chat._qt_site_packages(),
+                       '--qt-site', str(qt_runtime.bundled_wheels()),
                        '--save', str(selected),
                        '--parent-pid', str(os.getpid()),
                        '--backup-root', str(backup_policy.root_directory())]

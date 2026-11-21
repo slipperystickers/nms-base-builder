@@ -18,14 +18,14 @@ import time
 
 
 def _load_qt():
-    # Blender installs extension wheels here; -I excludes this user site path.
-    sys.path.insert(0, sys.argv[1])
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import qt_runtime
+    qt_runtime.activate(sys.argv[1])
     from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
     return QtCore, QtGui, QtNetwork, QtWidgets
 
 
 QtCore, QtGui, QtNetwork, QtWidgets = _load_qt()
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bbe_chat_helper as helper
 import bbe_chat_state as chat_state
 import i18n

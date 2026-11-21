@@ -17,7 +17,7 @@ import sys
 
 import bpy
 from . import bbe_chat_state as chat_state
-from . import i18n
+from . import i18n, qt_runtime
 
 
 _MAX_DOWNLOAD = 20 * 1024 * 1024
@@ -194,14 +194,7 @@ def _python_executable():
 
 
 def _qt_site_packages():
-    for folder in map(Path, sys.path):
-        if (folder / 'PySide6').is_dir():
-            return str(folder)
-    profile = _identity_path().parent.parent
-    folder = profile / 'extensions' / '.local' / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'site-packages'
-    if not (folder / 'PySide6').is_dir():
-        raise RuntimeError('The bundled chat window is unavailable; reinstall the BBE extension')
-    return str(folder)
+    return str(qt_runtime.site(qt_runtime.bundled_wheels()))
 
 
 def _launch_messenger(*, prewarm=False):
@@ -214,7 +207,7 @@ def _launch_messenger(*, prewarm=False):
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     log = folder / 'messenger-startup.log'
     args = [_python_executable(), '-I', '-u', str(Path(__file__).with_name('bbe_chat_messenger.py')),
-            _qt_site_packages(), str(_identity_path()), str(_settings_path()), str(folder),
+            str(qt_runtime.bundled_wheels()), str(_identity_path()), str(_settings_path()), str(folder),
             '--blender-pid', str(os.getpid())]
     if prewarm:
         args.append('--prewarm')
