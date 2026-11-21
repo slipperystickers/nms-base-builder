@@ -342,10 +342,11 @@ def remove(context):
 
 class BBE_OT_choose_pilot(bpy.types.Operator):
     bl_idname = 'bbe.choose_pilot_reference'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Choose Pilot Reference'
     bl_description = 'Add or replace this cockpit’s selectable, transform-locked reference'
     bl_options = {'REGISTER', 'UNDO'}
-    race: bpy.props.EnumProperty(items=[(key, label, '') for key, label in RACES])
+    race: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[(key, label, '') for key, label in RACES])
 
     def execute(self, context):
         try:
@@ -362,9 +363,10 @@ class BBE_OT_choose_pilot(bpy.types.Operator):
 
 class BBE_OT_pilot_action(bpy.types.Operator):
     bl_idname = 'bbe.pilot_reference_action'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Pilot Reference'
     bl_options = {'REGISTER', 'UNDO'}
-    action: bpy.props.EnumProperty(items=[(k, k.title(), '') for k in ('VISIBILITY', 'REMOVE')])
+    action: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[(k, k.title(), '') for k in ('VISIBILITY', 'REMOVE')])
 
     def execute(self, context):
         obj = preview(context)

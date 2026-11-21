@@ -3,14 +3,16 @@
 Blender intersects the location locks of every selected object when drawing
 its gizmo. Cable meshes are driven by their ends, so their redundant locks
 must not hide the Move arrows for an otherwise movable complete selection.
-No transforms or connections are changed here.
+A single free cable also selects its two private controls for native Move.
 """
 import bpy
 from bpy.app.handlers import persistent
+from . import cable_connections as cables
 
 LINE_IDS = frozenset({'U_POWERLINE', 'U_BYTEBEATLINE', 'U_PIPELINE', 'U_PORTALLINE'})
 TAG = '_bbe_endpoint_move_lock'
 _rigs = []
+_endpoint_uses = {}
 _signature = None
 _busy = False
 _saving = False
@@ -21,9 +23,12 @@ def invalidate():
     _signature = None
 
 
-def _endpoints(obj, scene):
-    start = scene.objects.get(obj.get('start_control', ''))
-    end = scene.objects.get(obj.get('end_control', ''))
+def shared_endpoint(control):
+    return _endpoint_uses.get(control, 0) > 1
+
+
+def _endpoints(obj):
+    start, end = cables.endpoints(obj)
     if start is None or end is None or start == end:
         return None
     # Only manage the standard BBE location drivers. Leave custom rigs alone.
@@ -71,20 +76,37 @@ def refresh_selection(scene=None, _depsgraph=None):
         if signature != _signature:
             _restore()
             _rigs = []
+            _endpoint_uses.clear()
             for obj in scene.objects:
                 if obj.get('ObjectID') not in LINE_IDS:
                     continue
+                for end in cables.endpoints(obj):
+                    if end is not None:
+                        _endpoint_uses[end] = _endpoint_uses.get(end, 0) + 1
                 if not obj.get(TAG) and not all(obj.lock_location):
                     continue  # Preserve manual/custom lock configurations.
-                ends = _endpoints(obj, scene)
+                ends = _endpoints(obj)
                 if ends is not None:
                     if not obj.get(TAG):
                         obj[TAG] = True
                     _rigs.append((obj, *ends))
             _signature = signature
         object_mode = context.mode == 'OBJECT'
+        active = layer.objects.active
+        single = (object_mode and active is not None and active.get('ObjectID') in cables.EDITABLE_LINES
+                  and context.selected_objects == [active])
         for obj, start, end in _rigs:
             try:
+                # A shared junction belongs to other lines too. Only include it
+                # in a selection when the user explicitly selects the ends.
+                if single and obj == active and all(
+                    _endpoint_uses.get(end_obj) == 1 and cables.free_control(end_obj)
+                    and not any(end_obj.lock_location) and not end_obj.hide_select
+                    and end_obj.name in layer.objects and end_obj.visible_get(view_layer=layer)
+                    for end_obj in (start, end)
+                ):
+                    start.select_set(True, view_layer=layer)
+                    end.select_set(True, view_layer=layer)
                 complete = object_mode and all(
                     item.name in layer.objects and item.select_get(view_layer=layer)
                     and not item.hide_select and item.visible_get(view_layer=layer)
@@ -142,5 +164,6 @@ def unregister():
             handlers.remove(callback)
     _restore()
     _rigs = []
+    _endpoint_uses.clear()
     _saving = False
     invalidate()

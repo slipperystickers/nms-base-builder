@@ -108,6 +108,8 @@ class Group:
                 Group.PROP_TIMESTAMP: obj.get(Group.PROP_TIMESTAMP, int(time.time())),
                 Group.PROP_MATRIX_LOCAL: matrix_list,
             }
+            if obj.get(Group.PROP_OBJECT_ID) == 'U_PIPELINE':
+                cache['bbe_supply_roll'] = obj.bbe_supply_roll
             if Group.PROP_MESSAGE in obj:
                 cache[Group.PROP_MESSAGE] = obj[Group.PROP_MESSAGE]
             if obj.get('bbe_bubble_shape'):
@@ -122,7 +124,7 @@ class Group:
         
 
     @staticmethod
-    def extract_cached_data(parent_obj) :
+    def extract_cached_data(parent_obj, *, read_only=False):
         """
         Reads the custom property cache from parent_obj and returns a dictionary
         mapping child names to cached data.
@@ -140,8 +142,9 @@ class Group:
             cache_child_data = json.loads(parent_obj[Group.PROP_CHILD_CACHE])
             if not parent_obj.get(Group.PROP_DISPLAY_PIVOT_CACHE):
                 Group.display_child_cache(cache_child_data)
-                parent_obj[Group.PROP_CHILD_CACHE] = json.dumps(cache_child_data)
-                parent_obj[Group.PROP_DISPLAY_PIVOT_CACHE] = True
+                if not read_only:
+                    parent_obj[Group.PROP_CHILD_CACHE] = json.dumps(cache_child_data)
+                    parent_obj[Group.PROP_DISPLAY_PIVOT_CACHE] = True
             origin_matrix_str = parent_obj.get(Group.PROP_ORIGIN_MATRIX)
             origin_matrix = Group.str_to_matrix(origin_matrix_str) if origin_matrix_str else None
             return cache_child_data, origin_matrix
@@ -363,6 +366,8 @@ class Group:
                 continue
 
             new_obj.matrix_world = Group.restore_matrix_world(parent_obj, cache_data)
+            if object_id == 'U_PIPELINE' and 'bbe_supply_roll' in cache_data:
+                new_obj.bbe_supply_roll = cache_data['bbe_supply_roll']
             if cache_data.get('bbe_bubble_shape'):
                 new_obj['bbe_bubble_shape'] = cache_data['bbe_bubble_shape']
             restored_objects.append(new_obj)
@@ -373,7 +378,7 @@ class Group:
 
 
     @staticmethod
-    def serialise(parent_obj, bubble_hints=None):
+    def serialise(parent_obj, bubble_hints=None, sources=None, *, read_only=False):
         """
         Converts grouped objects to serialized format for No Man's Sky savefile.
 
@@ -387,7 +392,7 @@ class Group:
         cached_child_data = export_cache(parent_obj)
         normalized_cache = cached_child_data is None
         if cached_child_data is None:
-            cached_child_data, origin_matrix = Group.extract_cached_data(parent_obj)
+            cached_child_data, origin_matrix = Group.extract_cached_data(parent_obj, read_only=read_only)
         if not cached_child_data:
             return None
         
@@ -422,6 +427,11 @@ class Group:
                     )
             
             pos, up, at = Group.extract_pos_up_at(matrix_world)
+            if object_id == 'U_PIPELINE':
+                axis = Vector(at).normalized()
+                if axis.length_squared:
+                    up = mathutils.Quaternion(axis,cache_data.get('bbe_supply_roll',0.0)) @ Vector(up)
+                    at = Vector(at) + axis
             
             data = {
                 Part.PROP_TIMESTAMP: int(time_stamp),
@@ -441,6 +451,8 @@ class Group:
                     raise ValueError(f'{child_name}: bubble ducts need the same positive scale on X, Y and Z before exporting.')
                 bubble_hints[len(serialized_objects)] = {'shape': cache_data['bbe_bubble_shape'], 'name': child_name}
             serialized_objects.append(data)
+            if sources is not None:
+                sources.append((parent_obj, child_name))
 
         return serialized_objects
     
@@ -494,6 +506,8 @@ class Group:
             # multiply the current world matrix by the local matrix.
             matrix_local = mathutils.Matrix(matrix_local_data)
             new_obj.matrix_world = origin_matrix@ matrix_local
+            if object_id == 'U_PIPELINE' and 'bbe_supply_roll' in cache_data:
+                new_obj.bbe_supply_roll = cache_data['bbe_supply_roll']
             restored_objects.append(new_obj)
         
         merged_group = Group.group_objects(restored_objects,origin_matrix)
@@ -549,6 +563,8 @@ class Group:
             # multiply the current world matrix by the local matrix.
             matrix_local = mathutils.Matrix(matrix_local_data)
             new_obj.matrix_world = origin_matrix@ matrix_local
+            if new_obj.get(Group.PROP_OBJECT_ID)=='U_PIPELINE' and 'bbe_supply_roll' in cache_data:
+                new_obj.bbe_supply_roll=cache_data['bbe_supply_roll']
             restored_objects.append(new_obj)
             
         return restored_objects

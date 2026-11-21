@@ -1,9 +1,10 @@
+from .. import i18n
 from ..furby_errors import report_error
 import bpy
 import json
 import os
 from ..utils import blend_utils,dictionary
-from ..builder import Builder
+from ..builder import get_builder
 from .. import builder_v2
 from ..utils import asset_browser_utils
 from ..utils.asset_browser_utils import get_preferences
@@ -18,27 +19,8 @@ except (ImportError, ValueError):
     # Windows only nicety, so the rest of the addon has to survive without it.
     wintypes = None
 
-BUILDER = Builder()
+BUILDER = get_builder()
 ADDON_ID = asset_browser_utils.ADDON_ID
-
-
-def browser_pin_object():
-    """Provide Properties with a context without touching scene selection."""
-    from .asset_browser_grid import _is_browser_pin
-    obj = next((item for item in bpy.data.objects if _is_browser_pin(item)), None)
-    if obj is None:
-        mesh = bpy.data.meshes.new("Asset Browser Window")
-        obj = bpy.data.objects.new("Asset Browser Window", mesh)
-    # Blender 5.1 omits object contexts (including CONSTRAINT and MODIFIER)
-    # for an unlinked pin, leaving a reopened browser as two Scene panels.
-    if obj.name not in bpy.context.scene.collection.all_objects:
-        bpy.context.scene.collection.objects.link(obj)
-    obj.hide_set(True)
-    obj.hide_render = True
-    obj.hide_select = True
-    obj.use_fake_user = True
-    obj['bbe_asset_browser_pin'] = True
-    return obj
 
 
 def placement_view(context):
@@ -217,6 +199,7 @@ def set_window_icon(hwnd):
     
 class LaunchAssetBrowserWindow(bpy.types.Operator):
     bl_idname = "object.nms_launch_asset_browser_window"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Asset Browser"
     bl_description = "Launch an Asset Browser in new Window"
 
@@ -225,141 +208,19 @@ class LaunchAssetBrowserWindow(bpy.types.Operator):
 
     def execute(self, context):
         
-        scene = context.scene
-        # this column count is an addon preference. It used to be assigned to the
-        # AssetBrowser property group, which has no such property, so it silently
-        # went nowhere and the new window never got its wider layout.
-        prefs = get_preferences(context)
-        if prefs is not None:
-            prefs.asset_browser_number_of_columns_other = 8
-        
         # Taken before the window exists so the handle that appears afterwards
         # is unambiguously the one we just asked for.
         handles_before = set(get_process_window_handles())
 
-        bpy.ops.wm.window_new()
         wm = context.window_manager
-        if not wm.windows:
+        existing = set(w.as_pointer() for w in wm.windows)
+        bpy.ops.wm.window_new()
+        window = next((w for w in wm.windows if w.as_pointer() not in existing), None)
+        if window is None:
             return {'CANCELLED'}
-        new_window = wm.windows[-1]
         from . import asset_browser_grid
-        asset_browser_grid.mark_window_pending(new_window)
-        try:
-            areas = new_window.screen.areas
-            if not areas:
-                asset_browser_grid.unmark_window_pending(new_window)
-                return {'CANCELLED'}
-            target_area = areas[0]
-            target_area.type = 'PROPERTIES'
-        except (ReferenceError, RuntimeError, TypeError):
-            asset_browser_grid.unmark_window_pending(new_window)
-            return {'CANCELLED'}
-        
-        attempts_count = 0
-        setup_state = {'last_error': None}
-        
-        def get_timeout():
-            nonlocal attempts_count
-            attempts_count +=1
-            if attempts_count >= 200:
-                print('BBE Asset Browser: setup timed out; window remains editable')
-                asset_browser_grid.unmark_window_pending(new_window)
-                return None
-            return 0.05
-        
-        def configure_areas():
-            try:
-                window_exists = any(w == new_window for w in wm.windows)
-                if not window_exists:
-                    asset_browser_grid.unmark_window_pending(new_window)
-                    return None
-                if len(new_window.screen.areas) < 2:
-                    return get_timeout()
-
-                areas_sorted = sorted(new_window.screen.areas, key=lambda a: a.x)
-                left_area, right_area = areas_sorted[0], areas_sorted[1]
-
-                # A primitive-add operator deselects the placement target.
-                # Link the UI pin only while a browser uses it, then reuse it.
-                dummy_obj = browser_pin_object()
-                
-                for area, ctx_type in ((left_area, 'CONSTRAINT'), (right_area, 'MODIFIER')):
-                    area.type = 'PROPERTIES'
-                    space = area.spaces.active
-                    space.use_pin_id = True
-                    space.pin_id = dummy_obj
-                    space.context = ctx_type
-                    space.show_region_header = False
-                    
-                # Keep the native category controls on the left; the right
-                # surface owns its image hit areas and corner controls.
-                right_area.type = 'IMAGE_EDITOR'
-                right_area.spaces.active.show_region_ui = False
-                right_area.spaces.active.show_region_toolbar = False
-                right_area.spaces.active.show_region_header = False
-                right_area.spaces.active.show_region_tool_header = False
-                right_area.spaces.active.show_region_hud = False
-                right_area.spaces.active.show_gizmo = False
-                region = next((r for r in right_area.regions if r.type == 'WINDOW'), None)
-                if region is None:
-                    return get_timeout()
-                with bpy.context.temp_override(window=new_window, area=right_area, region=region):
-                    result = bpy.ops.bbe.asset_grid('INVOKE_DEFAULT')
-                    if 'RUNNING_MODAL' not in result:
-                        return get_timeout()
-                asset_browser_grid.unmark_window_pending(new_window)
-                return None
-            except (ReferenceError, RuntimeError, TypeError, AttributeError) as error:
-                if str(error) != setup_state['last_error']:
-                    print(f'BBE Asset Browser: setup will retry: {error}')
-                    setup_state['last_error'] = str(error)
-                return get_timeout()
-
-        def switch_tab():
-            try:
-                window_exists = any(w == new_window for w in wm.windows)
-                if not window_exists:
-                    return None
-
-                # Blender may reuse the previously split screen when a
-                # pop-out is closed and reopened. Configure it in place.
-                if len(new_window.screen.areas) >= 2:
-                    bpy.app.timers.register(configure_areas, first_interval=0.02)
-                    return None
-
-                if target_area.type != 'PROPERTIES':
-                    return get_timeout()
-                space = target_area.spaces.active
-                if space is None or space.type != 'PROPERTIES':
-                    return get_timeout()
-
-                nav_region = None
-                window_region = None
-                for region in target_area.regions:
-                    if region.type == 'NAVIGATION_BAR':
-                        nav_region = region
-                    elif region.type == 'WINDOW':
-                        window_region = region
-
-                if window_region is None:
-                    return get_timeout()
-
-                if nav_region and nav_region.width > 1:
-                    with bpy.context.temp_override(window=new_window, area=target_area, region=nav_region):
-                        bpy.ops.screen.region_toggle(region_type='NAVIGATION_BAR')
-
-                with bpy.context.temp_override(window=new_window, area=target_area, region=window_region):
-                    bpy.ops.screen.area_split(direction='VERTICAL', factor=0.2)
-
-                bpy.app.timers.register(configure_areas, first_interval=0.02)
-                return None
-            except (ReferenceError, RuntimeError, TypeError, AttributeError) as error:
-                if str(error) != setup_state['last_error']:
-                    print(f'BBE Asset Browser: split will retry: {error}')
-                    setup_state['last_error'] = str(error)
-                return get_timeout()
-
-        bpy.app.timers.register(switch_tab, first_interval=0.02)
+        window.screen['bbe_asset_browser'] = True
+        asset_browser_grid.prepare_window(window)
 
         # The title used to be pushed onto GetForegroundWindow() the moment
         # window_new() returned. That is the wrong window as often as not - the
@@ -407,6 +268,7 @@ class LaunchAssetBrowserWindow(bpy.types.Operator):
     
 class AssetBrowserObjectSelected(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_object_selected"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Add Object"
     bl_description = "Click to add this object to the scene"
     bl_options = {'REGISTER', 'UNDO'}
@@ -419,21 +281,35 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     @classmethod
     def description(cls, context, properties):
         from .. import character_references
+        from .. import i18n
         reference = character_references.decode(properties.object_id)
         if reference:
-            return f"Add a movable {reference[2]} {reference[1].lower()} scale reference at the cursor. Excluded from game exports."
+            return i18n.tooltip("Place a movable scale reference ({name}, {kind}) at the cursor. Excluded from game exports.").format(
+                name=reference[2], kind=reference[1])
         if properties.object_id == 'BASE_BUBPIPE_L':
-            return ('DRAFT ELBOW: Keep it selected and add a tube to its free end. '
+            return i18n.tooltip('DRAFT ELBOW: Keep it selected and add a tube to its free end. '
                     'Grey-blue bands disappear when both ends connect correctly. '
                     'An unfinished elbow appears straight in game. Use the controls beside the selected tube to rotate.')
+        from .. import part_stats
+        bonuses = part_stats.lines(properties.object_id)
+        if bonuses:
+            return "\n".join(bonuses)
         if properties.has_variants:
-            return f"Choose a variant of {properties.object_id}"
+            return i18n.tooltip("Choose a variant of {part}").format(part=properties.object_id)
         if properties.object_id in dictionary.PLACEMENT_HELP:
-            return dictionary.PLACEMENT_HELP[properties.object_id]
-        return f"Place {properties.object_id} in the scene"
+            return i18n.tooltip(dictionary.PLACEMENT_HELP[properties.object_id])
+        return i18n.tooltip("Place {part} in the scene").format(part=properties.object_id)
     
     
     def execute(self, context):
+        from .. import shapes
+        if shapes._requests:
+            try:
+                if shapes.pick_from_browser(context,self.object_id,self.is_preset,self.has_variants):
+                    return {'FINISHED'}
+            except (ReferenceError, ValueError) as error:
+                self.report({'WARNING'},str(error))
+                return {'CANCELLED'}
         from .. import cable_connections, cable_targets
         if (cable_targets.session(context) or {}).get('repeat'):
             cable_targets.cancel(context)
@@ -480,7 +356,7 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
                 new_item.select()
         elif self.has_variants:
             def draw_popup(self, context):
-                layout = self.layout
+                layout = i18n.localized_layout(self.layout)
                 nice_names = dictionary.get_nice_names_diictionary()
                 from ..save_editor.function_help import corner_help
                 heading = layout.row(align=True)
@@ -579,6 +455,7 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     
 class AssetBrowserObjectMoreOptions(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_more_options"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Part Options"
     bl_description = "Open favourites and replace options for this part"
 
@@ -598,7 +475,7 @@ class AssetBrowserObjectMoreOptions(bpy.types.Operator):
         object_id = self.object_id
         
         def draw_popup(self, context):
-            layout = self.layout
+            layout = i18n.localized_layout(self.layout)
             from ..save_editor.function_help import corner_help
             heading = layout.row(align=True)
             heading.label(text=f"{object_id} Options", icon = "COLLAPSEMENU")
@@ -622,6 +499,7 @@ class AssetBrowserObjectMoreOptions(bpy.types.Operator):
     
 class AssetBrowserCategorySelected(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_category_selected"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Category Selected"
     bl_description = "Expand or collapse this category; clears the current search"
 
@@ -635,6 +513,7 @@ class AssetBrowserCategorySelected(bpy.types.Operator):
     
 class AssetBrowserCategoryFavourite(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_category_favourite"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Mark Favourite"
     bl_description = "Mark this category favourite"
 
@@ -658,6 +537,7 @@ class AssetBrowserCategoryReorderPopup(bpy.types.Operator):
     """Reorder categories, and mark them favourite or not, in a popup window."""
 
     bl_idname = "object.nms_asset_browser_category_reorder_popup"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Reorder Categories"
     bl_description = "Reorder categories, and mark them favourite or not"
 
@@ -674,7 +554,7 @@ class AssetBrowserCategoryReorderPopup(bpy.types.Operator):
         scene = context.scene
         asset_browser = scene.nms_asset_browser
 
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         from ..save_editor.function_help import corner_help
         heading = layout.row(align=True)
         heading.label(text="Reorder Categories", icon="SORTALPHA")
@@ -696,6 +576,7 @@ class AssetBrowserCategoryReorderPopup(bpy.types.Operator):
 
 class AssetBrowserCategoryMove(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_category_move"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Move Category"
     bl_description = "Move this category up or down among categories with the same favourite state"
     bl_options = {'INTERNAL'}
@@ -716,6 +597,7 @@ class AssetBrowserCategoryMove(bpy.types.Operator):
 
 class AssetBrowserObjectFavourite(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_object_favourite"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Mark Favourite"
     bl_description = "Mark this Object favourite"
 
@@ -736,6 +618,7 @@ class AssetBrowserObjectFavourite(bpy.types.Operator):
     
 class AssetBrowserCategorySubSelected(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_sub_category_selected"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Sub Cagetory Selected"
     bl_description = "Sub Category of Objects"
 
@@ -749,6 +632,7 @@ class AssetBrowserCategorySubSelected(bpy.types.Operator):
     
 class AssetBrowserCategoryShowFavItems(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_show_fav_items"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Favourite Items"
     bl_description = "Show Favourite Items"
     def execute(self, context):
@@ -763,6 +647,7 @@ class AssetBrowserCategoryShowFavItems(bpy.types.Operator):
     
 class AssetBrowserCategoryShowRecentItems(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_show_recent_items"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Recent Items"
     bl_description = "Show Recent Items"
     def execute(self, context):
@@ -777,6 +662,7 @@ class AssetBrowserCategoryShowRecentItems(bpy.types.Operator):
     
 class AssetBrowserCategoryShowPresets(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_show_presets"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Presets"
     bl_description = "Show Presets"
     def execute(self, context):
@@ -795,6 +681,7 @@ class AssetBrowserListSettings(bpy.types.Operator):
     """Adjust size of icons and number of columns"""
 
     bl_idname = "object.nms_asset_browser_list_settings"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "List Settings"
     
     grid_type : bpy.props.StringProperty(
@@ -812,7 +699,7 @@ class AssetBrowserListSettings(bpy.types.Operator):
         return {"FINISHED"}
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         prefs = get_preferences(context)
         if prefs is None:
             layout.label(text="Addon preferences are not available", icon="ERROR")
@@ -832,6 +719,7 @@ class AssetBrowserListSettings(bpy.types.Operator):
 
 class AssetBrowserBatchReplace(bpy.types.Operator):
     bl_idname = "object.nms_asset_browser_batch_replace"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Batch Replace"
     bl_description = "Batch replace selected objects with this item"
     bl_options = {'REGISTER', 'UNDO'}

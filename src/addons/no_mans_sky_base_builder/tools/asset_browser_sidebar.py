@@ -6,6 +6,7 @@ as the popout browser into the sidebar UI region and handles their hit boxes.
 The search and category controls above the tiles remain native Blender widgets.
 """
 import json
+import time
 from collections import OrderedDict
 
 import bpy
@@ -14,9 +15,10 @@ from bpy.app.handlers import persistent
 
 from .asset_browser_grid import (
     BBE_OT_asset_grid, _contains, _groups, grid_geometry, tile_action, browser_palette,
-    draw_auto_snap, auto_snap_event,
+    draw_switches, switch_event, switch_layout, draw_part_stats,
 )
 from ..utils import new_assets
+from .. import i18n, asset_families
 from ..utils.asset_browser_utils import get_grid_settings
 
 _sessions = {}
@@ -42,7 +44,7 @@ def grid_bounds(width, height, scale):
     """Shared drawing/input bounds, excluding Blender's tabs and resize edge."""
     return (_PANEL_LEFT * scale, 0,
             max(0, width - (_PANEL_LEFT + _PANEL_RIGHT) * scale),
-            max(0, height - 170 * scale))
+            max(0, height - 160 * scale))
 
 
 def scrollbar_bounds(bounds, scale):
@@ -74,6 +76,7 @@ def _release(key, wm):
 
 class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
     bl_idname = 'bbe.sidebar_asset_grid'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Sidebar Asset Browser Grid'
     bl_options = {'INTERNAL'}
 
@@ -91,6 +94,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
         if key in _sessions:
             return {'CANCELLED'}
         self._window, self._area, self._key = context.window, context.area, key
+        self._family = self._family_offset = None
         self._offset, self._hover, self._pressed, self._drag = 0, None, None, False
         self._signature, self._geometry_key = None, None
         self._textures = OrderedDict()
@@ -118,9 +122,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                      browser.asset_browser_caterogies,
                      browser.asset_browser_sub_caterogies)
         if signature != self._signature:
-            groups = _groups(scene)
-            if tuple(groups) != tuple(self._groups):
-                self._offset = 0
+            groups = asset_families.update_groups(self, _groups)
             self._signature, self._groups = signature, groups
             self._size, self._columns = size, columns
             self._geometry_key = None
@@ -145,6 +147,11 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
             if context.window != self._window:
                 return {'PASS_THROUGH'}
             if event.type == 'TIMER':
+                hover_stamp = getattr(self, '_stats_since', 0)
+                if (self._hover and getattr(self, '_stats_drawn', None) != hover_stamp
+                        and time.monotonic() - hover_stamp >= .45):
+                    self._stats_drawn = hover_stamp
+                    self._area.tag_redraw()
                 region = next((r for r in self._area.regions if r.type == 'UI'), None)
                 if self._active(region):
                     self.refresh(context)
@@ -157,7 +164,9 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 return {'PASS_THROUGH'}
             x = event.mouse_x - region.x
             y = event.mouse_y - region.y
-            if auto_snap_event(self,event,x,y):return {'RUNNING_MODAL'}
+            if asset_families.close_event(self, event, x, y):
+                return {'RUNNING_MODAL'}
+            if switch_event(self,context,event,x,y):return {'RUNNING_MODAL'}
             inside = _contains(self._bounds, x, y)
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and self._drag:
                 self._drag = False
@@ -184,12 +193,11 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
             top_y = self._view_height - y + self._offset
             hit = next(((tile, tile_action(tile, x, top_y, self._scale))
                         for tile in self._tiles
-                        if self._offset <= tile[1] and
-                        tile[1] + tile[3] <= self._offset + self._view_height and
-                        _contains(tile[:4], x, top_y)), None)
+                        if _contains(tile[:4], x, top_y)), None)
             hover = (hit[0][4], hit[1]) if hit else None
             if hover != self._hover:
                 self._hover = hover
+                self._stats_since = time.monotonic()
                 self._area.tag_redraw()
             if event.type in {'LEFTMOUSE', 'RIGHTMOUSE'} and event.value == 'PRESS':
                 if hit:
@@ -204,13 +212,13 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                         new_assets.mark_viewed(tile[4])
                     if event.type == 'RIGHTMOUSE' or action == 'options':
                         self.show_options(context, tile)
+                    elif action == 'variants':
+                        asset_families.open_family(self, tile[4], tile[5])
                     else:
                         object_id, data = tile[4:]
                         bpy.ops.object.nms_asset_browser_object_selected(
                             'EXEC_DEFAULT', object_id=object_id,
-                            is_preset=bool(data.get('is_preset')),
-                            has_variants=action == 'variants',
-                            variants=json.dumps([object_id, *(data.get('variants') or [])]))
+                            is_preset=bool(data.get('is_preset')))
                     self.refresh(context)
                     return {'RUNNING_MODAL'}
         except ReferenceError:
@@ -233,28 +241,40 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
         self._scale = scale
         # Panel header, search, quick categories, category, group and hint.
         # Keep this strip native so text entry and dropdowns retain Blender's UI.
-        self._bounds = grid_bounds(width, height, scale)
-        left, _bottom, panel_width, self._view_height = self._bounds
+        left, bottom, panel_width, top = grid_bounds(width, height, scale)
+        inset = switch_layout(self,left+4*scale,left+panel_width-13*scale,top-scale,scale,compact_pair=True)
+        self._view_height = top
+        self._bounds = (left,bottom,panel_width,self._view_height)
         key = (width, height, scale, self._size, self._columns, self._signature)
         if key != self._geometry_key:
+            gutter = asset_families.ARROW_GUTTER * scale if self._family else 0
             titles, tiles, self._total = grid_geometry(
-                self._groups, panel_width, self._size, self._columns, scale)
+                self._groups, panel_width - gutter, self._size, self._columns, scale,
+                top_padding=inset)
             self._titles = [(x + left, top, title) for x, top, title in titles]
-            self._tiles = [(x + left, top, w, h, object_id, data)
+            self._tiles = [(x + left + gutter, top, w, h, object_id, data)
                            for x, top, w, h, object_id, data in tiles]
             self._max_offset = max(0, self._total - self._view_height)
             self._offset = min(self._offset, self._max_offset)
             self._geometry_key = key
+        # Partially visible tiles may pass behind the switches, up to the native controls.
+        previous_clip = gpu.state.scissor_get()
+        vx,vy,_,_ = gpu.state.viewport_get()
+        gpu.state.scissor_test_set(True)
+        gpu.state.scissor_set(int(vx+left),int(vy+bottom),int(panel_width),int(self._view_height))
         gpu.state.blend_set('ALPHA')
         try:
             self.rectangle(left, 0, panel_width, self._view_height, palette['background'])
             for x, top, title in self._titles:
                 y = self._view_height - top + self._offset - 18 * scale
                 if 0 <= y <= self._view_height:
-                    self.label(x, y, title, panel_width - 20 * scale)
+                    room = panel_width - (180 if self._family else 20) * scale
+                    if room > 32 * scale:
+                        self.label(x, y, title, room)
+            names = i18n.part_names()
             for x, top, w, h, object_id, data in self._tiles:
                 y = self._view_height - top - h + self._offset
-                if y + h < 0 or y + h > self._view_height or y < 0:
+                if y + h <= 0 or y >= self._view_height:
                     continue
                 hovered = self._hover and self._hover[0] == object_id
                 self.rectangle(x, y, w, h, palette['hover'] if hovered else palette['card'])
@@ -262,8 +282,10 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                     self.new_border(x, y, w, h, scale)
                 text_color = palette['selected_text'] if hovered else palette['text']
                 size = min(w - 8 * scale, h - 48 * scale)
-                self.preview(object_id, x + (w-size)/2, y + 26 * scale, size)
-                self.label(x+5*scale, y+8*scale, data['name'], w-10*scale, 11, text_color)
+                self.preview(object_id, x + (w-size)/2, y + 26 * scale, size,
+                             data.get("link") if data.get("is_preset") else None)
+                name = data.get('variant_label') or (data['name'] if data.get('is_preset') else names.get(object_id, data['name']))
+                self.label(x+5*scale, y+8*scale, name, w-10*scale, 11, text_color)
                 if not data.get('is_preset'):
                     for line in range(3):
                         self.rectangle(x+8*scale, y+h-(8+line*4)*scale,
@@ -281,8 +303,13 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 top = self._offset / self._max_offset * (self._view_height-thumb)
                 self.rectangle(track_x+4*scale, self._view_height-top-thumb,
                                4*scale, thumb, palette['accent'])
-            draw_auto_snap(self,left+panel_width-13*scale,self._view_height-4*scale,scale)
+            asset_families.draw_back_arrow(self, self._view_height, scale)
+            draw_switches(self,scale)
+            draw_part_stats(self,left,panel_width,self._view_height,scale)
         finally:
+            gpu.state.scissor_set(*previous_clip)
+            if previous_clip[2]<=0 or previous_clip[3]<=0:
+                gpu.state.scissor_test_set(False)
             gpu.state.blend_set('NONE')
 
 

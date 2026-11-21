@@ -45,6 +45,13 @@ WHITE_BORDER_HALF_DEPTH = .493681 * .625014 * .5
 WHITE_BORDER_WRAP_BACK_DEPTH = .27
 
 
+def initialize_settings(obj):
+    """Apply the user's default once; existing per-object choices win."""
+    if is_decal(obj) and PREVIEW_DISABLED not in obj:
+        addon = bpy.context.preferences.addons.get(__package__)
+        obj[PREVIEW_DISABLED] = bool(addon and addon.preferences.decal_projection_disabled)
+
+
 def is_decal(obj):
     pid = obj.get('ObjectID', '').lstrip('^')
     return obj.type == 'MESH' and pid.startswith(('BUILDDECAL', 'DECAL_', 'EXPD_DECAL', 'SPEC_DECAL'))

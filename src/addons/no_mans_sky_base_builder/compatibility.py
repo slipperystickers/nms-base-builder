@@ -5,6 +5,7 @@ point for a BBE preflight is register(), before any overlapping UI, operators,
 or Scene properties are registered. Blender restricts context during register,
 so the confirmation is deferred to the next window event-loop tick.
 """
+from . import i18n
 
 import sys
 import traceback
@@ -40,7 +41,7 @@ def _notice(lines, title='BBE and Charon Forge', icon='ERROR'):
         return
     def draw(self, _context):
         for line in lines:
-            self.layout.label(text=line)
+            i18n.localized_layout(self.layout).label(text=line)
     try:
         bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
     except (AttributeError, RuntimeError):
@@ -49,11 +50,12 @@ def _notice(lines, title='BBE and Charon Forge', icon='ERROR'):
 
 class BBE_OT_resolve_charon_conflict(bpy.types.Operator):
     bl_idname = 'bbe.resolve_charon_conflict'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Charon Forge is incompatible with BBE'
     bl_description = 'Disable Charon Forge and finish enabling Base Builder Extended'
 
     def draw(self, _context):
-        col = self.layout.column()
+        col = i18n.localized_layout(self.layout).column()
         col.label(text='Charon Forge is currently enabled.')
         col.label(text='Its controls, placement, proxies and lighting conflict with BBE.')
         col.separator()

@@ -1,3 +1,4 @@
+from .. import i18n
 import bpy
 
 PATTERN_PRESETS = {
@@ -13,6 +14,7 @@ class SelectSameColoredObjects(bpy.types.Operator):
     """Select objects with similar colors for easy experimentation."""
 
     bl_idname = "object.nms_select_same_colors"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select same colors"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -28,6 +30,7 @@ class SelectAllSameColoredObjects(bpy.types.Operator):
     """Select objects with similar colors for easy experimentation."""
 
     bl_idname = "object.nms_select_all_same_colors"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select same colors"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -44,6 +47,7 @@ class SelectSameObjects(bpy.types.Operator):
     """Select objects with similar colors for easy experimentation."""
 
     bl_idname = "object.nms_select_same_objects"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select same colors"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -60,6 +64,7 @@ class BatchReplaceTarget(bpy.types.Operator):
     """Replace selected objects with duplicates of the target object."""
 
     bl_idname = "object.nms_batch_replace_target"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Batch Replace"
     bl_options = {"UNDO", "REGISTER"}
     
@@ -87,7 +92,7 @@ class BatchReplaceTarget(bpy.types.Operator):
         return {"FINISHED"}
     
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         batch_tool = context.scene.nms_batch_tool
         
         batch_replace_box = layout.column(align = True)
@@ -107,6 +112,7 @@ class BatchReplaceTarget(bpy.types.Operator):
 class BatchSelectRandom(bpy.types.Operator):
     """Select a random percentage of objects"""
     bl_idname = "object.nms_batch_select_random"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select Random"
     bl_description = "Randomly select objects"
     bl_options = {'REGISTER', 'UNDO'}
@@ -126,7 +132,7 @@ class BatchSelectRandom(bpy.types.Operator):
         min=0
     )
 
-    action: bpy.props.EnumProperty(
+    action: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Action",
         items=[
             ('SELECT', "Select", "Randomly select objects", 'SELECT_EXTEND', 0),
@@ -143,7 +149,7 @@ class BatchSelectRandom(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         layout.use_property_split = True
         layout.use_property_decorate = True 
         
@@ -192,10 +198,11 @@ class BatchSelectRandom(bpy.types.Operator):
 class BatchSelectPattern(bpy.types.Operator):
     """Select objects using a repeating pattern"""
     bl_idname = "object.nms_batch_select_pattern"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Pattern Selection"
     bl_options = {'REGISTER', 'UNDO'}
 
-    action: bpy.props.EnumProperty(
+    action: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Action",
         items=[
             ('SELECT', "Select", ""),
@@ -204,7 +211,7 @@ class BatchSelectPattern(bpy.types.Operator):
         default='SELECT'
     )
 
-    preset: bpy.props.EnumProperty(
+    preset: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Pattern",
         items=[
             ('EVERY_OTHER', "Every Other", ""),
@@ -232,7 +239,7 @@ class BatchSelectPattern(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         layout.use_property_split = True
         layout.use_property_decorate = False
 
@@ -292,6 +299,7 @@ class SelectAllGroups(bpy.types.Operator):
     """Select objects with similar colors for easy experimentation."""
 
     bl_idname = "object.nms_select_all_groups"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select Groups"
     bl_options = {"UNDO", "REGISTER"}
 

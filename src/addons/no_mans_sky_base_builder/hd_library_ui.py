@@ -1,4 +1,5 @@
 """One-click Detailed Proxies, with automatic content updates for existing owners."""
+from . import i18n
 from .furby_errors import report_error
 import textwrap
 from pathlib import Path
@@ -18,6 +19,7 @@ def reset_update_check():
     global _auto_update_checked, _auto_update_version
     _auto_update_checked = False
     _auto_update_version = None
+    hd_library.invalidate_ready()
 
 
 def check_installed_updates():
@@ -31,6 +33,7 @@ def check_installed_updates():
     _auto_update_version = version
     if version in _auto_update_attempts or not hd_library.has_installed_content():
         return False
+    hd_library.invalidate_ready()
     if hd_library.ready():
         return False
     # Updating an already-chosen optional download does not depend on which
@@ -69,6 +72,7 @@ def request_download(context, archive=None):
 
 class BBE_OT_hd_library(bpy.types.Operator):
     bl_idname = "bbe.hd_library"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Download Detailed Proxies?"
     bl_description = "Download all detailed models once, then enable them automatically"
     allow_online: bpy.props.BoolProperty(default=False, options={'HIDDEN', 'SKIP_SAVE'})
@@ -91,7 +95,7 @@ class BBE_OT_hd_library(bpy.types.Operator):
             cancel_default=True)
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         size = sum(spec['download_bytes'] for spec in hd_library.pending_specs())
         label = 'Update the Detailed Proxy pack' if hd_library.available() else 'Download the Detailed Proxy pack'
         amount = ('%.1f MB' % (size / 1e6)) if size < 1e9 else ('%.2f GB' % (size / 1e9))
@@ -130,6 +134,7 @@ class BBE_OT_hd_library(bpy.types.Operator):
 class BBE_OT_hd_download(bpy.types.Operator):
     # Retain the operator identifier for existing shortcuts.
     bl_idname = 'bbe.hd_download'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Download & Enable Detailed Proxies'
 
     def execute(self, context):
@@ -140,6 +145,7 @@ class BBE_OT_hd_install_zip(bpy.types.Operator):
     # Offline/support fallback, available via operator search rather than the
     # normal Detailed Proxies prompt.
     bl_idname = 'bbe.hd_install_zip'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Install Detailed Proxies from ZIP (Offline)'
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
     filter_glob: bpy.props.StringProperty(default='*.zip', options={'HIDDEN'})
@@ -154,6 +160,7 @@ class BBE_OT_hd_install_zip(bpy.types.Operator):
 
 class BBE_OT_hd_cancel(bpy.types.Operator):
     bl_idname = 'bbe.hd_cancel'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Cancel Download'
 
     def execute(self, context):
@@ -164,6 +171,7 @@ class BBE_OT_hd_cancel(bpy.types.Operator):
 
 class BBE_OT_hd_remove(bpy.types.Operator):
     bl_idname = 'bbe.hd_remove'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Delete HD Proxy Pack?'
     bl_description = 'Remove the downloaded HD pack; download it again with Detailed Proxies'
 
@@ -183,11 +191,11 @@ class BBE_OT_hd_remove(bpy.types.Operator):
             self, width=460, confirm_text='Delete HD Pack', cancel_default=True)
 
     def draw(self, context):
-        self.layout.label(text='Remove downloaded HD models, scenes, effects and characters?')
-        self.layout.label(text='All scenes in this file will switch to Simple Proxies.')
-        self.layout.label(text='Other files and Blender versions sharing this pack are affected.')
-        self.layout.label(text='Detailed Proxies will offer to download the pack again.')
-        self.layout.label(text='This disk deletion cannot be undone.', icon='INFO')
+        i18n.localized_layout(self.layout).label(text='Remove downloaded HD models, scenes, effects and characters?')
+        i18n.localized_layout(self.layout).label(text='All scenes in this file will switch to Simple Proxies.')
+        i18n.localized_layout(self.layout).label(text='Other files and Blender versions sharing this pack are affected.')
+        i18n.localized_layout(self.layout).label(text='Detailed Proxies will offer to download the pack again.')
+        i18n.localized_layout(self.layout).label(text='This disk deletion cannot be undone.', icon='INFO')
 
     def execute(self, context):
         confirmed = getattr(self, '_confirmed_root', None)
@@ -221,6 +229,7 @@ class BBE_OT_hd_remove(bpy.types.Operator):
 
 
 class BBE_PT_hd_library(bpy.types.Panel):
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Detailed Proxies Download'
     bl_idname = 'BBE_PT_hd_library'
     bl_space_type = 'VIEW_3D'
@@ -233,7 +242,7 @@ class BBE_PT_hd_library(bpy.types.Panel):
 
     def draw(self, context):
         state = hd_library.STATE
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         if state['busy']:
             draw_progress(layout)
             layout.operator('bbe.hd_cancel', icon='CANCEL')
@@ -260,7 +269,7 @@ def draw_progress(layout):
 
 def draw_status(self, context):
     if hd_library.STATE['busy']:
-        row = self.layout.row(align=True)
+        row = i18n.localized_layout(self.layout).row(align=True)
         row.label(text=hd_library.STATE['message'])
         bar = row.row()
         bar.ui_units_x = 8
@@ -298,8 +307,8 @@ def _saved_hd_needs_simple_proxies(scene):
 def _show_texture_fallback():
     if not bpy.app.background and bpy.context.window_manager.windows:
         def draw(self, _context):
-            self.layout.label(text='This file uses detailed parts with unavailable textures.')
-            self.layout.label(text='BBE switched them to Simple Proxies. Check or install the HD pack.')
+            i18n.localized_layout(self.layout).label(text='This file uses detailed parts with unavailable textures.')
+            i18n.localized_layout(self.layout).label(text='BBE switched them to Simple Proxies. Check or install the HD pack.')
         bpy.context.window_manager.popup_menu(draw, title='Detailed Proxies', icon='INFO')
     return None
 

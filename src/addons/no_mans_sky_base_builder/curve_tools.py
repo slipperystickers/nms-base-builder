@@ -1,6 +1,9 @@
 """Object-mode curve editing, parametric guides and persistent viewport controls."""
+from . import i18n, curve_distribution as distribution
+import math
 import json
 from types import SimpleNamespace
+from .curve_join import BBE_OT_connect_endpoints, BBE_MT_curve_connections, BBE_OT_curve_connections, BBE_OT_curve_start_here
 import bpy
 from bpy.app.handlers import persistent
 from bpy_extras import view3d_utils as view
@@ -11,6 +14,13 @@ from .curve_shapes import SHAPES, shape_points, resample_offsets
 _building = False
 _drawing = {}
 _anchors = {}
+
+# Keep existing stored enum values: Side was 3 before Rear was introduced.
+DRAW_PLANES=[('VIEW','Current View','Draw facing your current view through the 3D cursor',0),
+             ('XY','Top / Down','Horizontal plane through the 3D cursor',1),
+             ('XZ','Front','Vertical front plane through the 3D cursor',2),
+             ('REAR','Rear','Vertical rear-facing plane through the 3D cursor',4),
+             ('YZ','Side','Vertical side plane through the 3D cursor',3)]
 
 
 def active_curve(context):
@@ -64,7 +74,11 @@ def rebuild(obj, reset=False):
     try:
         own_data(obj)
         p=obj.bbe_curve
-        points,closed=shape_points(p.kind,p.radius,p.width,p.height,p.turns,p.sweep,p.points)
+        points,closed=shape_points(p.kind,p.radius,p.width,p.height,p.turns,p.sweep,p.points,
+                                   radius_taper=p.radius_taper if p.kind=='HELIX' else 0)
+        if obj.get('bbe_curve_start_at_origin'):
+            origin=Vector(points[0][0])
+            points=[tuple(tuple(Vector(v)-origin) for v in record) for record in points]
         if len(points)>p.points:p.points=len(points)
         old=json.loads(obj.get('bbe_curve_baseline','[]'))
         old_handles=json.loads(obj.get('bbe_curve_handle_baseline','[]'))
@@ -104,13 +118,74 @@ def parameter_changed(self,context):
         rebuild(self.id_data)
 
 
+def radius_taper_get(self):
+    # A spiral's existing endpoint radius remains the single source of truth.
+    # Reading an older curve never rebuilds or changes it.
+    return 100*(1-self.width/max(.00001,self.radius)) if self.kind=='SPIRAL' else self.get('helix_radius_taper',0.0)
+
+
+def radius_taper_set(self, value):
+    value=min(100.0,float(value))
+    if self.kind=='SPIRAL':
+        self['width']=max(0.0,self.radius*(1-value/100))
+    else:self['helix_radius_taper']=value
+    parameter_changed(self,bpy.context)
+
+
+def end_radius_set(self,value):
+    # The dedicated radius control permits closing the spiral to a point,
+    # without changing the existing width limits of lines, ellipses or waves.
+    self['width']=max(0.0,float(value))
+    parameter_changed(self,bpy.context)
+
+
+def twist_changed(self, context):
+    guide=self.id_data
+    was_parent=guide.get('parent_selected',True)
+    try:
+        guide['parent_selected']=True
+        refresh(guide)
+    finally:
+        guide['parent_selected']=was_parent
+
+
+def taper_changed(self, context):
+    from .curve_studio import length
+    guide=self.id_data
+    if guide.get('has_linked_objects'):
+        distribution.prepare(guide,length(guide),int(guide.get('objects_count',1)),self)
+        if distribution.KEY in guide:
+            count=int(guide.get('objects_count',1))
+            intervals=count if guide.data.splines[0].use_cyclic_u else max(1,count-1)
+            minimum=max(0,200*(1-length(guide)/max(1e-8,intervals*distribution.pitch(guide))))
+            if self.taper<minimum:self['taper']=min(99,minimum)
+    from .utils.curve import update_curve_children
+    guide = self.id_data
+    was_parent = guide.get('parent_selected', True)
+    try:
+        if not was_parent:
+            guide['parent_selected'] = True
+        update_curve_children(guide)
+    finally:
+        if not was_parent:
+            guide['parent_selected'] = False
+
+
 class BBE_PG_curve(bpy.types.PropertyGroup):
-    kind: bpy.props.EnumProperty(name='Shape',items=SHAPES,default='FREE',update=parameter_changed)
+    taper: bpy.props.FloatProperty(name='Taper', description='Reduce copies and spacing together. Set Spacing so the starting objects touch; adding copies extends the chain up to the curve end', subtype='PERCENTAGE',
+        default=0, min=0, max=99, precision=1, update=taper_changed)
+    twist: bpy.props.FloatProperty(name='Twist along curve', description='Total rotation around the path: 360 degrees makes one turn; negative values reverse it', subtype='ANGLE', default=0, soft_min=-4*math.pi, soft_max=4*math.pi, update=twist_changed)
+    kind: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Shape',items=SHAPES,default='FREE',update=parameter_changed)
+    radius_taper: bpy.props.FloatProperty(name='Radius taper', description='Gradually change the winding radius: 0% keeps equal radii, 50% halves the end radius, 100% closes to a point; negative values widen the end', subtype='PERCENTAGE', soft_min=-100, max=100, precision=1, get=radius_taper_get, set=radius_taper_set)
+    end_radius: bpy.props.FloatProperty(name='End radius', description='Radius at the end of the spiral; zero closes it to the center', min=0, soft_max=40, get=lambda self:self.width, set=end_radius_set)
     radius: bpy.props.FloatProperty(name='Radius',default=4,min=.01,soft_max=30,update=parameter_changed)
     width: bpy.props.FloatProperty(name='Width / end radius',default=2,min=.01,soft_max=40,update=parameter_changed)
     height: bpy.props.FloatProperty(name='Height',default=8,soft_min=-30,soft_max=30,update=parameter_changed)
     turns: bpy.props.FloatProperty(name='Turns',default=2,min=.1,max=12,update=parameter_changed)
     sweep: bpy.props.FloatProperty(name='Arc angle',default=120,min=1,max=359,update=parameter_changed)
+    free_count: bpy.props.IntProperty(name='Control points',min=2,max=512,soft_max=64,
+        get=lambda p: len(active_bezier(p.id_data).bezier_points) if active_bezier(p.id_data) else 2,
+        set=lambda p,count: resize_free(p.id_data,count) if active_bezier(p.id_data) else None)
     points: bpy.props.IntProperty(name='Control points',default=17,min=4,max=128,update=parameter_changed)
     selected: bpy.props.IntProperty(default=0,min=0,options={'HIDDEN'})
     spline: bpy.props.IntProperty(default=0,min=0,options={'HIDDEN'})
@@ -118,16 +193,90 @@ class BBE_PG_curve(bpy.types.PropertyGroup):
         description='Keep the opposite handle aligned for a smooth tangent; turn off for independent handles and sharp corners')
 
 
+def active_bezier(obj):
+    splines = obj.data.splines
+    if splines:
+        spline = splines[min(max(0,obj.bbe_curve.spline),len(splines)-1)]
+        if spline.type == 'BEZIER' and len(spline.bezier_points) >= 2:
+            return spline
+
+
+def resize_free(obj, count, source=None):
+    # Evaluate the original cubic and its derivative at each new knot.
+    # A drag always samples its starting curve, including when dragged backwards.
+    own_data(obj)
+    spline = active_bezier(obj)
+    cyclic = spline.use_cyclic_u
+    old = source or [point_record(bp) for bp in spline.bezier_points]
+    count = max(3 if cyclic else 2, min(512, int(round(count))))
+    segments = len(old) if cyclic else len(old)-1
+    step = segments / (count if cyclic else count-1)
+    records = []
+    for j in range(count):
+        u = j*step
+        i = min(int(u),segments-1)
+        t = u-i
+        a,h,_,_,_,r0,v0 = old[i]
+        a,b = Vector(a),Vector(old[i][2])
+        c,d = Vector(old[(i+1)%len(old)][1]),Vector(old[(i+1)%len(old)][0])
+        v = 1-t
+        co = a*v**3 + 3*b*v*v*t + 3*c*v*t*t + d*t**3
+        tangent = (b-a)*v*v + 2*(c-b)*v*t + (d-c)*t*t
+        left = Vector(old[i][1])-a if t < 1e-7 else -tangent
+        end = old[(i+1)%len(old)]
+        records.append((co,co+step*left,co+step*tangent,'FREE','FREE',
+                        v*r0+t*end[5],v*v0+t*end[6]))
+    if count==len(old):
+        records=old
+    spline_index=list(obj.data.splines).index(spline)
+    if count < len(spline.bezier_points):
+        # RNA only supports appending points. Recreate the tail in its original
+        # order so followers using spline zero stay on their original path.
+        tail=list(obj.data.splines)[spline_index:]
+        snapshots=[]
+        for other in tail:
+            attrs={prop.identifier:getattr(other,prop.identifier) for prop in other.bl_rna.properties
+                   if not prop.is_readonly and prop.identifier!='type' and prop.type in {'INT','FLOAT','BOOLEAN','ENUM'}}
+            bezier=other.type=='BEZIER'
+            pts=(list(map(point_record,other.bezier_points)) if bezier else
+                 [(tuple(bp.co),bp.radius,bp.tilt,bp.weight_softbody,bp.select,bp.hide) for bp in other.points])
+            snapshots.append((other.type,attrs,pts))
+        for other in tail:obj.data.splines.remove(other)
+        for i,(kind,attrs,points) in enumerate(snapshots):
+            other=obj.data.splines.new(kind)
+            if i==0:
+                spline=other
+                spline.bezier_points.add(count-1)
+            elif kind=='BEZIER':
+                other.bezier_points.add(len(points)-1)
+                for bp,record in zip(other.bezier_points,points):restore_point(bp,record)
+            else:
+                other.points.add(len(points)-1)
+                for bp,record in zip(other.points,points):
+                    bp.co,bp.radius,bp.tilt,bp.weight_softbody,bp.select,bp.hide=record
+            for key,value in attrs.items():setattr(other,key,value)
+    elif count>len(spline.bezier_points):
+        spline.bezier_points.add(count-len(spline.bezier_points))
+    for bp,record in zip(spline.bezier_points,records):
+        restore_point(bp,record)
+    obj.bbe_curve.spline=spline_index
+    obj.bbe_curve.selected=min(obj.bbe_curve.selected,count-1)
+    refresh(obj)
+
+
 def parameters(obj):
     kind=obj.bbe_curve.kind
     values=[]
     if kind not in {'LINE','FREE'}:
-        values.append(('radius',{'WAVE':'Amplitude','ELLIPSE':'X radius','SPIRAL':'Start radius'}.get(kind,'Radius')))
-    if kind in {'ELLIPSE','SPIRAL','LINE','WAVE'}:
-        values.append(('width',{'SPIRAL':'End radius','ELLIPSE':'Y radius'}.get(kind,'Width')))
+        values.append(('radius',{'WAVE':'Amplitude','ELLIPSE':'X radius','SPIRAL':'Start radius','HELIX':'Start radius'}.get(kind,'Radius')))
+    if kind=='SPIRAL':values.append(('end_radius','End radius'))
+    if kind in {'ELLIPSE','LINE','WAVE'}:
+        values.append(('width',{'ELLIPSE':'Y radius'}.get(kind,'Width')))
+    if kind in {'HELIX','SPIRAL'}:values.append(('radius_taper','Radius taper'))
     if kind=='HELIX': values.append(('height','Height'))
     if kind in {'HELIX','SPIRAL','WAVE'}: values.append(('turns','Turns'))
     if kind=='ARC': values.append(('sweep','Arc angle'))
+    if active_bezier(obj):values.append(('control_count','Control points'))
     return values
 
 
@@ -159,7 +308,7 @@ def new_curve(context,kind):
 
 class BBE_OT_curve_add(bpy.types.Operator):
     bl_idname='bbe.curve_add';bl_label='Create Editable Curve';bl_options={'REGISTER','UNDO'}
-    kind:bpy.props.EnumProperty(items=SHAPES,default='CIRCLE')
+    kind:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=SHAPES,default='CIRCLE')
     @classmethod
     def poll(cls,context):return context.mode=='OBJECT'
     @classmethod
@@ -235,7 +384,8 @@ def ensure_handle_baseline(obj):
     """Upgrade an existing preset before its first explicit handle edit."""
     if obj.bbe_curve.kind=='FREE' or obj.get('bbe_curve_handle_baseline'):return
     p=obj.bbe_curve
-    points,_=shape_points(p.kind,p.radius,p.width,p.height,p.turns,p.sweep,p.points)
+    points,_=shape_points(p.kind,p.radius,p.width,p.height,p.turns,p.sweep,p.points,
+                                   radius_taper=p.radius_taper if p.kind=='HELIX' else 0)
     obj['bbe_curve_handle_baseline']=json.dumps([(r[1],r[2]) for r in points])
 
 
@@ -262,7 +412,7 @@ class BBE_OT_curve_drag_point(bpy.types.Operator):
     bl_idname='bbe.curve_drag_point';bl_label='Move Curve Point';bl_options={'REGISTER','UNDO','BLOCKING'}
     bl_description='Drag to reshape; X/Y/Z constrain an axis, Shift gives fine control, Esc cancels'
     owner:bpy.props.StringProperty();spline:bpy.props.IntProperty();index:bpy.props.IntProperty()
-    part:bpy.props.EnumProperty(items=[('POINT','Point','Move the point'),('LEFT','Incoming handle','Shape the incoming segment'),('RIGHT','Outgoing handle','Shape the outgoing segment')],default='POINT')
+    part:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[('POINT','Point','Move the point'),('LEFT','Incoming handle','Shape the incoming segment'),('RIGHT','Outgoing handle','Shape the outgoing segment')],default='POINT')
     def invoke(self,context,event):
         obj=context.scene.objects.get(self.owner)
         if not editable(obj):return {'CANCELLED'}
@@ -323,7 +473,9 @@ def set_free_points(obj,points,closed=False):
 class BBE_OT_curve_draw(bpy.types.Operator):
     bl_idname='bbe.curve_draw';bl_label='Draw Smooth Curve';bl_options={'REGISTER','UNDO'}
     bl_description='Click fit points in the viewport; Enter finishes, Backspace removes a point, Escape cancels'
-    plane:bpy.props.EnumProperty(name='Drawing plane',items=[('VIEW','View','Plane facing the view at the 3D cursor'),('XY','Ground XY','Horizontal plane at the 3D cursor'),('XZ','Front XZ','Vertical plane at the 3D cursor'),('YZ','Side YZ','Vertical plane at the 3D cursor')])
+    plane:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Drawing plane',items=DRAW_PLANES, default='XY')
+    start_at_point:bpy.props.BoolProperty(default=False,options={'HIDDEN','SKIP_SAVE'})
+    start_position:bpy.props.FloatVectorProperty(size=3,options={'HIDDEN','SKIP_SAVE'})
     @classmethod
     def poll(cls,context):return context.mode=='OBJECT'
     def invoke(self,context,event):
@@ -331,21 +483,31 @@ class BBE_OT_curve_draw(bpy.types.Operator):
         if context.region.type!='WINDOW':
             region=next(r for r in context.area.regions if r.type=='WINDOW')
             with context.temp_override(region=region):
-                result=bpy.ops.bbe.curve_draw('INVOKE_DEFAULT',plane=self.plane)
+                result=bpy.ops.bbe.curve_draw('INVOKE_DEFAULT',plane=self.plane,start_at_point=self.start_at_point,start_position=self.start_position)
             # The inner modal operator owns the one completed-curve undo step.
             return {'CANCELLED'} if result=={'RUNNING_MODAL'} else result
+        if self.plane=='XY':
+            from mathutils import Quaternion
+            context.region_data.view_rotation = Quaternion()
+            context.region_data.view_perspective = 'ORTHO'
+            context.region_data.update()
+            context.area.tag_redraw()
         self.old_selection=[o.name for o in context.selected_objects]
         self.old_active=context.active_object.name if context.active_object else ''
         self.obj=new_curve(context,'FREE');self.points=[]
-        self.origin=context.scene.cursor.location.copy()
+        self.origin=Vector(self.start_position) if self.start_at_point else context.scene.cursor.location.copy()
+        if self.start_at_point:self.obj.location=self.origin
         self.normal=(context.region_data.view_rotation@Vector((0,0,1)) if self.plane=='VIEW' else
-                     Vector({'XY':(0,0,1),'XZ':(0,1,0),'YZ':(1,0,0)}[self.plane]))
+                     Vector({'XY':(0,0,1),'XZ':(0,1,0),'REAR':(0,-1,0),'YZ':(1,0,0)}[self.plane]))
         self.obj.rotation_mode='QUATERNION'
         self.obj.rotation_quaternion=Vector((0,0,1)).rotation_difference(self.normal)
         self.obj['bbe_curve_draw_plane']=True
         context.view_layer.update()
         context.window.cursor_modal_set('PAINT_BRUSH')
-        self.key=context.scene.as_pointer();_drawing[self.key]={'action':'','count':0}
+        if self.start_at_point:
+            self.points=[tuple(self.obj.matrix_world.inverted_safe() @ self.origin)]
+            set_free_points(self.obj,self.points)
+        self.key=context.scene.as_pointer();_drawing[self.key]={'action':'','count':len(self.points)}
         self.timer=context.window_manager.event_timer_add(.1,window=context.window)
         context.window_manager.modal_handler_add(self)
         context.area.header_text_set('DRAW CURVE: Click to place points | Enter / right-click: finish | Backspace: undo point | Esc: cancel')
@@ -465,7 +627,12 @@ class BBE_OT_curve_action(bpy.types.Operator):
 
 class BBE_OT_curve_value(bpy.types.Operator):
     bl_idname='bbe.curve_value';bl_label='Adjust Curve';bl_options={'REGISTER','UNDO','BLOCKING'}
-    bl_description='Click the track or drag its thumb; drag the value for smaller adjustments. Shift refines, Escape cancels. Exact fields are in Curve Tools'
+    bl_description='Click the track or drag its thumb; drag the value for smaller adjustments. Shift refines, Escape cancels. Click the displayed value to type an exact number'
+    @classmethod
+    def description(cls,context,properties):
+        if properties.field=='radius_taper':
+            return 'Winding radius: 0% keeps equal ends; 50% halves the end; 100% closes to a point. Negative values widen it. Click the value to type a percentage'
+        return cls.bl_description
     field:bpy.props.StringProperty()
     track_x:bpy.props.FloatProperty(options={'HIDDEN'})
     track_width:bpy.props.FloatProperty(default=0,options={'HIDDEN'})
@@ -473,27 +640,53 @@ class BBE_OT_curve_value(bpy.types.Operator):
         self.obj=active_curve(context)
         if not editable(self.obj):return {'CANCELLED'}
         press=press_position(context,event)
-        if self.track_width>0 and press.mouse_region_x>self.track_x+self.track_width-70 and press.mouse_region_y>self.track_y+14:
-            bpy.ops.bbe.curve_number('INVOKE_DEFAULT',field=self.field)
-            return {'CANCELLED'}
+        if self.track_width>0 and press.mouse_region_x>self.track_x+self.track_width-70*context.preferences.system.ui_scale and press.mouse_region_y>self.track_y+14*context.preferences.system.ui_scale:
+            field=self.field
+            window,area,region=context.window,context.area,context.region
+            def open_value():
+                if not any(w==window for w in bpy.context.window_manager.windows): return
+                if not any(a==area for a in window.screen.areas): return
+                with bpy.context.temp_override(window=window,area=area,region=region):
+                    bpy.ops.bbe.curve_number('INVOKE_DEFAULT',field=field)
+            if event.type=='LEFTMOUSE' and event.value=='RELEASE':
+                bpy.app.timers.register(open_value,first_interval=.01)
+                return {'FINISHED'}
+            self.number_callback=open_value
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        self.point_source = ([point_record(bp) for bp in active_bezier(self.obj).bezier_points]
+                             if self.field=='control_count' and self.obj.bbe_curve.kind=='FREE' else None)
+        self.spacing_state=self.obj[distribution.KEY].to_dict() if distribution.KEY in self.obj else None
         self.start=value_get(self.obj,self.field);self.mouse=press.mouse_region_x
         self.limits=slider_range(self.obj,self.field)
         self.step=.01 if self.field=='turns' else .5 if self.field=='sweep' else max(.01,abs(self.start)*.005)
-        if self.field=='objects_count':self.step=.1
+        if self.field in {'objects_count','control_count'}:self.step=.1
+        if self.field in {'twist','radius_taper'}:self.step=1
         press=press_position(context,event)
         self.on_track=self.track_width>0 and abs(press.mouse_region_y-self.track_y)<=12*context.preferences.system.ui_scale
-        if self.on_track:value_set(self.obj,self.field,self.slider_value(self.mouse))
+        if self.on_track:value_set(self.obj,self.field,self.slider_value(self.mouse),self.point_source)
         context.window_manager.modal_handler_add(self);return {'RUNNING_MODAL'}
     track_y:bpy.props.FloatProperty(options={'HIDDEN'})
     def slider_value(self,x):
         lo,hi=self.limits
         return lo+(hi-lo)*max(0,min(1,(x-self.track_x)/self.track_width))
     def modal(self,context,event):
+        if getattr(self,'number_callback',None):
+            if event.type in {'ESC','RIGHTMOUSE'}:return {'CANCELLED'}
+            if event.type=='LEFTMOUSE' and event.value=='RELEASE':
+                bpy.app.timers.register(self.number_callback,first_interval=.01)
+                return {'FINISHED'}
+            return {'RUNNING_MODAL'}
         if event.type in {'ESC','RIGHTMOUSE'}:
-            value_set(self.obj,self.field,self.start);return {'CANCELLED'}
+            value_set(self.obj,self.field,self.start,self.point_source)
+            if self.spacing_state is None:
+                if distribution.KEY in self.obj:del self.obj[distribution.KEY]
+            else:self.obj[distribution.KEY]=self.spacing_state
+            refresh(self.obj)
+            return {'CANCELLED'}
         if event.type in {'MOUSEMOVE','INBETWEEN_MOUSEMOVE','LEFTMOUSE'}:
             value=self.slider_value(event.mouse_region_x) if self.on_track and not event.shift else self.start+(event.mouse_region_x-self.mouse)*self.step*(.1 if event.shift else 1)
-            value_set(self.obj,self.field,value)
+            value_set(self.obj,self.field,value,self.point_source)
         if event.type=='LEFTMOUSE' and event.value=='RELEASE':return {'FINISHED'}
         return {'RUNNING_MODAL'}
 
@@ -502,27 +695,45 @@ class BBE_OT_curve_number(bpy.types.Operator):
     bl_idname='bbe.curve_number';bl_label='Exact Curve Value';bl_options={'REGISTER','UNDO'}
     field:bpy.props.StringProperty()
     value:bpy.props.FloatProperty(name='Value',precision=3)
+    count:bpy.props.IntProperty(name='Copies',min=1,max=1000,step=1)
     def invoke(self,context,event):
         obj=active_curve(context)
         if not obj:return {'CANCELLED'}
         self.value=value_get(obj,self.field)
+        self.count=max(1,round(self.value))
         return context.window_manager.invoke_props_dialog(self,width=280)
     def draw(self,context):
-        self.layout.prop(self,'value',text={'objects_count':'Copies','radius_multiplier':'Object size','spacing':'Spacing (m)'}.get(self.field,self.field.replace('_',' ').title()))
+        i18n.localized_layout(self.layout).prop(self,'count' if self.field in {'objects_count','control_count'} else 'value',text={'objects_count':'Copies','radius_multiplier':'Object size','spacing':'Spacing (m)','twist':'Twist along curve (degrees)','radius_taper':'Radius taper (%)','end_radius':'End radius'}.get(self.field,self.field.replace('_',' ').title()))
     def execute(self,context):
         obj=active_curve(context)
         if not obj:return {'CANCELLED'}
-        value_set(obj,self.field,self.value);return {'FINISHED'}
+        value_set(obj,self.field,self.count if self.field in {'objects_count','control_count'} and self.properties.is_property_set('count') else self.value);return {'FINISHED'}
 
 
 def value_get(obj,field):
+    if field=='control_count':return len(active_bezier(obj).bezier_points)
+    from . import duplication_tools
+    if field=='distance':return duplication_tools.distance(obj)
+    if field=='spacing' and obj.get('bbe_repeat_kind')=='AXIS':return duplication_tools.step(obj)
+    if field=='spacing' and duplication_tools.open_edge(obj):
+        return distribution.pitch(obj) if distribution.KEY in obj else float(obj.get('bbe_curve_spacing',duplication_tools.curve_studio.spacing(obj)))
+    if field=='twist':return math.degrees(obj.bbe_curve.twist)
     if field=='spacing':
         from .curve_studio import spacing
         return spacing(obj)
     return float(obj.get(field,1)) if field in {'objects_count','radius_multiplier'} else float(getattr(obj.bbe_curve,field))
 
 
-def value_set(obj,field,value):
+def value_set(obj,field,value,source=None):
+    if field=='control_count':
+        if round(value)==value_get(obj,field):return
+        if obj.bbe_curve.kind=='FREE':resize_free(obj,value,source)
+        else:obj.bbe_curve.points=max(4,min(128,round(value)))
+        return
+    from . import duplication_tools
+    if duplication_tools.adjust(obj,field,value):return
+    if field=='twist':
+        obj.bbe_curve.twist=math.radians(value);return
     if field=='spacing':
         from .curve_studio import set_spacing
         set_spacing(obj,value);return
@@ -530,6 +741,9 @@ def value_set(obj,field,value):
         from .utils import curve
         count=max(1,min(1000,round(value))) if field=='objects_count' else int(obj.get('objects_count',1))
         radius=max(.001,value) if field=='radius_multiplier' else obj.get('radius_multiplier',1)
+        if field=='radius_multiplier' and distribution.KEY in obj:
+            from .curve_studio import length
+            radius=min(radius,obj.get('radius_multiplier',1)*distribution.max_pitch(obj,length(obj),count,obj.bbe_curve)/distribution.pitch(obj))
         if field=='objects_count' and count>1:
             from .utils import curve_utils
             obj['density_step']=curve_utils.get_total_curve_density(obj,count)/(count-1)
@@ -558,11 +772,18 @@ def helper_parameters(obj):
 
 
 def slider_range(obj,field):
+    if field=='control_count':
+        return (3 if active_bezier(obj).use_cyclic_u else 2, max(64,value_get(obj,field))) if obj.bbe_curve.kind=='FREE' else (4,128)
+    if field=='distance' or (field=='spacing' and obj.get('bbe_repeat_kind') in {'AXIS','EDGE'} and not obj.data.splines[0].use_cyclic_u):
+        return .001,max(20,value_get(obj,field)*2)
+    if field=='taper':return 0,99
+    if field=='radius_taper':return min(-100,value_get(obj,field)),100
+    if field=='twist':return min(-720,value_get(obj,field)),max(720,value_get(obj,field))
     if field=='spacing':
         from .curve_studio import length
         count=int(obj.get('objects_count',1));divisor=count if obj.data.splines[0].use_cyclic_u else max(1,count-1)
-        return 0,max(.001,length(obj)/divisor)
-    lo,hi={'radius':(.01,30),'width':(.01,40),'height':(-30,30),'turns':(.1,12),
+        return 0,max(.001,distribution.max_pitch(obj,length(obj),count,obj.bbe_curve) if distribution.KEY in obj else length(obj)/divisor)
+    lo,hi={'radius':(.01,30),'width':(.01,40),'end_radius':(0,40),'height':(-30,30),'turns':(.1,12),
            'sweep':(1,359),'objects_count':(1,100),'radius_multiplier':(.05,5)}[field]
     value=value_get(obj,field)
     while value>hi:hi*=2
@@ -587,6 +808,9 @@ def draw_controls(layout,context):
     row.operator('bbe.curve_draw',text='Draw Smooth Curve',**icons.ui_icon('OUTLINER_DATA_GREASEPENCIL')).plane=context.scene.bbe_curve_plane
     row.prop(context.scene,'bbe_curve_plane',text='')
     layout.operator('bbe.curve_from_surface',text='Curve from Edges / Faces',**icons.ui_icon('RESTRICT_SELECT_OFF'))
+    join_row = layout.row()
+    join_row.operator_context = 'INVOKE_REGION_WIN'
+    join_row.menu('BBE_MT_curve_connections',text='Curve Connections',icon='LINKED')
     layout.operator('object.nms_duplicate_along_curve',**icons.ui_icon('MOD_DASH'))
     obj=active_curve(context)
     if obj is None:
@@ -597,9 +821,12 @@ def draw_controls(layout,context):
     layout.prop(context.scene,'bbe_curve_helper',text='Viewport controls & drag points')
     layout.prop(obj.bbe_curve,'linked_handles',text='Link tangent handles')
     if obj.get('bbe_easy_curve') and obj.bbe_curve.kind!='FREE':
-        for field,label in parameters(obj):layout.prop(obj.bbe_curve,field,text=label)
-        layout.prop(obj.bbe_curve,'points')
+        for field,label in parameters(obj):
+            if field!='control_count':layout.prop(obj.bbe_curve,field,text=label)
+        layout.prop(obj.bbe_curve,'points',slider=True)
         layout.operator('bbe.curve_action',text='Reset Shape',**icons.ui_icon('LOOP_BACK')).action='RESET'
+    if obj.bbe_curve.kind=='FREE' and active_bezier(obj):
+        layout.prop(obj.bbe_curve,'free_count',slider=True)
     row=layout.row(align=True)
     for label,action in [('Smooth','SMOOTH'),('Open / Close','CLOSED')]:row.operator('bbe.curve_action',text=label,**icons.ui_icon('LINCURVE' if action=='SMOOTH' else 'PARTICLES')).action=action
     row=layout.row(align=True)
@@ -607,6 +834,8 @@ def draw_controls(layout,context):
     row.operator('bbe.curve_action',text='Remove Point',**icons.ui_icon('REMOVE')).action='REMOVE'
     layout.label(text='Diamonds move points; round tips shape bends.')
     if obj.get('has_linked_objects'):
+        layout.prop(obj.bbe_curve,'taper',slider=True)
+        layout.prop(obj.bbe_curve,'twist',slider=True)
         props=context.scene.nms_properties
         if context.active_object==obj:
             layout.prop(props,'active_curve_number_of_objects',text='Number of Objects')
@@ -623,7 +852,7 @@ def card_rect(context):
     width=312*scale
     from .curve_studio import child_mode
     obj=active_curve(context)
-    height=(244 if context.scene.as_pointer() in _drawing else 456 if child_mode(context,obj) else 276+46*len(parameters(obj) if obj and obj.get('bbe_easy_curve') else []))*scale
+    height=(244 if context.scene.as_pointer() in _drawing else (582+(46 if obj.get('bbe_repeat_kind') else 0)+(36 if obj.get('bbe_repeat_kind')=='AXIS' else 0)) if child_mode(context,obj) else 310+46*len(parameters(obj) if obj and obj.get('bbe_easy_curve') else []))*scale
     x,y=_anchors.get(context.area.as_pointer(),(64*scale,context.region.height-250*scale))
     x=max(8,min(x,context.region.width-width-8));y=max(height+8,min(y,context.region.height-12))
     return x,y-height,width,height
@@ -659,21 +888,30 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
     def setup(self,context):
         self.card=self.gizmos.new('BBE_GT_curve_widget');self.card.hide_select=True
         self.card.style='CARD'
-        self.buttons=[];self.points=[]
+        self.buttons=[];self.points=[];self.button_ops={}
     def button(self,index,label,operator,x,y,w,props=None,style='BUTTON',height=28):
         while len(self.buttons)<=index:
             g=self.gizmos.new('BBE_GT_curve_widget');g.use_tooltip=True;self.buttons.append(g)
-        g=self.buttons[index];g.hide=False;g.label=label;g.width=w;g.height=height*self.scale
+        self.used_buttons.add(index)
+        g=self.buttons[index]
+        if g.hide:g.hide=False
+        g.label=label;g.width=w;g.height=height*self.scale
         g.scale=self.scale;g.style=style;g.enabled=False;g.value=''
         g.matrix_basis=Matrix.Translation((x,y,0))
-        op=g.target_set_operator(operator)
-        for k,v in (props or {}).items():setattr(op,k,v)
+        binding=self.button_ops.get(index)
+        if binding is None or binding[0]!=operator:
+            binding=(operator,g.target_set_operator(operator));self.button_ops[index]=binding
+        op=binding[1]
+        for k,v in (props or {}).items():
+            if getattr(op,k)!=v:setattr(op,k,v)
         return g
     def draw_prepare(self,context):
         obj=active_curve(context)
         if obj is None:return
         scale=self.scale=context.preferences.system.ui_scale
-        for g in self.buttons+self.points:g.hide=True
+        # Hiding a live gizmo clears its hover before the following click.
+        # Hide only controls absent from the finished layout.
+        self.used_buttons=set();self.point_count=0
         x,y,w,h=card_rect(context)
         self.card.matrix_basis=Matrix.Translation((x,y,0))
         self.card.width=w;self.card.height=h;self.card.scale=scale
@@ -683,23 +921,26 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
         children_screen=curve_studio.child_mode(context,obj)
         header=self.button(0,'DRAW A CURVE' if state else 'CURVE STUDIO · CHILDREN' if children_screen else 'CURVE STUDIO · PARENT','bbe.curve_move_card',
                            x+8*scale,y+h-54*scale,w-16*scale,style='HEADER',height=46)
-        header.subtitle='Click points. Watch the curve take shape.' if state else obj.name[:32]
+        header.subtitle=i18n.interface('Click points. Watch the curve take shape.') if state else obj.name[:32]
         lines=[(16*scale,14*scale,'Drag points or handles  /  Shift: fine  /  X Y Z: axis',curve_widgets.MUTED)]
         if state is not None:
-            lines=[(18*scale,h-81*scale,f'{state["count"]} points placed',curve_widgets.TEXT),
+            lines=[(18*scale,h-81*scale,i18n.interface('{count} points placed').format(count=state["count"]),curve_widgets.TEXT),
                    (18*scale,15*scale,'Enter: finish  /  Backspace: undo  /  Esc: cancel',curve_widgets.MUTED)]
             for index,(label,action) in enumerate([('Finish Curve','FINISH'),('Undo Last Point','BACK'),('Cancel Drawing','CANCEL')],1):
                 self.button(index,label,'bbe.curve_draw_action',x+14*scale,y+h-(90+index*36)*scale,w-28*scale,
                             {'action':action},style='PRIMARY' if index==1 else 'BUTTON',height=29)
         else:
             yy=y+h-104*scale;index=1
-            fields=([('objects_count','Copies'),('spacing','Spacing (m)'),('radius_multiplier','Object size')]
+            fields=([('objects_count','Copies'),('spacing','Spacing (m)'),('radius_multiplier','Object size'),('taper','Taper'),('twist','Twist along curve')]
                     if children_screen else parameters(obj) if obj.get('bbe_easy_curve') else [])
+            if children_screen and obj.get('bbe_repeat_kind'):fields.insert(2,('distance','Distance (m)'))
             for field,label in fields:
                 value=value_get(obj,field);lo,hi=slider_range(obj,field)
                 g=self.button(index,label,'bbe.curve_value',x+18*scale,yy,w-36*scale,
                     {'field':field,'track_x':x+24*scale,'track_width':w-48*scale,'track_y':yy+10*scale},style='SLIDER',height=44)
-                g.value=f'{value:.0f}' if field=='objects_count' else f'{value:.2f}'
+                g.value=f'{value:.0f}' if field in {'objects_count','control_count'} else f'{value:.2f}'
+                if field in {'taper','radius_taper'}:g.value=f'{value:.1f}%'
+                if field=='twist':g.value=f'{value:.1f}°'
                 g.fraction=(value-lo)/(hi-lo);index+=1;yy-=46*scale
             def action(label,action,dx,dy,width=138,enabled=False,style='BUTTON',height=28,value=''):
                 nonlocal index
@@ -707,10 +948,19 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 g.enabled=enabled;g.value=value;index+=1
             if children_screen:
                 lines=[(16*scale,14*scale,'Drag gizmo  /  G R S, then type a value',curve_widgets.MUTED)]
-                action('Fill entire curve','FILL',14,222)
-                action('Align curve face','FACE',160,222)
-                for n,(label,a) in enumerate([('Move','MOVE'),('Rotate','ROTATE'),('Scale','SCALE')]):
-                    action(label,a,14+n*97,184,89,curve_studio.active_native_tool(context)==a)
+                if obj.get('bbe_repeat_kind')=='AXIS':
+                    for n,axis in enumerate('XYZ'):
+                        g=self.button(index,'World '+axis,'bbe.repeat_axis',x+(14+n*97)*scale,y+292*scale,89*scale,{'axis':axis})
+                        g.enabled=obj.get('bbe_repeat_axis')==axis;index+=1
+                action('Fill entire curve','FILL',14,256)
+                action('Align curve face','FACE',160,256)
+                native=curve_studio.use_blender_tools(context)
+                action('Use Blender tools','NATIVE',14,222,284,native,style='SWITCH')
+                if not native:
+                    for n,(label,a) in enumerate([('Move','MOVE'),('Rotate','ROTATE'),('Scale','SCALE')]):
+                        action(label,a,14+n*97,184,89,curve_studio.active_native_tool(context)==a)
+                else:
+                    lines.append((22*scale,192*scale,'Your current Blender tool stays active.',curve_widgets.MUTED))
                 local=context.scene.transform_orientation_slots[0].type=='LOCAL'
                 action('Axes','AXES',14,148,284,local,style='SWITCH',value='Local' if local else 'Global')
                 each=context.scene.tool_settings.transform_pivot_point=='INDIVIDUAL_ORIGINS'
@@ -719,19 +969,26 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 action('Edit Parent','PARENT',14,32,284,style='NAV',height=36)
             else:
                 for n,(label,a) in enumerate([('Smooth curve','SMOOTH'),('Open / Close','CLOSED'),('+  Add point','ADD'),('-  Remove point','REMOVE')]):
-                    self.button(index,label,'bbe.curve_action',x+(14+146*(n%2))*scale,y+(168-34*(n//2))*scale,
+                    self.button(index,label,'bbe.curve_action',x+(14+146*(n%2))*scale,y+(202-34*(n//2))*scale,
                                 138*scale,{'action':a});index+=1
                 g=self.button(index,'Link handles','bbe.curve_action',
-                              x+14*scale,y+100*scale,w-28*scale,{'action':'LINK'},style='SWITCH')
+                              x+14*scale,y+134*scale,w-28*scale,{'action':'LINK'},style='SWITCH')
                 g.enabled=obj.bbe_curve.linked_handles;index+=1
                 action('Edit Children' if obj.get('has_linked_objects') else 'Duplicate Along Curve',
-                       'CHILDREN' if obj.get('has_linked_objects') else 'DUPLICATE',14,62,284,
+                       'CHILDREN' if obj.get('has_linked_objects') else 'DUPLICATE',14,96,284,
                        style='NAV' if obj.get('has_linked_objects') else 'PRIMARY',height=34)
                 if obj.get('has_linked_objects'):
-                    self.button(index,'Duplicate set','object.nms_duplicate',x+14*scale,y+32*scale,138*scale);index+=1
-                    action('Unlink objects','DETACH',160,32)
-                else:lines.append((16*scale,40*scale,'Select parts + this curve to create copies.',curve_widgets.MUTED))
+                    self.button(index,'Duplicate set','object.nms_duplicate',x+14*scale,y+66*scale,138*scale);index+=1
+                    action('Unlink objects','DETACH',160,66)
+                else:lines.append((16*scale,74*scale,'Select parts + this curve to create copies.',curve_widgets.MUTED))
+                self.button(index,'Curve Connections','bbe.curve_connections',x+14*scale,y+32*scale,w-28*scale,height=28)
                 self.draw_points(context,obj)
+        for i,g in enumerate(self.buttons):
+            hidden=i not in self.used_buttons
+            if g.hide!=hidden:g.hide=hidden
+        for i,g in enumerate(self.points):
+            hidden=i>=self.point_count
+            if g.hide!=hidden:g.hide=hidden
         self.card.lines=tuple(lines);self.card.children=tuple(self.buttons)
     def marker(self,context,obj,si,pi,part,xy,stem=None):
         i=self.point_count
@@ -776,18 +1033,22 @@ def reset(*_):
             obj.hide_select=False
 
 
-CLASSES=(BBE_PG_curve,BBE_OT_curve_add,BBE_OT_curve_drag_point,BBE_OT_curve_draw,BBE_OT_curve_draw_action,BBE_OT_curve_action,BBE_OT_curve_value,BBE_OT_curve_number,BBE_OT_curve_move_card,BBE_GGT_curve_controls)
+CLASSES=(BBE_PG_curve,BBE_OT_curve_start_here,BBE_MT_curve_connections,BBE_OT_curve_connections,BBE_OT_connect_endpoints,BBE_OT_curve_add,BBE_OT_curve_drag_point,BBE_OT_curve_draw,BBE_OT_curve_draw_action,BBE_OT_curve_action,BBE_OT_curve_value,BBE_OT_curve_number,BBE_OT_curve_move_card,BBE_GGT_curve_controls)
 def register():
     from . import curve_widgets,curve_studio,curve_surface
     curve_widgets.register();curve_studio.register()
     curve_surface.register()
+    from . import duplication_tools,alignment_tools
+    duplication_tools.register();alignment_tools.register()
     for cls in CLASSES:bpy.utils.register_class(cls)
     bpy.types.Object.bbe_curve=bpy.props.PointerProperty(type=BBE_PG_curve)
     bpy.types.Scene.bbe_curve_helper=bpy.props.BoolProperty(default=True)
-    bpy.types.Scene.bbe_curve_plane=bpy.props.EnumProperty(items=[('VIEW','View','Draw in the view plane'),('XY','Ground','Horizontal'),('XZ','Front','Vertical'),('YZ','Side','Vertical')])
+    bpy.types.Scene.bbe_curve_plane=bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=DRAW_PLANES, default='XY')
     bpy.app.handlers.load_post.append(reset)
     bpy.app.timers.register(reset,first_interval=.1)
 def unregister():
+    from . import duplication_tools,alignment_tools
+    alignment_tools.unregister();duplication_tools.unregister()
     from . import curve_surface
     curve_surface.unregister()
     if bpy.app.timers.is_registered(reset):bpy.app.timers.unregister(reset)

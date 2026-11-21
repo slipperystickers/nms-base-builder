@@ -409,6 +409,17 @@ class Part(object):
 
     # Class Methods ---
     @classmethod
+    def read_record(cls, obj):
+        """Read the existing part using its normal record format, without initializing a rig.
+
+        Constructors prepare editable Blender objects (snap IDs, materials and
+        helpers). Record readers only use the supplied object and its properties.
+        """
+        reader = cls.__new__(cls)
+        reader.object = obj
+        return reader.serialise()
+
+    @classmethod
     def deserialise_from_object(cls, bpy_object, builder_object):
         """Reconstruct the class using an existing Blender object."""
         part = cls(bpy_object=bpy_object, builder_object=builder_object)

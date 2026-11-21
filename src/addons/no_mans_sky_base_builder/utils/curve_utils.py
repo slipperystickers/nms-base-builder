@@ -2,7 +2,8 @@ import bpy
 import time
 import math
 
-from mathutils import Vector
+from mathutils import Vector, Quaternion
+from .. import curve_distribution as distribution
 from mathutils.geometry import interpolate_bezier
 from . import mirror_utils
 
@@ -201,6 +202,52 @@ def update_source_transform_constraints(obj):
                         setattr(constraint, attribute, value)
 
 
+def curve_world_tangents(guide, factors):
+    """Path directions for legacy position-only followers, sampled once per guide."""
+    from bisect import bisect_left
+    spline=guide.data.splines[0]
+    if spline.type=='BEZIER':
+        points=[];controls=spline.bezier_points
+        pairs=list(zip(controls,controls[1:]))
+        if spline.use_cyclic_u:pairs.append((controls[-1],controls[0]))
+        for a,b in pairs:
+            segment=interpolate_bezier(a.co,a.handle_right,b.handle_left,b.co,33)
+            points.extend(segment if not points else segment[1:])
+    else:
+        points=[Vector(p.co[:3]) for p in spline.points]
+        if spline.use_cyclic_u and points:points.append(points[0])
+    points=[guide.matrix_world@p for p in points]
+    distances=[0.0]
+    for a,b in zip(points,points[1:]):distances.append(distances[-1]+(b-a).length)
+    for factor in factors:
+        if len(points)<2:yield Vector((0,1,0));continue
+        j=min(len(points)-1,max(1,bisect_left(distances,factor*distances[-1])))
+        tangent=points[j]-points[j-1]
+        yield tangent.normalized() if tangent.length>1e-8 else Vector((0,1,0))
+
+
+def apply_curve_twist(obj,guide,angle,world_axis=None):
+    constraint=next((c for c in obj.constraints if c.type=='FOLLOW_PATH' and c.target==guide),None)
+    if constraint is None:return
+    # Follow Path applies its frame after the object's local rotation.
+    axis=Vector((0,0,0));axis['XYZ'.index(constraint.forward_axis[-1])]=(-1 if 'NEGATIVE' in constraint.forward_axis else 1)
+    if world_axis is not None:
+        axis=(obj.parent.matrix_world.inverted_safe().to_3x3()@world_axis).normalized() if obj.parent else world_axis
+    roll=Quaternion(axis,angle)
+    old=Quaternion(obj.get('bbe_curve_roll',(1,0,0,0)))
+    if abs(abs(roll.dot(old))-1)<1e-8:return
+    current=(obj.rotation_quaternion.copy() if obj.rotation_mode=='QUATERNION' else
+             Quaternion(Vector(obj.rotation_axis_angle[1:]),obj.rotation_axis_angle[0]) if obj.rotation_mode=='AXIS_ANGLE' else
+             obj.rotation_euler.to_quaternion())
+    result=roll@old.inverted()@current
+    if obj.rotation_mode=='QUATERNION':obj.rotation_quaternion=result
+    elif obj.rotation_mode=='AXIS_ANGLE':
+        axis,value=result.to_axis_angle();obj.rotation_axis_angle=(value,*axis)
+    else:obj.rotation_euler=result.to_euler(obj.rotation_mode,obj.rotation_euler)
+    obj['bbe_curve_roll']=tuple(roll)
+    if 'dup_source_transform' in guide:update_source_transform_constraints(obj)
+
+
 def update_obj_transformations(obj, curve_obj, eval_data, total_length, curve_context=None):
     """
     Optimized transformation update with early returns and inline calculations.
@@ -215,6 +262,7 @@ def update_obj_transformations(obj, curve_obj, eval_data, total_length, curve_co
     if curve_context is None:
         curve_context = build_curve_context(curve_obj)
     parent_selected, curve_scale_multiplier, radius_multiplier = curve_context
+    radius_multiplier *= obj.get("bbe_taper_factor", 1)
     
     if not parent_selected:
         return
@@ -352,6 +400,9 @@ def normalise_curve_scale(curve_obj):
     if current_scale == (1.0, 1.0, 1.0):
         return
     
+    if distribution.KEY in curve_obj:
+        state=curve_obj[distribution.KEY]
+        state['pitch']*=abs(current_scale[0])
     scale_x, scale_y, scale_z = current_scale
     
     for spline in curve_obj.data.splines:
@@ -587,6 +638,13 @@ def calculate_curve_factors(curve, existing_objs):
     
     object_count = len(existing_objs)
     if object_count == 0:
+        return
+
+    if distribution.KEY in curve:
+        length=build_curve_eval_data(curve,32)[1]*abs(curve.matrix_world.to_scale().x)
+        for obj,distance in zip(existing_objs,distribution.distances(curve,object_count,curve.bbe_curve)):
+            factor=distance/max(1e-8,length)
+            if obj.get('curve_factor')!=factor:obj['curve_factor']=factor
         return
 
     if curve.get('bbe_curve_spacing') is not None and object_count>1:

@@ -3,6 +3,7 @@
 An original, bounded-cost scene rig. No Charon Forge implementation or sky
 tables are used. Generated scenery is display-only and has no ObjectID.
 """
+from . import i18n
 from pathlib import Path
 import json
 import math
@@ -307,13 +308,15 @@ def _apply_enabled(scene, commit, progress):
 
 
 def update(self, context):
-    apply(self.id_data)
+    from . import settings_memory
+    if not settings_memory._applying:
+        apply(self.id_data)
 
 
 class BBEStageSettings(bpy.types.PropertyGroup):
     enabled: BoolProperty(name='Scene Preview', default=False, update=update)
-    environment: EnumProperty(name='Scene', items=[('STATION','Station Corvette Pad','Native station pad with build surface at Z=0'),('OUTPOST','Space Outpost Pad','Native orbital outpost pad against a static space backdrop'),('SPACE','Deep Space','Clean star backdrop without a floor')], default='STATION', update=update)
-    quality: EnumProperty(name='Preview', items=[('EDIT','Smooth','16 samples, up to 32 ship lights, one shadow light'),('PHOTO','Photo','64 samples, up to 64 ship lights, one shadow light')], default='PHOTO', update=update)
+    environment: EnumProperty(translation_context="BBEExtendedInterface", name='Scene', items=[('STATION','Station Corvette Pad','Native station pad with build surface at Z=0'),('OUTPOST','Space Outpost Pad','Native orbital outpost pad against a static space backdrop'),('SPACE','Deep Space','Clean star backdrop without a floor')], default='STATION', update=update)
+    quality: EnumProperty(translation_context="BBEExtendedInterface", name='Preview', items=[('EDIT','Smooth','16 samples, up to 32 ship lights, one shadow light'),('PHOTO','Photo','64 samples, up to 64 ship lights, one shadow light')], default='PHOTO', update=update)
     ray_tracing: BoolProperty(name='Ray Tracing', description='Enable EEVEE ray tracing independently of preview quality', default=True, update=update)
     ship_lights: BoolProperty(name='Object Lights', description='Emissive surfaces, local lights and supported animated effects for NMS parts', default=True, update=update)
     light_strength: FloatProperty(name='Light Spill', description='Applied with Refresh Scene Preview', default=2.0964910984039307, min=0, max=5)
@@ -331,6 +334,7 @@ class BBEStageSettings(bpy.types.PropertyGroup):
 
 class BBE_OT_stage_refresh(bpy.types.Operator):
     bl_idname = 'bbe.stage_refresh'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Refresh Scene Preview'
     bl_description = 'Apply lighting slider changes and refresh the preview'
     def execute(self,context):
@@ -339,6 +343,7 @@ class BBE_OT_stage_refresh(bpy.types.Operator):
 
 
 class BBE_PT_stage(bpy.types.Panel):
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Lighting & Scenes'
     bl_idname = 'BBE_PT_stage'
     bl_space_type = 'VIEW_3D'
@@ -346,10 +351,15 @@ class BBE_PT_stage(bpy.types.Panel):
     bl_category = 'No Mans Sky Base Builder'
     bl_options = {'DEFAULT_CLOSED'}
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'lighting')
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'lighting')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'lighting')
 
     def draw(self, context):
-        layout = self.layout
+        from . import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'lighting'):
+            return
+        layout = i18n.localized_layout(self.layout)
         s = context.scene.bbe_stage
         from .save_editor.function_help import corner_help
         header = layout.row(align=True)
@@ -490,6 +500,8 @@ CLASSES = (BBEStageSettings, BBE_OT_stage_refresh, BBE_PT_stage)
 
 
 def register():
+    from .tools_menu import base_builder_menu
+    base_builder_menu.bind_sidebar_visibility(CLASSES)
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.bbe_stage = PointerProperty(type=BBEStageSettings)

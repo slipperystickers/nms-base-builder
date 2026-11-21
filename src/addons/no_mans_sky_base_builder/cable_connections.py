@@ -16,9 +16,11 @@ from .utils import mirror_pivot
 POWER = 'U_POWERLINE'
 TELEPORT = 'U_PORTALLINE'
 BYTEBEAT = 'U_BYTEBEATLINE'
-KINDS = (POWER, TELEPORT, BYTEBEAT)
-LABELS = {POWER: 'electrical', TELEPORT: 'teleport', BYTEBEAT: 'ByteBeat'}
-TARGET_LABELS = {POWER: 'Green electrical', TELEPORT: 'Blue teleport', BYTEBEAT: 'Pink ByteBeat'}
+SUPPLY = 'U_PIPELINE'
+KINDS = (POWER, TELEPORT, BYTEBEAT, SUPPLY)
+EDITABLE_LINES = (POWER, BYTEBEAT, SUPPLY)
+LABELS = {POWER: 'electrical', TELEPORT: 'teleport', BYTEBEAT: 'ByteBeat', SUPPLY: 'supply'}
+TARGET_LABELS = {POWER: 'Blue electrical', TELEPORT: 'Cyan teleport', BYTEBEAT: 'Pink ByteBeat', SUPPLY: 'Orange supply'}
 # ByteBeatWire_Out locators from the device and switch placement scenes.
 # The side-mounted ByteBeat_In/Out pair joins devices structurally.
 BEAT_SOCKETS = {'BYTEBEAT': (.196310, 1.089710, -.468870),
@@ -34,10 +36,10 @@ LOGIC_ROLES = {
     'BYTEBEATSWITCH': {POWER_IN: 'IN', 'POWER_C': 'OUT', 'BYTEBEAT_A': 'TRIGGER'},
 }
 SRT_IDS = frozenset(('U_MINIPORTAL', 'U_MINIPORTAL_CV'))
-COLORS = {POWER: (0.08, 1.0, 0.22, 1.0), TELEPORT: (0.20, 0.75, 1.0, 1.0), BYTEBEAT: (1.0, .04, .3, 1.0)}
+COLORS = {POWER: (0.15, 0.40, 1.0, 1.0), TELEPORT: (0.08, 1.0, 0.85, 1.0), BYTEBEAT: (1.0, .04, .3, 1.0), SUPPLY: (1.0, .58, .08, 1.0)}
 COLLECTIONS = {POWER: 'Electrical Connections', TELEPORT: 'Teleport Connections',
                BYTEBEAT: 'ByteBeat Connections', 'U_PIPELINE': 'Supply Pipes'}
-RADII = {POWER: .025, TELEPORT: .045}
+RADII = {POWER: .025, TELEPORT: .045, SUPPLY: .06}
 
 
 @lru_cache(maxsize=4096)
@@ -58,11 +60,19 @@ def _native_power_points():
     return json.loads((Path(__file__).parent / 'resources/electrical_sockets.json').read_text(encoding='utf-8'))['parts']
 
 
+@lru_cache(maxsize=1)
+def _supply_points():
+    return json.loads((Path(__file__).parent / 'resources/supply_sockets.json').read_text(encoding='utf-8'))['parts']
+
+
 def local_sockets(obj, kind):
     """Return only sockets compatible with this cable, in the displayed frame."""
     pid = obj.get('ObjectID', '')
     if obj.get('rig_item'):
         return {'ENDPOINT': Vector()} if obj.get('bbe_cable_kind', POWER) == kind else {}
+    if kind == SUPPLY:
+        offset = mirror_pivot.pivot(pid) if mirror_pivot.is_normalized(obj) else Vector()
+        return {key: Vector(point) + offset for key, point in _supply_points().get(pid, {}).items()}
     if kind == BYTEBEAT:
         position = BEAT_SOCKETS.get(pid)
         if position is None:
@@ -93,15 +103,27 @@ def sockets(obj, kind):
     return {key: obj.matrix_world @ point for key, point in local_sockets(obj, kind).items()}
 
 
-def control_owner(control):
-    """Use the actual driver ID, so renaming a connected device remains safe."""
+def attached_device(control):
+    """A display name alone does not constrain a free endpoint."""
     animation = control.animation_data
     if control.get('bbe_socket_key') and animation:
         for curve in animation.drivers:
-            for variable in curve.driver.variables:
-                if variable.targets[0].id:
-                    return variable.targets[0].id
-    return bpy.data.objects.get(control.get('snapped_to', ''))
+            if curve.data_path == 'location' and not curve.mute and curve.driver.variables:
+                target = curve.driver.variables[0].targets[0].id
+                if target is not None:
+                    return target
+    return None
+
+
+def free_control(control):
+    animation = control.animation_data
+    return (control.parent is None and not control.constraints and
+            (animation is None or not (animation.drivers or animation.action or animation.nla_tracks)))
+
+
+def control_owner(control):
+    # Legacy repair also uses the old name as a hint when the binding is gone.
+    return attached_device(control) or bpy.data.objects.get(control.get('snapped_to', ''))
 
 
 def endpoints(cable):
@@ -192,13 +214,23 @@ def style(cable):
     kind = cable.get('ObjectID')
     if kind not in KINDS or cable.type != 'MESH':
         return
+    if kind == SUPPLY:
+        from . import builder_v2, supply_preview
+        from .utils import materials_v2
+        mesh=builder_v2.load_high_res_mesh(SUPPLY, force=True)
+        if mesh is None:
+            from . import simple_library
+            mesh=builder_v2.load_proxy_mesh(SUPPLY)
+            if mesh is None and not cable.data.name.startswith('BBE Supply Pipes Preview'):mesh=cable.data
+        if mesh is not None:supply_preview.install(cable,mesh)
+        return
     if kind == BYTEBEAT:
         # Retain the native crossed ribbons and pink glow on detailed proxies.
         if any(abs(a-b) > 1e-6 for a,b in zip(cable.color, COLORS[kind])):
             cable.color = COLORS[kind]
         return
     # Change only preview geometry, never the transform that is exported.
-    name = 'BBE ' + COLLECTIONS[kind] + ' Preview v1'
+    name = 'BBE ' + COLLECTIONS[kind] + ' Preview v2'
     mesh = bpy.data.meshes.get(name)
     if mesh is None:
         radius, sides = RADII[kind], 12
@@ -248,6 +280,8 @@ def assign_collections(obj, destinations, scene_collections):
         if obj.name not in collection.objects:
             collection.objects.link(obj)
     for old in obj.users_collection:
+        if obj.get('bbeplus_legacy_line') and old.get('bbeplus_cable_type') == obj.get('ObjectID'):
+            continue  # Adopted cables also belong to a BBE+ build for export.
         if old in scene_collections and old not in destinations and old.library is None:
             old.objects.unlink(obj)
 
@@ -292,6 +326,15 @@ def organize_saved_cables(*_args):
         for obj, kinds in members.items():
             if obj.library:
                 continue
+            if (obj.get('rig_item') and obj.get('snapped_to') and len(kinds) == 1
+                    and free_control(obj)):
+                kind = next(iter(kinds))
+                device = scene.objects.get(obj['snapped_to'])
+                if device is not None and kind in EDITABLE_LINES:
+                    matches = [key for key, pos in sockets(device, kind).items()
+                               if (pos - obj.matrix_world.translation).length < .002]
+                    if len(matches) == 1:
+                        bind(obj, device, matches[0], kind)
             for kind in kinds:
                 if kind not in by_kind:
                     by_kind[kind] = cable_collection(scene, kind)
@@ -299,6 +342,8 @@ def organize_saved_cables(*_args):
         scene_collections.update((scene.collection, *scene.collection.children_recursive))
     for obj, collections in destinations.items():
         assign_collections(obj, collections, scene_collections)
+        if obj.get('ObjectID') in KINDS:
+            style(obj)
 
 
 def prepare_control(control, kind):
@@ -312,13 +357,16 @@ def prepare_control(control, kind):
     control.hide_render = True
 
 
-def bind_imported(scene):
+def bind_imported(scene, existing_lines=()):
     """Restore device-following only for unambiguous, already-correct endpoints.
 
     Spatial buckets avoid a device-by-cable quadratic import cost. Deliberate
     free endpoints and incorrectly attached legacy cables are not relocated.
     """
     from collections import defaultdict
+    incoming = [obj for obj in scene.objects if obj.get('ObjectID') in KINDS and obj.session_uid not in existing_lines]
+    if not incoming:
+        return
     buckets = defaultdict(list)
     cell = lambda point: tuple(round(v / .005) for v in point)
     for obj in scene.objects:
@@ -327,10 +375,8 @@ def bind_imported(scene):
         for kind in KINDS:
             for key, point in sockets(obj, kind).items():
                 buckets[(kind, cell(point))].append((obj, key, point))
-    for cable in list(scene.objects):
-        kind = cable.get('ObjectID')
-        if kind not in KINDS:
-            continue
+    for cable in incoming:
+        kind = cable['ObjectID']
         for end in endpoints(cable):
             if end is None or end.get('bbe_socket_key'):
                 continue
@@ -407,7 +453,7 @@ def connect(a, akey, b, bkey, kind, builder, *, free_start=None, free_end=None, 
         raise ValueError('Choose a connector on a different object.')
     ends = []
     for obj, key, free_position in ((a, akey, free_start), (b, bkey, free_end)):
-        if obj is None and kind in (POWER, BYTEBEAT) and free_position is not None:
+        if obj is None and kind in (POWER, BYTEBEAT, SUPPLY) and free_position is not None:
             position = Vector(free_position)
         elif obj is not None and key in local_sockets(obj, kind):
             position = sockets(obj, kind)[key]

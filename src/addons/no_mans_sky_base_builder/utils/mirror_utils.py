@@ -1,3 +1,4 @@
+from .. import i18n
 import json
 import bpy
 import math
@@ -28,7 +29,7 @@ POSITION_OFFSETS = {
 
 def ShowMessageBox(message="", title="Message Box", icon="INFO"):
     def draw(self, context):
-        self.layout.label(text=message)
+        i18n.localized_layout(self.layout).label(text=message)
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 

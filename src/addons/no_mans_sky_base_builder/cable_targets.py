@@ -1,6 +1,7 @@
 """Colored, clickable cable sockets; independent of structural snap markers."""
 import math
 from collections import defaultdict
+from typing import NamedTuple
 import bpy
 import gpu
 from bpy.app.handlers import persistent
@@ -8,6 +9,7 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d, region_2d_to_locat
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix, Vector
 from . import cable_connections as cables
+from . import i18n
 
 SESSIONS = {}
 _index_key = None
@@ -17,7 +19,9 @@ _cables = ()
 
 def scene_index(context):
     global _index_key, _devices, _cables
-    key = (context.scene.as_pointer(), len(context.scene.objects))
+    # Deleting and replacing devices can keep the object count unchanged.
+    # Cache membership, not just count, so no removed RNA objects survive.
+    key = (context.scene.as_pointer(), tuple(obj.as_pointer() for obj in context.scene.objects))
     if key != _index_key:
         _devices = {kind: [] for kind in cables.KINDS}
         _cables = []
@@ -39,6 +43,10 @@ def scene_index(context):
 
 def session(context):
     return SESSIONS.get(context.scene.as_pointer())
+
+
+def connectors_visible(context):
+    return bool(session(context)) or getattr(context.scene, 'bbe_show_connectors', True)
 
 
 def redraw(context):
@@ -77,6 +85,8 @@ def allowed_target(current, obj):
 
 def targets(context):
     """During placement: compatible sockets. Otherwise: selected connections."""
+    if not connectors_visible(context):
+        return []
     current = session(context)
     if current and 'source' in current and current['first'] is None:
         devices = (current['source'],)
@@ -95,6 +105,7 @@ def targets(context):
             result[(obj.name, key, kind)] = position
     if current:
         for obj in devices:
+            if not visible(context,obj):continue
             if obj.get('rig_item') and obj.get('bbe_socket_key') and 'remaining' not in current:
                 continue
             if allowed_target(current, obj):
@@ -106,6 +117,7 @@ def targets(context):
                 for kind in cables.KINDS:
                     add(obj, kind)
         for cable in connections:
+            if not visible(context,cable):continue
             kind = cable.get('ObjectID')
             if kind not in cables.KINDS or not visible(context, cable):
                 continue
@@ -121,7 +133,10 @@ def targets(context):
                     result[(owner.name, key, kind)] = cables.sockets(owner, kind)[key]
                 else:
                     result[(end.name, 'ENDPOINT', kind)] = end.matrix_world.translation.copy()
-    return [(name, key, kind, point) for (name, key, kind), point in result.items()]
+    from .viewport_cutaway import limits, contains
+    cuts = limits(context.scene)
+    return [(name, key, kind, point) for (name, key, kind), point in result.items()
+            if cuts is None or contains(cuts, point)]
 
 
 def start_position(context, current):
@@ -138,11 +153,12 @@ def start_position(context, current):
 
 class BBE_OT_cable_start(bpy.types.Operator):
     bl_idname = 'bbe.start_cable_connection'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Choose Cable Connectors'
     bl_description = 'Click two matching colored targets to connect; Escape or right-click cancels'
     bl_options = {'REGISTER'}
-    kind: bpy.props.EnumProperty(items=[(cables.POWER, 'Electrical Cable', ''), (cables.TELEPORT, 'Teleport Cable', ''),
-                                      (cables.BYTEBEAT, 'ByteBeat Cable', '')])
+    kind: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[(cables.POWER, 'Electrical Cable', ''), (cables.TELEPORT, 'Teleport Cable', ''),
+                                      (cables.BYTEBEAT, 'ByteBeat Cable', ''), (cables.SUPPLY, 'Supply Pipe', '')])
 
     new_point: bpy.props.BoolProperty(options={'SKIP_SAVE', 'HIDDEN'})
     source_name: bpy.props.StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
@@ -152,17 +168,24 @@ class BBE_OT_cable_start(bpy.types.Operator):
     repeat_placement: bpy.props.BoolProperty(options={'SKIP_SAVE', 'HIDDEN'})
     selected_only: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE', 'HIDDEN'})
 
+    launch_ready: bpy.props.BoolProperty(options={'HIDDEN','SKIP_SAVE'})
+    launch_x: bpy.props.IntProperty(default=-1,options={'HIDDEN','SKIP_SAVE'})
+    launch_y: bpy.props.IntProperty(default=-1,options={'HIDDEN','SKIP_SAVE'})
+
     @classmethod
     def description(cls, context, properties):
         if properties.repeat_placement:
-            return 'Click a start and an end for each cable. Esc or right-click exits placement.'
+            return i18n.tooltip('Click a start and an end for each cable, then repeat. Use matching colored sockets; electrical, ByteBeat and supply ends may also be free. Esc or right-click exits placement.')
         if properties.new_point:
-            return 'Click a cable to insert a junction or click empty space to start a path.'
+            return i18n.tooltip('Click a cable to insert a junction or click empty space to start a path.')
         if properties.source_name:
-            return f'Start a {cables.LABELS.get(properties.kind, "device")} cable here and click its destination.'
-        if properties.kind in (cables.POWER, cables.BYTEBEAT):
-            return 'Click sockets or empty space to place both ends of the cable.'
-        return cls.bl_description
+            return i18n.tooltip('Start a {kind} cable here and click its destination.').format(
+                kind=i18n.tooltip(cables.LABELS.get(properties.kind, "device")))
+        if properties.kind in (cables.POWER, cables.BYTEBEAT, cables.SUPPLY):
+            if properties.kind == cables.SUPPLY:
+                return i18n.tooltip('Connect orange extractor/depot supply sockets or free endpoints. Electrical sockets are not used.')
+            return i18n.tooltip('Click sockets or empty space to place both ends of the cable.')
+        return i18n.tooltip(cls.bl_description)
 
     def execute(self, context):
         if context.mode != 'OBJECT':
@@ -196,8 +219,9 @@ class BBE_OT_cable_start(bpy.types.Operator):
                 key, position = next(iter(keys.items()))
                 current['first'] = (source, key)
                 current['first_local'] = position
-                self.report({'INFO'}, 'Click a pink socket or empty space to finish.' if self.kind == cables.BYTEBEAT
-                            else 'Start socket selected. Click a destination connector.')
+                color = cables.TARGET_LABELS[self.kind]
+                self.report({'INFO'}, f'{color} start selected. Click a matching socket or empty space to finish.'
+                            if self.kind != cables.TELEPORT else 'Cyan teleport start selected. Click the other teleport socket.')
             else:
                 self.report({'INFO'}, 'Click a starting connector on the selected device.')
         elif self.group_power:
@@ -236,6 +260,19 @@ class BBE_OT_cable_start(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        if not self.launch_ready:
+            window,area=context.window,context.area
+            region=next((r for r in area.regions if r.type=='WINDOW'),None)
+            if region is None:return {'CANCELLED'}
+            values={k:getattr(self,k) for k in ('kind', 'new_point', 'source_name', 'source_key', 'group_power', 'chain', 'repeat_placement', 'selected_only', 'launch_ready', 'launch_x', 'launch_y')}
+            values.update(launch_ready=True,launch_x=self.launch_x if self.launch_x>=0 else event.mouse_x,
+                          launch_y=self.launch_y if self.launch_y>=0 else event.mouse_y)
+            def start():
+                if window not in list(bpy.context.window_manager.windows) or area not in list(window.screen.areas):return
+                with bpy.context.temp_override(window=window,area=area,region=region):
+                    bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT',**values)
+            bpy.app.timers.register(start,first_interval=.02)
+            return {'FINISHED'}
         result = self.execute(context)
         if result == {'FINISHED'}:
             self._session=session(context);self._session['cursor_owner']=self
@@ -245,16 +282,20 @@ class BBE_OT_cable_start(bpy.types.Operator):
                 self._workspace = context.workspace
                 self._workspace_tool = self.workspace_tool(context)
                 self._scene_key = context.scene.as_pointer()
+            from . import supply_preview,builder_v2
+            self._pipe=supply_preview.LivePipe(context.scene,lambda:builder_v2.load_high_res_mesh(cables.SUPPLY,force=True)) if self.kind==cables.SUPPLY else None
             self._xy=None;self._cursor_hidden=False
             self._cursor_shader = None
             self._handle=bpy.types.SpaceView3D.draw_handler_add(self.draw_cursor,(),'WINDOW','POST_PIXEL')
             self._timer=self._wm.event_timer_add(.1,window=self._window)
-            self.update_cursor(event)
+            from types import SimpleNamespace
+            self.update_cursor(SimpleNamespace(mouse_x=self.launch_x,mouse_y=self.launch_y))
             context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
         return result
 
     def release_cursor(self):
+        if getattr(self,'_pipe',None):self._pipe.close()
         if getattr(self,'_handle',None) is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle,'WINDOW');self._handle=None
         if getattr(self,'_timer',None) is not None:
@@ -276,6 +317,21 @@ class BBE_OT_cable_start(bpy.types.Operator):
         if xy != self._xy:
             self._xy = xy
             self._area.tag_redraw()
+        self.update_pipe()
+
+    def update_pipe(self):
+        if not getattr(self,'_pipe',None):return
+        if self._xy is None:self._pipe.clear();return
+        with bpy.context.temp_override(window=self._window,area=self._area,region=self._region):
+            context=bpy.context;start=start_position(context,self._session)
+            if start is None:self._pipe.clear();return
+            mouse = Vector(self._xy)
+            hit = pick_socket(context, mouse)
+            if hit is not None:
+                end = hit.world_position
+            else:
+                end = region_2d_to_location_3d(self._region, context.region_data, mouse, start)
+            self._pipe.update(start,end,getattr(context.scene,'bbe_detailed_proxies',True))
 
     def draw_cursor(self):
         context = bpy.context
@@ -296,7 +352,7 @@ class BBE_OT_cable_start(bpy.types.Operator):
             gpu.state.blend_set('ALPHA')
             shader.bind()
             socket = start_position(context, self._session)
-            if socket is not None:
+            if socket is not None and not (self._pipe and self._pipe.active):
                 start = location_3d_to_region_2d(self._region, context.region_data, socket)
                 if start is not None:
                     dx, dy = x - start.x, y - start.y
@@ -316,11 +372,11 @@ class BBE_OT_cable_start(bpy.types.Operator):
                     self._ring_batch.draw(shader)
             if self.group_power:
                 from . import curve_widgets as widgets
-                message = 'Choose power source / starting position'
-                detail = 'Click a socket or empty space'
+                message = i18n.interface('Choose power source / starting position')
+                detail = i18n.interface('Click a socket or empty space')
                 import blf
                 blf.size(0, 12 * scale)
-                w = blf.dimensions(0, message)[0] + 18 * scale
+                w = max(blf.dimensions(0, message)[0], blf.dimensions(0, detail)[0]) + 18 * scale
                 h = 40 * scale
                 left = max(2, min(x + 20 * scale, context.region.width - w - 2))
                 bottom = max(2, min(y + 16 * scale, context.region.height - h - 2))
@@ -351,7 +407,7 @@ class BBE_OT_cable_start(bpy.types.Operator):
         if 'source' in self._session and not visible(context, self._session['source']):
             cancel(context)
             return {'CANCELLED'}
-        if event.type in {'ESC', 'RIGHTMOUSE'} or context.mode != 'OBJECT':
+        if not connectors_visible(context) or event.type in {'ESC', 'RIGHTMOUSE'} or context.mode != 'OBJECT':
             cancel(context);return {'CANCELLED'}
         if event.type in {'MOUSEMOVE','INBETWEEN_MOUSEMOVE','LEFTMOUSE'}:
             self.update_cursor(event)
@@ -370,12 +426,11 @@ class BBE_OT_cable_start(bpy.types.Operator):
             with context.temp_override(window=self._window, area=self._area, region=self._region):
                 # The modal launcher owns no undo step. Commit a completed
                 # group route in the nested click operator so redo has a snapshot.
-                choices = projected_targets(context)
-                hit = min(choices, key=lambda row: (row[4] - mouse).length_squared, default=None)
-                if hit is not None and (hit[4] - mouse).length <= SOCKET_HIT_RADIUS:
-                    owner, key, kind = hit[:3]
-                    bpy.ops.bbe.click_cable_target('EXEC_DEFAULT', self.group_power, owner=owner, key=key, kind=kind)
-                elif self.kind in (cables.POWER, cables.BYTEBEAT) and not self.selected_only:
+                hit = pick_socket(context, mouse)
+                if hit is not None:
+                    bpy.ops.bbe.click_cable_target('EXEC_DEFAULT', self.group_power,
+                                                   owner=hit.owner, key=hit.key, kind=hit.kind)
+                elif self.kind in (cables.POWER, cables.BYTEBEAT, cables.SUPPLY) and not self.selected_only:
                     span = pick_span(context, mouse, self.kind) if self.new_point else None
                     if span is not None:
                         cable, fraction = span
@@ -386,6 +441,7 @@ class BBE_OT_cable_start(bpy.types.Operator):
                         depth = context.scene.cursor.location
                     position = region_2d_to_location_3d(self._region, context.region_data, mouse, depth)
                     bpy.ops.bbe.click_cable_target('EXEC_DEFAULT', self.group_power, kind=self.kind, free=True, position=position)
+            self.update_pipe()
             return {'RUNNING_MODAL'}
         return {'PASS_THROUGH'}
 
@@ -422,6 +478,7 @@ def pick_span(context, mouse, kind):
 
 class BBE_OT_cable_target(bpy.types.Operator):
     bl_idname = 'bbe.click_cable_target'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Cable Connector'
     bl_options = {'REGISTER', 'UNDO'}
     free: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
@@ -437,6 +494,19 @@ class BBE_OT_cable_target(bpy.types.Operator):
         color = cables.TARGET_LABELS.get(properties.kind, 'Cable')
         obj = context.scene.objects.get(properties.owner)
         pid = obj.get('ObjectID') if obj else None
+        if obj and properties.kind in cables.EDITABLE_LINES and not session(context):
+            if properties.key == 'ENDPOINT' and obj.get('rig_item') and cables.attached_device(obj) is None:
+                from .wire_selection import shared_endpoint
+                if shared_endpoint(obj):
+                    return i18n.tooltip('Shared junction. Move it to stretch the connected lines together.')
+                return i18n.tooltip('Free endpoint. Click to select it, then use Move.')
+            for cable in context.selected_objects:
+                if cable.get('ObjectID') == properties.kind and any(
+                    end and cables.attached_device(end) == obj and end.get('bbe_socket_key') == properties.key
+                    for end in cables.endpoints(cable)
+                ):
+                    return i18n.tooltip('Snapped to {owner} / {socket}. Click to select the connected part.').format(
+                        owner=obj.name, socket=properties.key)
         label = cables.LOGIC_ROLES.get(pid, {}).get(properties.key)
         if label:
             if label == 'TRIGGER':
@@ -449,8 +519,9 @@ class BBE_OT_cable_target(bpy.types.Operator):
                 purpose = 'Group wiring supplies this socket and continues the chain here'
             else:
                 purpose = 'Use Place Cables to wire the switched output'
-            return f'{label} on {properties.owner} — {purpose}'
-        return color + ' connector on ' + properties.owner
+            return i18n.tooltip('{label} on {owner} — {purpose}').format(
+                label=label, owner=properties.owner, purpose=i18n.tooltip(purpose))
+        return i18n.tooltip('{color} connector on {owner}').format(color=i18n.tooltip(color), owner=properties.owner)
 
     def execute(self, context):
         obj = context.scene.objects.get(self.owner)
@@ -489,7 +560,7 @@ class BBE_OT_cable_target(bpy.types.Operator):
             self.key = 'ENDPOINT'
             position = Vector()
         elif self.free:
-            if (self.kind not in (cables.POWER, cables.BYTEBEAT) or 'remaining' in current or
+            if (self.kind not in (cables.POWER, cables.BYTEBEAT, cables.SUPPLY) or 'remaining' in current or
                     ('source' in current and current['first'] is None)):
                 return {'CANCELLED'}
             obj = None
@@ -582,6 +653,7 @@ class BBE_OT_cable_target(bpy.types.Operator):
 
 class BBE_OT_cable_repair(bpy.types.Operator):
     bl_idname = 'bbe.repair_srt_connections'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Repair Selected SRT Connections'
     bl_description = 'Reattach existing selected SRT cables to their correct typed sockets; overlapping ambiguous devices are left unchanged'
     bl_options = {'REGISTER', 'UNDO'}
@@ -617,6 +689,15 @@ def marker_position(point, occupied, width, height):
     return point
 
 
+class ProjectedSocket(NamedTuple):
+    owner: str
+    key: str
+    kind: str
+    screen_anchor: Vector
+    marker_center: Vector
+    world_position: Vector
+
+
 def projected_targets(context):
     width, height = context.region.width, context.region.height
     occupied = defaultdict(list)
@@ -627,8 +708,16 @@ def projected_targets(context):
             continue
         center = marker_position(point, occupied[name], width, height)
         occupied[name].append(center)
-        choices.append((name, key, kind, point, center))
+        choices.append(ProjectedSocket(name, key, kind, point, center, position))
     return choices
+
+
+def pick_socket(context, mouse):
+    hit = min(projected_targets(context),
+              key=lambda socket: (socket.marker_center - mouse).length_squared, default=None)
+    if hit is not None and (hit.marker_center - mouse).length_squared <= SOCKET_HIT_RADIUS ** 2:
+        return hit
+    return None
 
 
 class BBE_GT_cable_target(bpy.types.Gizmo):
@@ -682,6 +771,7 @@ class BBE_GT_cable_target(bpy.types.Gizmo):
         pass
 
     def test_select(self, context, location):
+        if not connectors_visible(context): return -1
         return 0 if (Vector(location)-Vector(self.matrix_basis.translation[:2])).length <= SOCKET_HIT_RADIUS else -1
 
 
@@ -694,9 +784,9 @@ class BBE_GGT_cable_targets(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and bool(session(context) or any(
+        return connectors_visible(context) and context.mode == 'OBJECT' and bool(session(context) or any(
             o.get('ObjectID') in cables.KINDS or o.get('ObjectID') in cables.SRT_IDS or
-            o.get('ObjectID') in cables.BEAT_SOCKETS or o.get('rig_item') or cables.local_sockets(o, cables.POWER)
+            o.get('ObjectID') in cables.BEAT_SOCKETS or o.get('rig_item') or any(cables.local_sockets(o, kind) for kind in cables.KINDS)
             for o in context.selected_objects))
 
     def setup(self, context):
@@ -714,7 +804,9 @@ class BBE_GGT_cable_targets(bpy.types.GizmoGroup):
             gizmo.hide = True
             if index >= len(choices):
                 continue
-            name, key, kind, point, center = choices[index]
+            socket = choices[index]
+            name, key, kind = socket.owner, socket.key, socket.kind
+            point, center = socket.screen_anchor, socket.marker_center
             gizmo.hide = False
             gizmo.tint = cables.COLORS[kind]
             owner = context.scene.objects.get(name)
@@ -755,6 +847,8 @@ def register():
 
 
 def unregister():
+    from . import supply_preview
+    supply_preview.unregister_live()
     if bpy.app.timers.is_registered(cables.organize_saved_cables):
         bpy.app.timers.unregister(cables.organize_saved_cables)
     if cables.organize_saved_cables in bpy.app.handlers.load_post:

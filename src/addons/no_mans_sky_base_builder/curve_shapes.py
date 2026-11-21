@@ -5,14 +5,14 @@ SHAPES = [('CIRCLE', 'Circle', 'Closed circular path'),
           ('HALF', 'Half Circle', 'A semicircular path'),
           ('ARC', 'Arc', 'Adjustable sweep angle'),
           ('ELLIPSE', 'Ellipse', 'Independent horizontal and vertical radii'),
-          ('HELIX', 'Corkscrew', 'A helix with adjustable turns and height'),
+          ('HELIX', 'Corkscrew', 'A helix with adjustable turns, height and radius taper'),
           ('SPIRAL', 'Spiral', 'A flat spiral with start and end radii'),
           ('WAVE', 'Wave', 'An adjustable sine wave'),
           ('LINE', 'Line', 'A straight starting path'),
           ('FREE', 'Drawn Curve', 'A smooth path through your points')]
 
 
-def shape_points(kind, radius=4, width=2, height=8, turns=2, sweep=120, count=17):
+def shape_points(kind, radius=4, width=2, height=8, turns=2, sweep=120, count=17, radius_taper=0):
     closed = kind in {'CIRCLE', 'ELLIPSE'}
     count = max(4 if closed else 2, int(count))
     if kind in {'HELIX','SPIRAL','WAVE'}:
@@ -30,8 +30,9 @@ def shape_points(kind, radius=4, width=2, height=8, turns=2, sweep=120, count=17
             co = (width*t, radius*math.sin(a), 0)
             tangent = (width, radius*angle*math.cos(a), 0)
         else:
-            r = radius + (width-radius)*t if kind == 'SPIRAL' else radius
-            dr = width-radius if kind == 'SPIRAL' else 0
+            dr = (width-radius if kind == 'SPIRAL' else
+                  -radius*min(100,radius_taper)/100 if kind == 'HELIX' else 0)
+            r = radius + dr*t
             ry = width if kind == 'ELLIPSE' else r
             co = (r*math.cos(a), ry*math.sin(a), height*t if kind == 'HELIX' else 0)
             tangent = (dr*math.cos(a)-r*angle*math.sin(a),

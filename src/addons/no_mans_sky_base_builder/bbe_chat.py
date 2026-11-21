@@ -17,6 +17,7 @@ import sys
 
 import bpy
 from . import bbe_chat_state as chat_state
+from . import i18n
 
 
 _MAX_DOWNLOAD = 20 * 1024 * 1024
@@ -134,7 +135,8 @@ def sync_theme():
     }
     viewport = _viewport_geometry()
     toolbar = _viewport_geometry("TOOL_HEADER")
-    signature = (*palette.values(), bool(getattr(bpy.app, 'online_access', False)), os.getpid(), tuple(viewport or ()), tuple(toolbar or ()))
+    language = i18n.interface_locale()
+    signature = (*palette.values(), bool(getattr(bpy.app, 'online_access', False)), os.getpid(), tuple(viewport or ()), tuple(toolbar or ()), language)
     if signature == _last_theme:
         return
     _last_theme = signature
@@ -145,6 +147,7 @@ def sync_theme():
     except (OSError, ValueError):
         current = {}
     current['theme'] = palette
+    current['language'] = language
     current['blender_pid'] = os.getpid()
     current['chat_viewport'] = viewport
     current['chat_toolbar'] = toolbar
@@ -443,7 +446,7 @@ def _read_toolbar_status():
         _redraw()
 
 
-def draw_native_toolbar(layout, context):
+def draw_native_toolbar(layout, context, styled=False):
     """One reorderable chat control; toolbar settings are drawn after it."""
     if not _chat_enabled:
         layout.popover(panel='VIEW3D_PT_bbe_chat', text='Chat', icon_value=_chat_icon())
@@ -454,12 +457,12 @@ def draw_native_toolbar(layout, context):
     if isinstance(unread, int) and unread > 0:
         text = f'({unread}) {text}'
     row = layout.row(align=True)
-    row.alert = bool(_toolbar_status.get('directed')) and chat_state.pulse_on(time.monotonic())
+    row.alert = not styled and bool(_toolbar_status.get('directed')) and chat_state.pulse_on(time.monotonic())
     if _toolbar_status.get('directed'):
         text = '↪ ' + text
     elif unread:
         text = '● ' + text
-    op = row.operator('bbe.chat_open', text=text+' ▾', icon_value=_chat_icon())
+    op = row.operator('bbe.chat_open', text=text+' ▾', icon_value=_chat_icon(),emboss=not styled)
     op.view = 'CHAT' if getattr(getattr(context, 'region', None), 'type', None) == 'UI' else 'TOOLBAR'
 
 
@@ -489,10 +492,11 @@ def _dropdown_anchor(context, event):
 
 class BBE_OT_chat_open(bpy.types.Operator):
     bl_idname = 'bbe.chat_open'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Open BBE Messenger'
     bl_description = 'Open messages, attachments and chat settings'
     bl_options = {'INTERNAL'}
-    view: bpy.props.EnumProperty(items=(('CHAT', 'Messages', ''), ('PEOPLE', 'Users and direct messages', ''),
+    view: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=(('CHAT', 'Messages', ''), ('PEOPLE', 'Users and direct messages', ''),
                                       ('TOOLBAR', 'Chat dropdown', 'Open mini chat below this toolbar')), default='CHAT')
 
     def invoke(self, context, event):
@@ -546,6 +550,7 @@ class BBE_OT_chat_open(bpy.types.Operator):
 
 class BBE_OT_chat_toggle(bpy.types.Operator):
     bl_idname = 'bbe.chat_toggle'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Enable or Disable BBE Chat'
     bl_description = 'Chat is optional and starts off; disable it to stop chat requests'
     bl_options = {'INTERNAL'}
@@ -581,6 +586,7 @@ class BBE_OT_chat_toggle(bpy.types.Operator):
 
 class BBE_OT_chat_join(bpy.types.Operator):
     bl_idname = 'bbe.chat_join'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Join BBE Chat'
     bl_options = {'INTERNAL'}
 
@@ -603,6 +609,7 @@ class BBE_OT_chat_join(bpy.types.Operator):
 
 class BBE_OT_chat_copy_key(bpy.types.Operator):
     bl_idname = 'bbe.chat_copy_key'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Copy Chat Recovery Key'
     bl_description = 'Copy your private name key; save it somewhere safe to restore your name on another Blender profile'
     bl_options = {'INTERNAL'}
@@ -617,6 +624,7 @@ class BBE_OT_chat_copy_key(bpy.types.Operator):
 
 class BBE_OT_chat_restore_key(bpy.types.Operator):
     bl_idname = 'bbe.chat_restore_key'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Restore Chat Name'
     bl_description = 'Restore a claimed chat name using its private recovery key'
     bl_options = {'INTERNAL'}
@@ -636,6 +644,7 @@ class BBE_OT_chat_restore_key(bpy.types.Operator):
 
 class BBE_OT_chat_leave(bpy.types.Operator):
     bl_idname = 'bbe.chat_leave'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Disconnect Chat'
     bl_description = 'Stop appearing online; your name remains yours on this Blender profile'
     bl_options = {'INTERNAL'}
@@ -655,6 +664,7 @@ class BBE_OT_chat_leave(bpy.types.Operator):
 
 class BBE_OT_chat_switch(bpy.types.Operator):
     bl_idname = 'bbe.chat_switch'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Switch Chat Name'
     bl_description = 'Use another name owned by this recovery key'
     bl_options = {'INTERNAL'}
@@ -677,6 +687,7 @@ class BBE_OT_chat_switch(bpy.types.Operator):
 
 class BBE_OT_chat_room(bpy.types.Operator):
     bl_idname = 'bbe.chat_room'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Open Chat Room'
     bl_options = {'INTERNAL'}
     target: bpy.props.StringProperty(default='')
@@ -690,9 +701,10 @@ class BBE_OT_chat_room(bpy.types.Operator):
 
 class BBE_OT_chat_page(bpy.types.Operator):
     bl_idname = 'bbe.chat_page'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Chat Page'
     bl_options = {'INTERNAL'}
-    kind: bpy.props.EnumProperty(items=[('MESSAGES', 'Messages', ''), ('ONLINE', 'Online', '')])
+    kind: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[('MESSAGES', 'Messages', ''), ('ONLINE', 'Online', '')])
     step: bpy.props.IntProperty(default=0)
 
     def execute(self, context):
@@ -707,6 +719,7 @@ class BBE_OT_chat_page(bpy.types.Operator):
 
 class BBE_OT_chat_read(bpy.types.Operator):
     bl_idname = 'bbe.chat_read'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Read Chat Message'
     bl_options = {'INTERNAL'}
     message_id: bpy.props.StringProperty()
@@ -717,12 +730,12 @@ class BBE_OT_chat_read(bpy.types.Operator):
     def draw(self, context):
         item = next((item for item in _messages if item.get('id') == self.message_id), None)
         if not item:
-            self.layout.label(text='Message is no longer in the current view')
+            i18n.localized_layout(self.layout).label(text='Message is no longer in the current view')
             return
-        self.layout.label(text=item.get('name', 'User'))
+        i18n.localized_layout(self.layout).label(text=item.get('name', 'User'))
         text = item.get('text', '')
         for index in range(0, len(text), 70):
-            self.layout.label(text=text[index:index + 70])
+            i18n.localized_layout(self.layout).label(text=text[index:index + 70])
 
     def execute(self, context):
         return {'FINISHED'}
@@ -730,6 +743,7 @@ class BBE_OT_chat_read(bpy.types.Operator):
 
 class BBE_OT_chat_attach(bpy.types.Operator):
     bl_idname = 'bbe.chat_attach'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Attach File'
     bl_description = 'Choose an image or short video; nothing uploads until Send'
     bl_options = {'INTERNAL'}
@@ -754,6 +768,7 @@ class BBE_OT_chat_attach(bpy.types.Operator):
 
 class BBE_OT_chat_snapshot(bpy.types.Operator):
     bl_idname = 'bbe.chat_snapshot'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Snapshot'
     bl_description = 'Capture this Blender window and queue it; press Send to share'
     bl_options = {'INTERNAL'}
@@ -792,6 +807,7 @@ class BBE_OT_chat_snapshot(bpy.types.Operator):
 
 class BBE_OT_chat_clear_file(bpy.types.Operator):
     bl_idname = 'bbe.chat_clear_file'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Remove Attachment'
     bl_options = {'INTERNAL'}
 
@@ -808,6 +824,7 @@ class BBE_OT_chat_clear_file(bpy.types.Operator):
 
 class BBE_OT_chat_send(bpy.types.Operator):
     bl_idname = 'bbe.chat_send'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Send Chat Message'
     bl_options = {'INTERNAL'}
 
@@ -826,6 +843,7 @@ class BBE_OT_chat_send(bpy.types.Operator):
 
 class BBE_OT_chat_compose(bpy.types.Operator):
     bl_idname = 'bbe.chat_compose'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Send Chat Message'
     bl_description = 'Review your message and staged file; press Enter to send'
     bl_options = {'INTERNAL'}
@@ -836,10 +854,10 @@ class BBE_OT_chat_compose(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=420, confirm_text='Send')
 
     def draw(self, context):
-        self.layout.label(text='Main Room' if not _target else 'Direct Message')
-        self.layout.prop(self, 'text')
+        i18n.localized_layout(self.layout).label(text='Main Room' if not _target else 'Direct Message')
+        i18n.localized_layout(self.layout).prop(self, 'text')
         if _pending:
-            self.layout.label(text='Ready: ' + Path(_pending).name[:48], icon='IMAGE_DATA' if _pending_snapshot else 'FILE')
+            i18n.localized_layout(self.layout).label(text='Ready: ' + Path(_pending).name[:48], icon='IMAGE_DATA' if _pending_snapshot else 'FILE')
 
     def execute(self, context):
         text = self.text.strip()
@@ -851,6 +869,7 @@ class BBE_OT_chat_compose(bpy.types.Operator):
 
 class BBE_OT_chat_download(bpy.types.Operator):
     bl_idname = 'bbe.chat_download'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Save Chat File'
     bl_description = 'Save this chat attachment to a location you choose'
     bl_options = {'INTERNAL'}
@@ -872,6 +891,7 @@ class BBE_OT_chat_download(bpy.types.Operator):
 
 class VIEW3D_PT_bbe_chat(bpy.types.Panel):
     bl_idname = 'VIEW3D_PT_bbe_chat'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'BBE Chat'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
@@ -879,16 +899,16 @@ class VIEW3D_PT_bbe_chat(bpy.types.Panel):
 
     def draw(self, context):
         from .save_editor.function_help import corner_help
-        header = self.layout.row(align=True)
+        header = i18n.localized_layout(self.layout).row(align=True)
         row = header.row(align=True)
         row.enabled = bool(getattr(bpy.app, 'online_access', False))
         # Help is available even when the chat toggle is disabled.
         corner_help(header, 'CHAT')
         row.operator('bbe.chat_toggle', text='Enable chat',
                      icon='CHECKBOX_HLT' if _chat_enabled else 'CHECKBOX_DEHLT', depress=_chat_enabled)
-        self.layout.label(text='Your names stay reserved when chat is off.')
+        i18n.localized_layout(self.layout).label(text='Your names stay reserved when chat is off.')
         if not row.enabled:
-            self.layout.label(text='Enable Online Access in Blender Preferences.', icon='INFO')
+            i18n.localized_layout(self.layout).label(text='Enable Online Access in Blender Preferences.', icon='INFO')
 
 
 classes = (BBE_OT_chat_open, BBE_OT_chat_toggle, BBE_OT_chat_join, BBE_OT_chat_copy_key, BBE_OT_chat_restore_key,

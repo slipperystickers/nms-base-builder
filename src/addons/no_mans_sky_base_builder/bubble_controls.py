@@ -96,6 +96,7 @@ def _control_panel_position(context, bounds, obstacles, viewport, size):
 
 class BBE_OT_move_tube_controls(bpy.types.Operator):
     bl_idname = 'bbe.move_tube_controls'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Move Tube Controls'
     bl_description = 'Drag this header to place the tube controls; the panel stays here as you build'
     bl_options = {'INTERNAL', 'BLOCKING'}

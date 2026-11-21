@@ -8,6 +8,7 @@ import zlib
 import sys
 import tempfile
 import importlib
+from collections.abc import Mapping
 
 preview_collections = {}
 _ICONS_REGISTERED = False
@@ -51,15 +52,6 @@ def extract_pcoll():
                  'support', 'save', 'recovery', 'assets'):
         pcoll.load('toolbar_' + name, os.path.join(toolbar_dir, name + '.png'), 'IMAGE')
 
-    # Keep the branding at source resolution instead of Blender's thumbnail
-    # resolution. These preview pixels never become project datablocks.
-    with open(os.path.join(current_dir, 'images', 'bbe_sidebar_brand.rgba.z'), 'rb') as stream:
-        pixels = array.array('i', zlib.decompress(stream.read()))
-    if len(pixels) != 1080 * 1080:
-        raise ValueError('Invalid BBE sidebar branding pixels')
-    brand = pcoll.new('sidebar_brand')
-    brand.image_size = (1080, 1080)
-    brand.image_pixels = pixels
     pcoll.load('credit_extended', os.path.join(current_dir, 'images',
                                              'bbe_credit_extended.png'), 'IMAGE')
     with open(os.path.join(current_dir, 'resources', 'ui_icon_map.json'), encoding='utf-8') as stream:
@@ -123,47 +115,49 @@ def get_asset_icons_pcol():
 
     return pcoll
 
-def load_asset_icons():
-    """
-    Scans a folder for PNGs and loads them into a Blender preview collection.
-    """
-    # Create a new preview collection
-    pcoll = bpy.utils.previews.new()
-    
-    directory_path = os.path.realpath(
-        os.path.join(os.path.dirname(__file__), "images","asset_icons")
-    )
-    
-    
-    if not os.path.exists(directory_path):
-        print(f"Directory not found: {directory_path}")
-        return None
+class _AssetIcons(Mapping):
+    """Load previews for displayed parts. Listing catalogue IDs never decodes artwork."""
+    def __init__(self, previews):
+        self.previews = previews
+        self.directory = os.path.join(os.path.dirname(__file__), 'images', 'asset_icons')
+        self.files = None
 
-    # Loop through the directory and find all PNGs
-    for filename in os.listdir(directory_path):
-        if filename.lower().endswith(".png"):
-            filepath = os.path.join(directory_path, filename)
-            # Settlement catalog PNGs can be refreshed from the game's shared
-            # construction-board placeholder. The bundled settlement artwork
-            # is specific to each part and must take precedence in both menus.
-            if filename.startswith(("SET_", "S_TOWER")):
-                settlement_icon = os.path.join(
-                    os.path.dirname(__file__), "asset_browser", "icons", filename
-                )
-                if os.path.isfile(settlement_icon):
-                    filepath = settlement_icon
-            
-            # Use the filename without the .png extension as the icon identifier
-            icon_name = os.path.splitext(filename)[0]
-            
-            # Load the image into the preview collection
-            # 'IMAGE' type is required for UI icons
-            pcoll.load(icon_name, filepath, 'IMAGE')
+    def _files(self):
+        if self.files is None:
+            try:
+                filenames = os.listdir(self.directory)
+            except FileNotFoundError:
+                filenames = ()
+            self.files = {filename[:-4]: filename for filename in filenames if filename.lower().endswith('.png')}
+        return self.files
 
-    return pcoll
+    def __iter__(self):
+        return iter(self._files())
+
+    def __len__(self):
+        return len(self._files())
+
+    def __contains__(self, key):
+        return key in self._files()
+
+    def __getitem__(self, key):
+        if key not in self.previews:
+            filename = self._files()[key]
+            path = os.path.join(self.directory, filename)
+            if key.startswith(('SET_', 'S_TOWER')):
+                alternate = os.path.join(os.path.dirname(__file__), 'asset_browser', 'icons', filename)
+                if os.path.isfile(alternate):
+                    path = alternate
+            self.previews.load(key, path, 'IMAGE')
+        return self.previews[key]
+
+
+_asset_icons = None
+
 
 def get_asset_icons_pcoll():
-    return preview_collections["asset_icons"]
+    return _asset_icons
+
 
 def get_icons_pscroll():
     return preview_collections["ui_icons"]
@@ -182,8 +176,24 @@ def ui_icon(name):
     return {'icon': name}
 
 
+def ensure_sidebar_brand():
+    pcoll=get_icons_pscroll()
+    if 'sidebar_brand' in pcoll:return
+    current_dir=os.path.dirname(__file__)
+    # Keep the branding at source resolution instead of Blender's thumbnail
+    # resolution. These preview pixels never become project datablocks.
+    with open(os.path.join(current_dir, 'images', 'bbe_sidebar_brand.rgba.z'), 'rb') as stream:
+        pixels = array.array('i', zlib.decompress(stream.read()))
+    if len(pixels) != 1080 * 1080:
+        raise ValueError('Invalid BBE sidebar branding pixels')
+    brand = pcoll.new('sidebar_brand')
+    brand.image_size = (1080, 1080)
+    brand.image_pixels = pixels
+
+
 def draw_sidebar_brand(layout, context):
     """Fit the top-aligned native preview to the sidebar's width and zoom."""
+    ensure_sidebar_brand()
     region = context.region
     ui_scale = context.preferences.system.ui_scale
     left = region.view2d.region_to_view(0, 0)[0]
@@ -228,21 +238,19 @@ def check_register_icons():
         register_icons()
 
 def register_icons():
-    global _ICONS_REGISTERED
+    global _ICONS_REGISTERED, _asset_icons
     _ICONS_REGISTERED = True
     
-    pcoll = extract_pcoll()
-    asset_pcoll = load_asset_icons()
-    
-    preview_collections["ui_icons"] = pcoll
-    if asset_pcoll:
-        preview_collections["asset_icons"] = asset_pcoll
+    preview_collections['ui_icons'] = extract_pcoll()
+    preview_collections['asset_icons'] = bpy.utils.previews.new()
+    _asset_icons = _AssetIcons(preview_collections['asset_icons'])
 
 
 def unregister_icons():
-    global _ICONS_REGISTERED
+    global _ICONS_REGISTERED, _asset_icons
     for pcoll in preview_collections.values():
         bpy.utils.previews.remove(pcoll)
     preview_collections.clear()
+    _asset_icons = None
     _ACTION_ICON_KEYS.clear()
     _ICONS_REGISTERED = False

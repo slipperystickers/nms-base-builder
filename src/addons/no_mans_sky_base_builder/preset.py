@@ -112,10 +112,8 @@ class Preset(object):
             builder_object (Builder): The "parent" class for managing the NMS
                 scene.
         """
-        # Turn off relationship lines.
-        overlay = getattr(bpy.context.space_data, 'overlay', None)
-        if hasattr(overlay, 'show_relationship_lines'):
-            overlay.show_relationship_lines = False
+        from .viewport_defaults import apply_relationship_default
+        apply_relationship_default(bpy.context.space_data)
 
         # Assign private variables.
         self.__preset_id = preset_id

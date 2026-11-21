@@ -28,6 +28,7 @@ QtCore, QtGui, QtNetwork, QtWidgets = _load_qt()
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bbe_chat_helper as helper
 import bbe_chat_state as chat_state
+import i18n
 from bbe_chat_compact import CompactMessengerMixin
 from bbe_chat_lifetime import BlenderLifetime
 
@@ -378,7 +379,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self.options_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         menu = QtWidgets.QMenu(self.options_button)
         menu.addAction('Chat & account settings...', self.show_account_settings)
-        menu.addAction('How to use BBE Chat', self.show_chat_help)
+        self.help_action = menu.addAction('How to use BBE Chat', self.show_chat_help)
         menu.addSeparator()
         self.mini_action = menu.addAction('Mini mode')
         self.mini_action.setCheckable(True)
@@ -412,6 +413,7 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         help_button.setText('?')
         help_button.setToolTip('How to use BBE Chat')
         help_button.setAccessibleName('How to use BBE Chat')
+        self.help_button = help_button
         help_button.clicked.connect(self.show_chat_help)
         header.addWidget(help_button)
         self.header_extras = []
@@ -555,7 +557,15 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
             return {}
 
     def _apply_theme(self):
-        palette = self._settings().get('theme', {})
+        settings = self._settings()
+        palette = settings.get('theme', {})
+        language = settings.get('language', '')
+        if getattr(self, '_help_language', None) != language and hasattr(self, 'help_button'):
+            title = i18n.for_locale(language, 'How to use BBE Chat')
+            self.help_action.setText(title)
+            self.help_button.setToolTip(title)
+            self.help_button.setAccessibleName(title)
+            self._help_language = language
         defaults = {'background': '#202020', 'surface': '#303030', 'raised': '#4c4c4c',
                     'text': '#e5e5e5', 'accent': '#4772b3', 'outline': '#181818'}
         colors = {key: value if isinstance(value, str) and len(value) == 7 and
@@ -692,8 +702,10 @@ class Messenger(CompactMessengerMixin, QtWidgets.QMainWindow):
         self.chat_enabled_toggle.blockSignals(False)
 
     def show_chat_help(self):
-        message = '\n\n'.join(heading + '\n' + body for heading, body in chat_state.CHAT_HELP)
-        QtWidgets.QMessageBox.information(self, 'How to use BBE Chat', message)
+        language = self._settings().get('language', '')
+        message = '\n\n'.join(i18n.for_locale(language, heading) + '\n' + i18n.for_locale(language, body)
+                               for heading, body in chat_state.CHAT_HELP)
+        QtWidgets.QMessageBox.information(self, i18n.for_locale(language, 'How to use BBE Chat'), message)
 
     def show_account_settings(self):
         if self.account_dialog and self.account_dialog.isVisible():

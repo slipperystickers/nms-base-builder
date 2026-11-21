@@ -3,6 +3,7 @@
 All objects keep ObjectID BASE_BUBPIPE and their original matrix. Only their
 mesh datablock changes, so clipboard/save exports keep the native placement.
 """
+from . import i18n
 
 from collections import defaultdict
 from itertools import permutations, product
@@ -124,9 +125,11 @@ def _restore_elbow_controls():
 
 def _sync_elbow_controls(context):
     """Native rotation has no per-object valid-angle callback. Use checked turns."""
-    selected = {obj.as_pointer(): obj for obj in context.selected_objects
-                if _is_junction(obj)} if (context.mode == 'OBJECT'
-                                         and len(context.selected_objects) == 1) else {}
+    # File-load/autosave callbacks can run without a selection-capable area.
+    selection = getattr(context, 'selected_objects', ())
+    selected = {obj.as_pointer(): obj for obj in selection
+                if _is_junction(obj)} if (getattr(context, 'mode', None) == 'OBJECT'
+                                         and len(selection) == 1) else {}
     for key in tuple(_elbow_lock_sessions):
         if key not in selected:
             obj, rotation, w, four_d = _elbow_lock_sessions.pop(key)
@@ -619,6 +622,7 @@ def _joint_turn_error(source_matrix, target_matrix):
 class BBE_OT_turn_bubble_elbow(bpy.types.Operator):
     """Turn the selected elbow and its downstream tubes at the shared joint"""
     bl_idname = 'bbe.turn_bubble_elbow'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Turn Connected Tubes'
     bl_description = 'Turn at this joint and carry the attached branch; cancel if a previously valid bend would break'
     bl_options = {'REGISTER', 'UNDO'}
@@ -813,6 +817,7 @@ def _joint_guard_load_pre(_):
 class BBE_OT_bubble_joint_pivot(bpy.types.Operator):
     """Choose a checked branch turn without enabling free elbow rotation"""
     bl_idname = 'bbe.bubble_joint_pivot'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Rotate Connected Branch'
     bl_description = 'Turn the elbow and attached tubes together; cancel a turn that breaks a working connection'
     bl_options = {'REGISTER', 'UNDO'}
@@ -824,10 +829,10 @@ class BBE_OT_bubble_joint_pivot(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=380)
 
     def draw(self, context):
-        self.layout.prop(self, 'angle')
-        self.layout.label(text='Attached tubes turn together at this joint.')
-        self.layout.label(text='Use quarter turns with small supported adjustments.')
-        self.layout.label(text='Unsupported joint angles, including 45 degrees, are rejected.')
+        i18n.localized_layout(self.layout).prop(self, 'angle')
+        i18n.localized_layout(self.layout).label(text='Attached tubes turn together at this joint.')
+        i18n.localized_layout(self.layout).label(text='Use quarter turns with small supported adjustments.')
+        i18n.localized_layout(self.layout).label(text='Unsupported joint angles, including 45 degrees, are rejected.')
 
     def execute(self, context):
         selected = [obj for obj in context.selected_objects
@@ -1171,7 +1176,7 @@ def _group_transform_active():
     context = bpy.context
     return any(op.bl_idname.startswith('TRANSFORM_OT_')
                for window in getattr(getattr(context, 'window_manager', None), 'windows', ())
-               for op in window.modal_operators)
+               for op in window.modal_operators if op is not None)
 
 
 def request_refresh(scene):
@@ -1415,11 +1420,12 @@ def can_set_start_direction(scene, obj):
 
 class BBE_OT_bubble_start_direction(bpy.types.Operator):
     bl_idname = 'bbe.bubble_start_direction'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Set Tube Starting Direction'
     bl_description = 'Aim an unconnected straight tube and choose the end for its first connection, using tube-local axes'
     bl_options = {'REGISTER', 'UNDO'}
 
-    port: bpy.props.EnumProperty(name='Direction', items=[
+    port: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Direction', items=[
         ('Right', '+X', 'Start toward local +X'), ('Left', '-X', 'Start toward local -X'),
         ('Top', '+Y', 'Start toward local +Y'), ('Bot', '-Y', 'Start toward local -Y'),
         ('Front', '+Z', 'Start toward local +Z'), ('Back', '-Z', 'Start toward local -Z')])
@@ -1440,6 +1446,7 @@ class BBE_OT_bubble_start_direction(bpy.types.Operator):
 
 class BBE_OT_repair_bubble_tubes(bpy.types.Operator):
     bl_idname = 'bbe.repair_bubble_tubes'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Check & Repair Bubble Tubes'
     bl_description = 'Check loaded tube shapes, repair old metadata and refresh previews; preserve tube positions'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1610,6 +1617,7 @@ def _clear_direction_sessions(_=None):
 
 class BBE_OT_choose_bubble_opening(bpy.types.Operator):
     bl_idname = 'bbe.choose_bubble_opening'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Choose Opening Direction'
     bl_description = 'Preview the opening using the tube panel beside the part'
     obj_name: bpy.props.StringProperty()
@@ -1636,9 +1644,10 @@ class BBE_OT_choose_bubble_opening(bpy.types.Operator):
 
 class BBE_OT_preview_bubble_opening(bpy.types.Operator):
     bl_idname = 'bbe.preview_bubble_opening'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Preview Opening Direction'
     bl_description = 'Cycle clear directions, or cancel the preview without changing the tube'
-    action: bpy.props.EnumProperty(items=[('PREV', 'Previous', ''), ('NEXT', 'Next', ''), ('CANCEL', 'Cancel', '')])
+    action: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[('PREV', 'Previous', ''), ('NEXT', 'Next', ''), ('CANCEL', 'Cancel', '')])
 
     def execute(self, context):
         state = direction_session(context)
@@ -1663,6 +1672,7 @@ class BBE_OT_preview_bubble_opening(bpy.types.Operator):
 
 class BBE_OT_remove_bubble_opening(bpy.types.Operator):
     bl_idname = 'bbe.remove_bubble_opening'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Remove Unused Opening'
     bl_description = 'Remove this unused branch while keeping every connected opening'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1685,6 +1695,7 @@ class BBE_OT_remove_bubble_opening(bpy.types.Operator):
 class BBE_OT_expand_bubble_junction(bpy.types.Operator):
     """Preview one extra opening on the selected, completed junction"""
     bl_idname = 'bbe.expand_bubble_junction'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Add One Tube Opening'
     bl_description = 'Preview one new branch; finish it before adding another opening'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1692,7 +1703,7 @@ class BBE_OT_expand_bubble_junction(bpy.types.Operator):
     obj_name: bpy.props.StringProperty()
     kind: bpy.props.StringProperty()
     change_direction: bpy.props.BoolProperty(default=False)
-    port: bpy.props.EnumProperty(items=[
+    port: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[
         ('Front', 'Forward', 'New opening along the tube local +Z direction'),
         ('Back', 'Backward', 'New opening along the tube local -Z direction'),
         ('Left', 'Left', 'New opening along the tube local -X direction'),
@@ -1740,6 +1751,7 @@ class BBE_OT_expand_bubble_junction(bpy.types.Operator):
 class BBE_OT_accept_bubble_junction(bpy.types.Operator):
     """Use the junction the game would create at the current tube contacts"""
     bl_idname = 'bbe.accept_bubble_junction'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Use Tube Junction'
     bl_description = 'Use the junction detected at this connection; keep the tubes in place'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1789,10 +1801,10 @@ def _draw_route_header(self, context):
             or obj is None or obj.get('ObjectID') != 'BASE_BUBPIPE'):
         return
     if not obj.get(_INTENT_KEY):
-        self.layout.label(text='Tube shape unchecked', icon='INFO')
+        i18n.localized_layout(self.layout).label(text='Tube shape unchecked', icon='INFO')
         return
     ready, reason = route_status(context.scene)
-    row = self.layout.row(align=True)
+    row = i18n.localized_layout(self.layout).row(align=True)
     if ready:
         row.label(text='Tube connections ready', icon='CHECKMARK')
     else:
@@ -1810,6 +1822,7 @@ def _draw_route_header(self, context):
 class BBE_OT_select_problem_bubble(bpy.types.Operator):
     """Select the tube named by the live route warning"""
     bl_idname = 'bbe.select_problem_bubble'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Select Problem Tube'
     bl_options = {'REGISTER'}
 
@@ -1830,6 +1843,7 @@ class BBE_OT_select_problem_bubble(bpy.types.Operator):
 class BBE_OT_join_bubble_ducts(bpy.types.Operator):
     """Connect two selected native ducts and accept the resulting game shapes"""
     bl_idname = 'bbe.join_bubble_ducts'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Join Selected Bubble Ducts'
     bl_description = 'Snap the active duct to the other selected duct and accept their game shapes; this may change their previews'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1947,6 +1961,7 @@ def convert_legacy_corners(scene):
 class BBE_OT_convert_legacy_bubble_corners(bpy.types.Operator):
     """Convert visual-only bubble corners to native ducts when the route matches"""
     bl_idname = 'bbe.convert_legacy_bubble_corners'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Convert Old Bubble Corners'
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -1956,9 +1971,9 @@ class BBE_OT_convert_legacy_bubble_corners(bpy.types.Operator):
     def draw(self, context):
         count = sum(obj.get('ObjectID') == 'BASE_BUBPIPE_L'
                     for obj in context.scene.objects)
-        self.layout.label(text=f'Convert {count} old preview-only bubble corners?')
-        self.layout.label(text='The route must match native game connections.')
-        self.layout.label(text='If it does not, no objects will change.')
+        i18n.localized_layout(self.layout).label(text=f'Convert {count} old preview-only bubble corners?')
+        i18n.localized_layout(self.layout).label(text='The route must match native game connections.')
+        i18n.localized_layout(self.layout).label(text='If it does not, no objects will change.')
 
     def execute(self, context):
         try:

@@ -1,4 +1,5 @@
 """Surface placement changes the native decal frame, never its export target."""
+from . import i18n
 import math
 
 import bpy
@@ -22,9 +23,10 @@ def surface_hit(context, origin, direction):
     """Pick the first visible build face, passing through decal artwork/helpers."""
     origin, direction = Vector(origin), Vector(direction).normalized()
     depsgraph = context.evaluated_depsgraph_get()
+    from .viewport_cutaway import scene_pick
     for _ in range(128):
-        hit, point, normal, face, obj, matrix = context.scene.ray_cast(
-            depsgraph, origin, direction, distance=1e6)
+        hit, point, normal, face, obj, matrix = scene_pick(
+            context.scene, depsgraph, origin, direction, distance=1e6)
         if not hit:
             return None
         original = obj.original
@@ -55,6 +57,7 @@ def surface_matrix(obj, point, normal, offset=.002):
 
 class BBE_OT_place_decal_surface(bpy.types.Operator):
     bl_idname = 'bbe.place_decal_surface'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Place Decal on Surface'
     bl_description = 'Click a visible build face to place and angle this decal; Esc cancels'
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
@@ -108,6 +111,7 @@ class BBE_OT_place_decal_surface(bpy.types.Operator):
 
 class BBE_OT_move_decal_free(bpy.types.Operator):
     bl_idname = 'bbe.move_decal_free'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Move Decal Freely'
     bl_description = 'Move with snapping initially off; keep the current preview mode; Esc cancels'
 
@@ -122,6 +126,7 @@ class BBE_OT_move_decal_free(bpy.types.Operator):
 
 class BBE_OT_adjust_decal(bpy.types.Operator):
     bl_idname = 'bbe.adjust_decal'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Adjust Decal Placement'
     bl_description = 'Rotate the artwork or move along its surface normal; this exports to the game'
     bl_options = {'REGISTER', 'UNDO'}
@@ -149,6 +154,7 @@ class BBE_OT_adjust_decal(bpy.types.Operator):
 
 class BBE_OT_rotate_decal(bpy.types.Operator):
     bl_idname = 'bbe.rotate_decal'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Rotate Decal'
     bl_description = 'Enter a positive or negative angle in degrees to rotate the artwork'
     bl_options = {'REGISTER', 'UNDO'}
@@ -164,7 +170,7 @@ class BBE_OT_rotate_decal(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=280)
 
     def draw(self, context):
-        self.layout.prop(self, 'degrees')
+        i18n.localized_layout(self.layout).prop(self, 'degrees')
 
     def execute(self, context):
         # Reuse the existing placement math without nesting undo operators.
@@ -175,6 +181,7 @@ class BBE_OT_rotate_decal(bpy.types.Operator):
 
 class BBE_OT_toggle_decal_projection(bpy.types.Operator):
     bl_idname = 'bbe.toggle_decal_projection'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Toggle Decal Projection Preview'
     bl_description = 'Switch between projected and flat artwork in Blender only; game export is unchanged'
     bl_options = {'REGISTER', 'UNDO'}
@@ -186,6 +193,10 @@ class BBE_OT_toggle_decal_projection(bpy.types.Operator):
     def execute(self, context):
         obj = context.active_object
         obj[decals.PREVIEW_DISABLED] = not obj.get(decals.PREVIEW_DISABLED, False)
+        addon = context.preferences.addons.get(__package__)
+        if addon:
+            addon.preferences.decal_projection_disabled = obj[decals.PREVIEW_DISABLED]
+            bpy.ops.wm.save_userpref()
         decals.request_refresh()
         return {'FINISHED'}
 
@@ -196,6 +207,7 @@ def panel_key(context):
 
 class BBE_OT_move_decal_controls(bpy.types.Operator):
     bl_idname = 'bbe.move_decal_controls'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Move Decal Controls'
     bl_description = 'Drag to reposition this panel; it stays here between decals'
     bl_options = {'INTERNAL', 'BLOCKING'}

@@ -18,7 +18,8 @@ def _build_identity(base):
     if base is None:
         return None
     return (base.save_context, base.base_type, base.user_data,
-            base.galactic_address, base.base_name)
+            base.galactic_address, base.base_name,
+            getattr(base, "base_position", None) if base.base_type in BaseType.LOCATED_BASES else None)
 
 
 @persistent
@@ -133,7 +134,7 @@ class SaveManager(bpy.types.PropertyGroup):
     )
 
     # List to display miltiple accounts on same device
-    nms_account_selected: bpy.props.EnumProperty(
+    nms_account_selected: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="",
         description="Account from which save file will be loaded",
         items = lambda self, context: SaveManager.enum_accounts_list,
@@ -142,7 +143,7 @@ class SaveManager(bpy.types.PropertyGroup):
     )
     
     #list of save slots form an account
-    nms_save_slot: bpy.props.EnumProperty(
+    nms_save_slot: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="",
         description="Choose a save slot, \nThere can be multiple save slots within an account",
         items = lambda self, context: SaveManager.enum_save_slots_list,
@@ -153,7 +154,7 @@ class SaveManager(bpy.types.PropertyGroup):
     # this will display list of corvettes/bases after importing
     # This is index of base inside PersistentPlayerBase array
     # we store index so that it is easier to accress data later
-    nms_base_index : bpy.props.EnumProperty(
+    nms_base_index : bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="base index",
         description="Base in the save file.",
         items = lambda self, context: SaveManager.enum_base_list,
@@ -162,7 +163,7 @@ class SaveManager(bpy.types.PropertyGroup):
     )
     
     # for radio button to select between corvette and base
-    nms_base_type: bpy.props.EnumProperty(
+    nms_base_type: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="base type",
         description="Type of the base, it can be a corvette and a normal planet base.",
         items = [
@@ -181,8 +182,8 @@ class SaveManager(bpy.types.PropertyGroup):
     station_choices_json: bpy.props.StringProperty(default="{}")
     station_status: bpy.props.StringProperty(default="")
     station_transfer_reference: bpy.props.BoolProperty(default=False, options={'HIDDEN'})
-    station_group: bpy.props.EnumProperty(name="Shape group", items=station_reference.group_items, update=station_reference.group_changed)
-    station_option: bpy.props.EnumProperty(name="Option", items=station_reference.option_items, update=station_reference.option_changed)
+    station_group: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name="Shape group", items=station_reference.group_items, update=station_reference.group_changed)
+    station_option: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name="Option", items=station_reference.option_items, update=station_reference.option_changed)
 
     #these properties will store data of changes made in account and save slot
     last_account_selected:bpy.props.StringProperty(
@@ -463,12 +464,21 @@ class SaveManager(bpy.types.PropertyGroup):
         imported = [o for o in context.scene.objects if o not in previous_objects and 'ObjectID' in o]
         if source_count and not imported:
             raise RuntimeError(f'The save contains {source_count} parts, but none appeared in the active scene ({context.scene.name}).')
+        from .. import build_timer
+        if getattr(base_identifiers, 'base_position', None) is None:
+            base_identifiers.base_position = nms_base_json.get('Position')
+        build_timer.bind(context.scene, build_timer.base_key(base_identifiers, save_links))
         if base_identifiers.base_type == BaseType.CORVETTE:
             from .corvette_actions import remember_ship_source
             remember_ship_source(context.scene, save_links, base_identifiers.save_context,
                                  base_identifiers.user_data, base_identifiers.base_name)
-        if nms_base_json.get("BaseType", {}).get("PersistentBaseTypes") == BaseType.STATION:
+        is_station = nms_base_json.get("BaseType", {}).get("PersistentBaseTypes") == BaseType.STATION
+        if is_station:
             station_reference.imported_station(context, nms_base_json, imported)
+        build_timer.mark_saved(context.scene, build_timer.base_key(base_identifiers, save_links))
+        from .. import import_view
+        import_view.finish(context, imported)
+        if is_station:
             return "Station parts and reference imported; choose the exterior with the Outliner eyes"
         #return a string for operators for status message
         if source_error:
@@ -479,27 +489,29 @@ class SaveManager(bpy.types.PropertyGroup):
     
     # called from operators/UI to export objects in scene to save file
     def export_base_to_save_file(self,context):
+        self.refresh_before_export()
         
         # validate save slots
         current_slot_data = self.get_current_slot_data()
         if current_slot_data is None:
-            return "Error Exporting bases, slot data is None"
+            raise ValueError('Select a save slot before exporting.')
         
         #collect base identifiers
         base_identifiers = self.get_current_base_identifiers()
         if base_identifiers is None:
-            return "Error Exporting bases, base identifiers are None"
+            raise ValueError('Select the destination base before exporting.')
         
         # provide data to real export function
-        return self.export_base(context, base_identifiers, current_slot_data["saves"])
+        return self.export_base(context, base_identifiers, current_slot_data["saves"],
+                                selected_source=SaveManager.extracted_base_data)
         
     # collect data from scene and export it to save file
-    def export_base(self,context,  base_identifiers, save_links):
+    def export_base(self, context, base_identifiers, save_links, selected_source=None):
         with progress_ui.Activity('Exporting to Save') as progress:
             progress.update(.02, 'Collecting scene parts')
             nms_tools = context.scene.nms_main
             serialised_base_objects_data = nms_tools.serialise(
-                objects_only=True, progress=progress, progress_range=(.02, .13))
+                objects_only=True, for_save=True, progress=progress, progress_range=(.02, .13))
             prefs = context.scene.nms_base_tool
             new_base_name = prefs.string_base
             if not new_base_name or not new_base_name.strip():
@@ -510,15 +522,20 @@ class SaveManager(bpy.types.PropertyGroup):
             progress.update(.15, 'Preparing save points')
             result = save_editor_utils.save_base_to_save_file(
                 serialised_base_objects_data, base_identifiers, save_links,
-                base_name=new_base_name, progress=progress, owner_override=owner_override)
+                base_name=new_base_name, progress=progress, owner_override=owner_override,
+                selected_source=selected_source)
 
+            from .. import build_timer
+            build_timer.bind(context.scene, build_timer.base_key(base_identifiers, save_links))
+            if result:
+                build_timer.mark_saved(context.scene, build_timer.base_key(base_identifiers, save_links))
             progress.update(.95, 'Refreshing base list')
             self.refresh_bases_list()
             progress.update(1.0, 'Complete' if result else 'Base not found; nothing written')
             if result and base_identifiers.base_type == BaseType.CORVETTE:
                 from .ship_repair import cockpit_warning
                 if cockpit_warning(serialised_base_objects_data):
-                    result += ' — ' + cockpit_warning(serialised_base_objects_data)
+                    result += ' â€” ' + cockpit_warning(serialised_base_objects_data)
             return result
       
     # This functin collects data realated to base so that it can be identified in save file
@@ -653,7 +670,7 @@ class SaveManager(bpy.types.PropertyGroup):
         base_identifiers = self.get_pinned_base_identifiers()
         
         if base_identifiers is None:
-            return "Pinned base identifiers are none"
+            raise ValueError('Pin the destination base before exporting.')
         
         result = self.export_base(context, base_identifiers, base_identifiers.save_slot)
             
@@ -740,6 +757,24 @@ class SaveManager(bpy.types.PropertyGroup):
         pinned_base = save_editor_utils.import_paticular_base_from_save(identifiers, save_slot)
         return pinned_base
     
+    def refresh_before_export(self):
+        """Refresh the destination list if the game has written a newer or different save."""
+        from . import ship_files
+        slot = self.get_current_slot_data()
+        if not slot:
+            raise ValueError('Select an account and save slot before exporting.')
+        latest = save_editor_utils.get_lastes_save_file_location(slot['saves'])
+        cache = SaveManager.extracted_base_data
+        if (str(latest) == cache.get('source_path')
+                and ship_files.hashes([latest])[str(latest)] == cache.get('source_hash')):
+            return False
+
+        had_selection = self.get_current_base_identifiers() is not None
+        self.refresh_bases_list()
+        if had_selection and self.get_current_base_identifiers() is None:
+            raise ValueError('Save list refreshed. The previous destination changed or is missing. Select the destination again.')
+        return True
+
     # refresh list of bases/corvettes by importing fresh data form save file
     def refresh_bases_list(self):
         current_slot_data = self.get_current_slot_data()

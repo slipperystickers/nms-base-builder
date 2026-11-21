@@ -1,4 +1,5 @@
 """Small, self-contained Blender interface themes chosen explicitly by users."""
+from . import i18n
 
 import json
 import os
@@ -47,7 +48,58 @@ def _paint_widgets(ui, surface, raised, accent, text):
     ui.panel_text = _rgb(text)
 
 
+_BUTTON_WIDGETS = ('wcol_regular', 'wcol_tool', 'wcol_toolbar_item', 'wcol_toggle', 'wcol_radio')
+_BUTTON_STYLES = (('THEME','Use theme','Use the theme’s own button style'),
+                  ('FLAT','Flat','Flat buttons with lightly rounded corners'),
+                  ('ROUND','Rounded','Flat buttons with fully rounded corners'))
+
+
+def _style_preferences():
+    addon = bpy.context.preferences.addons.get(__package__)
+    return addon.preferences if addon else None
+
+
+def _apply_button_style(prefs, style, *, new_theme=False):
+    ui = bpy.context.preferences.themes[0].user_interface
+    widgets = [getattr(ui, name) for name in _BUTTON_WIDGETS]
+    if style == 'THEME':
+        if prefs.bbe_button_style_original and not new_theme:
+            for widget, (radius, shaded) in zip(widgets, json.loads(prefs.bbe_button_style_original)):
+                widget.roundness, widget.show_shaded = radius, shaded
+        prefs.bbe_button_style_original = ''
+    else:
+        if new_theme or not prefs.bbe_button_style_original:
+            prefs.bbe_button_style_original = json.dumps([(w.roundness, w.show_shaded) for w in widgets])
+        for widget in widgets:
+            widget.roundness = .22 if style == 'FLAT' else 1.0
+            widget.show_shaded = False
+    prefs.bbe_button_style = style
+
+
+class BBE_OT_button_style(bpy.types.Operator):
+    bl_idname = 'bbe.button_style'
+    bl_label = 'Blender Button Style'
+    bl_description = 'Change the shape and shading of buttons throughout Blender'
+    bl_options = {'INTERNAL'}
+    style: bpy.props.EnumProperty(items=_BUTTON_STYLES)
+
+    def execute(self, context):
+        _apply_button_style(_style_preferences(), self.style)
+        bpy.ops.wm.save_userpref()
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                area.tag_redraw()
+        return {'FINISHED'}
+
+
 def apply_theme(identifier):
+    _apply_palette(identifier)
+    prefs = _style_preferences()
+    if prefs and prefs.bbe_button_style != 'THEME':
+        _apply_button_style(prefs, prefs.bbe_button_style, new_theme=True)
+
+
+def _apply_palette(identifier):
     if identifier == 'BLENDER_DARK':
         bpy.ops.preferences.reset_default_theme()
         return
@@ -76,7 +128,7 @@ def apply_colors(surface, raised, accent, text, background, *,
     theme = bpy.context.preferences.themes[0]
     _paint_widgets(theme.user_interface, surface, raised, accent, text)
     for name in ('view_3d', 'properties', 'outliner', 'text_editor', 'node_editor',
-                 'image_editor', 'file_browser', 'preferences', 'dopesheet_editor',
+                 'image_editor', 'info', 'file_browser', 'preferences', 'dopesheet_editor',
                  'topbar', 'statusbar'):
         editor = getattr(theme, name, None)
         if editor is None:
@@ -116,11 +168,12 @@ def apply_colors(surface, raised, accent, text, background, *,
 
 class BBE_OT_apply_theme(bpy.types.Operator):
     bl_idname = 'bbe.apply_theme'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Apply BBE Theme'
     bl_description = 'Change Blender interface colors; use Preferences > Themes to customize them'
     bl_options = {'INTERNAL'}
 
-    theme: bpy.props.EnumProperty(items=THEME_ITEMS)
+    theme: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=THEME_ITEMS)
 
     def execute(self, context):
         try:
@@ -133,6 +186,9 @@ class BBE_OT_apply_theme(bpy.types.Operator):
 
 
 def refresh_theme(context):
+    # Persist the actual Blender theme, including custom gradients, even
+    # when Blender's preference auto-save has been disabled.
+    bpy.ops.wm.save_userpref()
     from . import bbe_chat
     bbe_chat.sync_theme()
     for window in context.window_manager.windows:
@@ -156,6 +212,28 @@ def custom_themes():
                 and _valid_preset(preset)}
     except (OSError, ValueError):
         return {}
+
+
+def sync_legacy_browser_header(context):
+    """Migrate the untouched Info header left by older BBE theme presets."""
+    theme = context.preferences.themes[0]
+    header = theme.info.space
+    rgb = lambda value: tuple(round(c*255) for c in value[:3])
+    if rgb(header.header) != (48, 48, 48):
+        return
+    raised = theme.user_interface.panel_header
+    if rgb(raised) == rgb(header.header) or rgb(theme.topbar.space.header) != rgb(raised):
+        return
+    # Recognize BBE palettes by their surface, raised color and accent together.
+    swatches = [palette[2:5] for palette in PALETTES]
+    for preset in custom_themes().values():
+        swatches.append((preset['colors'] if isinstance(preset, dict) else preset)[:3])
+    ui = theme.user_interface
+    current = (rgb(ui.wcol_box.inner), rgb(raised), rgb(ui.wcol_regular.inner_sel))
+    if any(tuple(rgb(_rgb(value)) for value in palette) == current for palette in swatches):
+        header.header = raised
+        header.header_text = ui.wcol_regular.text
+        header.header_text_hi = ui.wcol_regular.text_sel
 
 
 def _valid_color(color):
@@ -185,6 +263,7 @@ def apply_preset(preset):
 
 class BBE_OT_custom_theme(bpy.types.Operator):
     bl_idname = 'bbe.custom_theme'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Customize Theme'
     bl_description = 'Choose colors starting from your current theme and save a reusable preset'
     bl_options = {'INTERNAL'}
@@ -195,7 +274,7 @@ class BBE_OT_custom_theme(bpy.types.Operator):
     accent: bpy.props.FloatVectorProperty(name='Accent and selection', subtype='COLOR_GAMMA', size=3, min=0, max=1)
     text: bpy.props.FloatVectorProperty(name='Text', subtype='COLOR_GAMMA', size=3, min=0, max=1)
     background: bpy.props.FloatVectorProperty(name='Viewport background', subtype='COLOR_GAMMA', size=3, min=0, max=1)
-    background_type: bpy.props.EnumProperty(name='Viewport effect', default='SINGLE_COLOR', items=(
+    background_type: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Viewport effect', default='SINGLE_COLOR', items=(
         ('SINGLE_COLOR', 'Solid', 'One background color'),
         ('LINEAR', 'Vertical gradient', 'Blend two colors from top to bottom'),
         ('RADIAL', 'Vignette', 'Blend from the center toward the edges')))
@@ -217,7 +296,7 @@ class BBE_OT_custom_theme(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=430, confirm_text='Save & Apply')
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         layout.use_property_split = True
         layout.prop(self, 'name')
         for key in ('surface', 'raised', 'accent', 'text'):
@@ -259,6 +338,7 @@ class BBE_OT_custom_theme(bpy.types.Operator):
 
 class BBE_OT_load_custom_theme(bpy.types.Operator):
     bl_idname = 'bbe.load_custom_theme'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Apply Custom Theme'
     bl_description = 'Apply your saved interface colors'
     bl_options = {'INTERNAL'}
@@ -277,18 +357,24 @@ class BBE_OT_load_custom_theme(bpy.types.Operator):
 
 class VIEW3D_PT_bbe_themes(bpy.types.Panel):
     bl_idname = 'VIEW3D_PT_bbe_themes'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'BBE Themes'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
     bl_ui_units_x = 17
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         layout.operator_context = 'INVOKE_DEFAULT'
         from .save_editor.function_help import corner_help
         heading = layout.row(align=True)
         heading.operator('bbe.custom_theme', text='Customize Colors & Gradients...', icon='PREFERENCES')
         corner_help(heading, 'THEMES')
+        layout.label(text='Button Style · Blender-wide')
+        styles = layout.row(align=True)
+        selected = getattr(_style_preferences(), 'bbe_button_style', 'THEME')
+        for key, label, _ in _BUTTON_STYLES:
+            styles.operator('bbe.button_style', text=label, depress=selected == key).style = key
         presets = custom_themes()
         if presets:
             layout.label(text='My themes')
@@ -299,4 +385,4 @@ class VIEW3D_PT_bbe_themes(bpy.types.Panel):
         for identifier, name, _description in THEME_ITEMS:
             layout.operator('bbe.apply_theme', text=name, icon='COLOR').theme = identifier
         layout.separator()
-        layout.label(text='Save in Preferences to keep it after restart.', icon='INFO')
+        layout.label(text='Theme saved automatically.', icon='CHECKMARK')

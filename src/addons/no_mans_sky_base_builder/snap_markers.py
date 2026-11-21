@@ -125,10 +125,13 @@ def place_initial(context,source,target):
 
 class BBE_OT_quick_snap(bpy.types.Operator):
     bl_idname='bbe.quick_snap'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label='Snap Selected Parts'
     bl_description='Snap the other selected part to the active part, then click a green target to change its connection'
     bl_options={'REGISTER','UNDO'}
     def execute(self,context):
+        if hasattr(context.scene, 'bbe_show_connectors'):
+            context.scene.bbe_show_connectors = True
         pair=selected_pair(context)
         if not pair or not place_initial(context,*pair):return {'CANCELLED'}
         return {'FINISHED'}
@@ -136,6 +139,7 @@ class BBE_OT_quick_snap(bpy.types.Operator):
 
 class BBE_OT_click_snap(bpy.types.Operator):
     bl_idname = 'bbe.click_snap_point'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Snap to This Connection'
     bl_description = 'Move the first selected part to this connection on the target; click again to cycle its source connection'
     bl_options = {'REGISTER', 'UNDO'}
@@ -154,10 +158,11 @@ class BBE_OT_click_snap(bpy.types.Operator):
 
 class BBE_GT_snap_target(bpy.types.Gizmo):
     bl_idname = 'BBE_GT_snap_target'
-    __slots__ = ('radius',)
+    __slots__ = ('radius', 'explicit_pick')
 
     def setup(self):
         self.radius = 11
+        self.explicit_pick = False
 
     def draw(self, context):
         x,y = self.matrix_basis.translation[:2]
@@ -174,6 +179,7 @@ class BBE_GT_snap_target(bpy.types.Gizmo):
         pass
 
     def test_select(self, context, location):
+        if not self.explicit_pick and not getattr(context.scene, 'bbe_show_connectors', True): return -1
         return 0 if (Vector(location)-Vector(self.matrix_basis.translation[:2])).length <= self.radius+3 else -1
 
 
@@ -186,14 +192,18 @@ class BBE_GGT_snap_targets(bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and objects(context) is not None
+        return getattr(context.scene, 'bbe_show_connectors', True) and context.mode == 'OBJECT' and objects(context) is not None
 
     def setup(self, context):
         self.targets = []
 
     def draw_prepare(self, context):
         pair = objects(context)
-        choices = options(*pair) if pair else []
+        choices = options(*pair) if pair and getattr(context.scene, 'bbe_show_connectors', True) else []
+        from .viewport_cutaway import limits, contains
+        cuts = limits(context.scene)
+        if cuts:
+            choices = [(k,p) for k,p in choices if contains(cuts,p)]
         while len(self.targets) < len(choices):
             gizmo = self.gizmos.new('BBE_GT_snap_target')
             gizmo.use_tooltip = True

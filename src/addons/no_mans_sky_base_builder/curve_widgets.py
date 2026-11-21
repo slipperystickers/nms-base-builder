@@ -4,6 +4,7 @@ import math
 import bpy
 import blf
 import gpu
+from . import i18n
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix, Vector
 
@@ -44,6 +45,7 @@ def rounded_shader():
         info.push_constant('VEC4', 'rect')
         info.push_constant('VEC4', 'fill')
         info.push_constant('FLOAT', 'radius')
+        info.push_constant('BOOL', 'ui_region')
         info.fragment_out(0, 'VEC4', 'fragColor')
         info.vertex_source('void main() { pixel=pos; gl_Position=ModelViewProjectionMatrix*vec4(pos,0.0,1.0); }')
         info.fragment_source('''void main() {
@@ -51,7 +53,7 @@ def rounded_shader():
             float d=length(max(q,vec2(0.0)))+min(max(q.x,q.y),0.0)-radius;
             if (d>1.0) discard;
             vec3 rgb=mix(fill.rgb/12.92,pow((fill.rgb+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),fill.rgb));
-            fragColor=vec4(rgb,fill.a*(1.0-smoothstep(-0.7,0.7,d)));
+            fragColor=vec4(ui_region ? fill.rgb : rgb,fill.a*(1.0-smoothstep(-0.7,0.7,d)));
         }''')
         _round_shader = gpu.shader.create_from_info(info)
     return _round_shader
@@ -99,6 +101,7 @@ def rounded(shader, x, y, w, h, radius, color):
     shader.uniform_float('ModelViewProjectionMatrix',gpu.matrix.get_projection_matrix() @ gpu.matrix.get_model_view_matrix())
     shader.uniform_float('rect',(x,y,w,h))
     shader.uniform_float('fill',color)
+    shader.uniform_bool('ui_region',(bpy.context.region is not None and bpy.context.region.type=='UI',))
     shader.uniform_float('radius',min(radius,w/2,h/2))
     # One oversized triangle has no interior edge for driver antialiasing to expose.
     points=((x-1,y-1),(x+2*w+3,y-1),(x-1,y+2*h+3))
@@ -123,7 +126,8 @@ def text(value, x, y, size, color=None, align='LEFT'):
     blf.size(0, size)
     blf.color(0, *color)
     w, _ = blf.dimensions(0, value)
-    blf.position(0, x-(w if align == 'RIGHT' else w/2 if align == 'CENTER' else 0), y, 0)
+    left = x-(w if align == 'RIGHT' else w/2 if align == 'CENTER' else 0)
+    blf.position(0, left, y, 0)
     blf.draw(0, value)
 
 
@@ -144,7 +148,7 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
 
     def draw(self, context):
         # Only the card paints, so hover widgets cannot cover labels/tracks.
-        if self.style != 'CARD':
+        if self.style not in {'CARD','STUDIO_CARD'}:
             return
         update_theme(context)
         with canvas(context):
@@ -155,28 +159,84 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
             rounded(self._shader, x+s, y+s, self.width-2*s, self.height-2*s, 13*s, INK)
             for child in self.children:
                 if not child.hide:
-                    child.paint(self._shader)
+                    child.paint(self._shader,studio=self.style=='STUDIO_CARD')
             for dx, dy, label, color in self.lines:
-                text(label, x+dx, y+dy, 10*s, color)
+                text(i18n.interface(label), x+dx, y+dy, 10*s, color)
 
-    def paint(self, shader):
+    def paint(self, shader, *, studio=False):
         x, y = self.matrix_basis.translation[:2]
         w, h, s = self.width, self.height, self.scale
         hot = self.is_highlight or self.is_modal
-        if self.style == 'HEADER':
-            rounded(shader, x, y, w, h, 10*s, HEADER)
-            # A small Bezier flourish establishes a curve-specific visual language.
-            path = [(x+14*s+i*22*s/20, y+18*s+math.sin(i/20*math.pi*2)*6*s) for i in range(21)]
-            for a, b in zip(path, path[1:]):line(shader, a, b, 1.5*s, CYAN)
-            disc(shader, *path[0], 2*s, PURPLE)
-            disc(shader, *path[-1], 2*s, PURPLE)
-            text(self.label, x+47*s, y+26*s, 13*s)
+        if self.style in {'HEADER','SHAPE_HEADER'}:
+            if studio:
+                line(shader,(x,y),(x+w,y),s,EDGE)
+            else:rounded(shader, x, y, w, h, 10*s, HEADER)
+            if self.style=='SHAPE_HEADER':
+                from . import menu_surface, shapes
+                menu_surface.draw_image(shapes.preview_icon('STUDIO'),x+10*s,y+5*s,30*s,30*s)
+            else:
+                # A small Bezier flourish establishes a curve-specific visual language.
+                path = [(x+14*s+i*22*s/20, y+18*s+math.sin(i/20*math.pi*2)*6*s) for i in range(21)]
+                for a, b in zip(path, path[1:]):line(shader, a, b, 1.5*s, CYAN)
+                disc(shader, *path[0], 2*s, PURPLE)
+                disc(shader, *path[-1], 2*s, PURPLE)
+            text(i18n.interface(self.label), x+47*s, y+26*s, 13*s)
             text(self.subtitle, x+47*s, y+10*s, 10*s, MUTED)
             for dx in (0, 4):
                 for dy in (0, 4, 8):disc(shader, x+w-(13+dx)*s, y+20*s+dy*s, .8*s, MUTED)
+        elif self.style=='ASSET_PREVIEW':
+            from . import icons,menu_surface
+            rounded(shader,x,y,w,h,7*s,HOVER if hot else HEADER)
+            preview=icons.get_asset_icons_pcoll().get(self.label)
+            size=min(w,h)-4*s
+            if preview:menu_surface.draw_image(preview.icon_id,x+(w-size)/2,y+(h-size)/2,size,size,preview=preview)
+        elif self.style in {'STUDIO_LINK','STUDIO_ACTIVE','STUDIO_PART'}:
+            from . import menu_surface
+            part=self.style=='STUDIO_PART'
+            icon='pipette' if part else {'Dimensions':'scan','Deform':'spline','Pieces':'layers',
+                 'New shape…':'package-plus','Done':'check','‹  Home':'chevron-left',
+                 'Advanced…':'settings-2','Move shape':'navigation','Rotate':'rotate-ccw',
+                 'Scale':'scan','Move pieces':'navigation','Rotate pieces':'rotate-ccw'}.get(self.label)
+            if hot or self.style=='STUDIO_ACTIVE' or part:
+                rounded(shader,x,y,w,h,6*s,HOVER if hot else HEADER)
+            if icon:
+                menu_surface.draw_image(menu_surface.outline_icon(icon),x+6*s,y+(h-16*s)/2,16*s,16*s)
+            label=self.label if part else i18n.interface('Home' if self.label=='‹  Home' else self.label)
+            offset=26*s
+            text(menu_surface.trim(label,w-offset-4*s,11*s),x+offset,y+(h-10*s)/2,11*s,TEXT)
+        elif self.style == 'FACE_PREVIEW':
+            from . import menu_surface, shapes
+            rounded(shader,x,y,w,h,7*s,HOVER if hot else BUTTON)
+            icon=31*s
+            menu_surface.draw_image(shapes.preview_icon(self.subtitle),x+(w-icon)/2,y+h-icon-3*s,icon,icon)
+            text(i18n.interface(self.label),x+w/2,y+7*s,11*s,TEXT,'CENTER')
+        elif self.style in {'PART_FACE','FACE_STEP'}:
+            rounded(shader,x,y,w,h,8*s,CYAN if hot else EDGE)
+            rounded(shader,x+s,y+s,w-2*s,h-2*s,7*s,HOVER if hot else BUTTON)
+            cy=y+h/2
+            if self.style=='FACE_STEP':
+                cx=x+w/2
+                dx=(-4 if self.value=='LEFT' else 4)*s
+                tip=(cx+dx,cy)
+                line(shader,(cx-dx,cy+8*s),tip,3*s,TEXT)
+                line(shader,tip,(cx-dx,cy-8*s),3*s,TEXT)
+            else:
+                # A solid face and its outward normal distinguish part orientation from the shell mask.
+                cx=x+23*s
+                def pt(dx,dy):return cx+dx*s,cy+dy*s
+                top,left,right,mid=pt(0,14),pt(-12,8),pt(12,8),pt(0,2)
+                bottom,lower_left,lower_right=pt(0,-13),pt(-12,-7),pt(12,-7)
+                polygon(shader,[mid,right,lower_right,bottom],CYAN)
+                for a,b in ((top,left),(top,right),(left,mid),(right,mid),(left,lower_left),
+                            (lower_left,bottom),(mid,bottom),(right,lower_right),(lower_right,bottom)):
+                    line(shader,a,b,1.5*s,TEXT)
+                line(shader,pt(7,-2),pt(18,3),2.3*s,TEXT)
+                polygon(shader,[pt(19,4),pt(12,5),pt(15,-2)],TEXT)
+                text(i18n.interface(self.label),x+49*s,cy+2*s,13*s,TEXT)
+                text(self.value,x+49*s,cy-12*s,10*s,MUTED)
         elif self.style == 'SLIDER':
             if hot:rounded(shader, x-4*s, y, w+8*s, h, 7*s, HOVER)
-            text(self.label, x+2*s, y+26*s, 11*s, TEXT if hot else MUTED)
+            text(i18n.interface(self.label), x+2*s, y+26*s, 11*s, TEXT if hot else MUTED)
             rounded(shader, x+w-66*s, y+21*s, 66*s, 19*s, 6*s, HEADER)
             text(self.value, x+w-8*s, y+26*s, 11*s, TEXT, 'RIGHT')
             left, right, cy = x+6*s, x+w-6*s, y+10*s
@@ -188,8 +248,8 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
             disc(shader, end, cy, 2*s, INK)
         elif self.style == 'SWITCH':
             if hot:rounded(shader, x, y, w, h, 7*s, HOVER)
-            text(self.label, x+9*s, y+(h-10*s)/2, 11*s)
-            text(self.value or ('On' if self.enabled else 'Off'), x+w-59*s, y+(h-10*s)/2, 10*s, TEXT, 'RIGHT')
+            text(i18n.interface(self.label), x+9*s, y+(h-10*s)/2, 11*s)
+            text(i18n.interface(self.value or ('On' if self.enabled else 'Off')), x+w-59*s, y+(h-10*s)/2, 10*s, TEXT, 'RIGHT')
             left, cy = x+w-49*s, y+h/2
             rounded(shader, left, cy-9*s, 40*s, 18*s, 9*s, PURPLE if self.enabled else TRACK)
             disc(shader, left+(31 if self.enabled else 9)*s, cy, 7*s, CYAN if self.enabled else MUTED)
@@ -197,10 +257,14 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
             rounded(shader,x,y,w,h,9*s,CYAN)
             rounded(shader,x+s,y+s,w-2*s,h-2*s,8*s,mix(HEADER,PURPLE,.55 if hot else .3))
             rounded(shader,x+7*s,y+7*s,4*s,h-14*s,2*s,CYAN)
-            text(self.label,x+23*s,y+(h-12*s)/2,12*s,TEXT)
+            text(i18n.interface(self.label),x+23*s,y+(h-12*s)/2,12*s,TEXT)
             cx,cy=x+w-21*s,y+h/2
             line(shader,(cx-5*s,cy-5*s),(cx,cy),2*s,CYAN)
             line(shader,(cx,cy),(cx-5*s,cy+5*s),2*s,CYAN)
+        elif studio:
+            if hot or self.style=='PRIMARY':
+                rounded(shader,x,y,w,h,6*s,HOVER if hot else HEADER)
+            text(i18n.interface(self.label),x+w/2,y+(h-10*s)/2,11*s,TEXT,'CENTER')
         else:
             primary = self.style == 'PRIMARY' or self.enabled
             border = PURPLE if primary else EDGE
@@ -208,7 +272,7 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
             if hot:fill = HOVER
             rounded(shader, x, y, w, h, 7*s, border)
             rounded(shader, x+s, y+s, w-2*s, h-2*s, 6*s, fill)
-            text(self.label, x+w/2, y+(h-10*s)/2, 11*s, TEXT, 'CENTER')
+            text(i18n.interface(self.label), x+w/2, y+(h-10*s)/2, 11*s, TEXT, 'CENTER')
 
     def draw_select(self, context, select_id):pass
 

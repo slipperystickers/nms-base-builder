@@ -1,0 +1,36 @@
+{
+  "version": "18.2.118",
+  "slides": [
+    {
+      "file": "shape-studio.webp",
+      "title": "Shape Studio",
+      "alt": "A pyramid built from repeated panels with hard edges preserved in Shape Studio."
+    },
+    {
+      "file": "cutaway.webp",
+      "title": "Inside Vespera",
+      "alt": "Vespera in Blender with a viewport cutaway revealing part of the ship."
+    },
+    {
+      "file": "repeat-along.webp",
+      "title": "Repeat Along",
+      "alt": "A green placement preview extends a row of floor tiles into a floor."
+    },
+    {
+      "file": "optimizer.webp",
+      "title": "Corvette part order",
+      "alt": "Corvette optimizer showing individual ship parts and their priority colors."
+    }
+  ],
+  "highlights": [
+    "Shape Studio for 2D shapes and 3D shells",
+    "Repeat Along at snap sockets",
+    "Viewport cutaway on three axes",
+    "Curve connections, tapered runs and progressive twist",
+    "Supply pipes and editable cable endpoints",
+    "Horizontal asset browser and visual variants",
+    "Local prefab thumbnail previews",
+    "Manual Corvette part ordering and cockpit swaps"
+  ],
+  "guide": "https://github.com/slipperystickers/nms-base-builder/blob/v18.2.118/docs/releases/18.2.118/guide.md"
+}

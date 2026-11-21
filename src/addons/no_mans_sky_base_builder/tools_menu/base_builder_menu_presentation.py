@@ -1,4 +1,5 @@
 """The UI drawn inside the "Base Builder" dropdown."""
+from .. import i18n
 
 import bpy
 from ..tools import asset_browser_presentation
@@ -11,42 +12,32 @@ class VIEW3D_PT_nms_io_panel(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_nms_io_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "HEADER"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "I/O"
     # Popovers size themselves from this rather than from their content.
     bl_ui_units_x = 20
     
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         draw_io_contents(layout, context)
 
 
 def draw_io_contents(layout, context):
     draw_build_files(layout)
     layout.separator()
-    layout.label(text='Save Manager', **icons.ui_icon('FILE_TICK'))
-    save_editor_presentation.draw_save_manager(layout, context)
+    save_editor_presentation.draw_save_manager(layout, context, heading=True)
 
 
 def draw_build_files(layout):
-    files = layout.column(align=True)
+    from .. import menu_contract
     from ..save_editor.function_help import corner_help
-    heading = files.row(align=True)
-    heading.label(text='Standalone build files', **icons.ui_icon('FILE_FOLDER'))
-    corner_help(heading, 'IO')
-    project = files.row(align=True)
-    project.operator('bbe.import_build_file', text='Import Build from File...', **icons.ui_icon('IMPORT'))
-    project.operator('object.nms_save_data', text='Save BBE Project JSON...', **icons.ui_icon('FILE_TICK'))
-    exports = files.row(align=True)
-    exports.operator('bbe.export_ship_file', text='Export Corvette (.nmsship)...', **icons.ui_icon('EXPORT'))
-    exports.operator('bbe.export_base_file', text='Export Base (.nmsbase)...', **icons.ui_icon('EXPORT'))
-    clipboard = files.split(factor=0.5, align=True)
-    clipboard.operator('object.nms_export_nms_data_objects', **icons.ui_icon('COPYDOWN'))
-    clipboard.operator('object.nms_import_nms_data', **icons.ui_icon('PASTEDOWN'))
-    files.separator()
-    clear = files.row()
-    clear.operator_context = 'INVOKE_DEFAULT'
-    clear.operator('object.nms_new_file', **icons.ui_icon('FILE_NEW'))
+    menu_contract.files(layout, {
+      'clear':('object.nms_new_file',{}), 'import':('bbe.import_build_file',{}),
+      'json':('object.nms_save_data',{}), 'ship':('bbe.export_ship_file',{}),
+      'base':('bbe.export_base_file',{}), 'paste':('object.nms_import_nms_data',{}),
+      'copy_all':('object.nms_export_nms_data',{}), 'copy_objects':('object.nms_export_nms_data_objects',{})
+    },lambda row:corner_help(row,'IO'))
 
 
 class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
@@ -55,6 +46,7 @@ class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
     bl_idname = "VIEW3D_PT_nms_base_builder"
     bl_space_type = "VIEW_3D"
     bl_region_type = "HEADER"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Base Builder Extended"
     bl_description = "Proxy quality, Asset Browser, and quick access to parts"
     # Popovers size themselves from this rather than from their content.
@@ -62,21 +54,37 @@ class VIEW3D_PT_nms_base_builder(bpy.types.Panel):
     
 
     def draw(self, context):
-        draw_builder_contents(self.layout, context)
+        draw_builder_contents(i18n.localized_layout(self.layout), context)
 
 
 def draw_builder_contents(layout, context):
-    asset_browser = context.scene.nms_asset_browser
-    enum_assets_quick_access_view_mode = context.scene.enum_assets_quick_access_view_mode
-    pcoll = icons.get_asset_icons_pcoll()
+    draw_builder_preferences(layout, context)
+    wasd_navigation.draw_controls(layout, context)
+    from .. import viewport_cutaway
+    viewport_cutaway.draw_menu(layout, context)
+    layout.separator()
+    draw_proxy_controls(layout, context)
+    layout.separator()
+    draw_quick_access(layout, context)
 
 
+def draw_builder_preferences(layout, context, *, include_guide=True):
     from ..save_editor.function_help import corner_help
     header = layout.row(align=True)
     header.popover(panel='VIEW3D_PT_bbe_themes', text='Themes', icon='COLOR')
     corner_help(header, 'BBE')
-    wasd_navigation.draw_controls(layout, context)
-    layout.separator()
+    if include_guide:
+        layout.operator('bbe.find_guide', text='How-To Guide', icon='HELP')
+    from .. import build_timer
+    timer_row = layout.row(align=True)
+    timer_row.label(text="Build timer", icon="TIME")
+    addon = context.preferences.addons.get(build_timer.__package__)
+    if addon:
+        layout.prop(addon.preferences, 'bbe_language')
+        timer_row.prop(addon.preferences, 'build_idle_minutes', text='Idle (min)')
+
+
+def draw_proxy_controls(layout, context):
     proxy_box = layout.column(align=True)
     proxy_box.label(text="Switch Proxy Quality")
     proxy_column = proxy_box.row(align=False)
@@ -100,10 +108,16 @@ def draw_builder_contents(layout, context):
         update_row.operator('bbe.hd_library', text='Update Detailed Proxy Pack', icon='IMPORT')
 
 
-    layout.separator()
+def draw_quick_access(layout, context, *, compact=False):
+    asset_browser = context.scene.nms_asset_browser
+    enum_assets_quick_access_view_mode = context.scene.enum_assets_quick_access_view_mode
+    pcoll = icons.get_asset_icons_pcoll()
     quick_access_column = layout.column(align = True)
     quick_access_column.label(text = "Quick Access")
-    quick_access_column.row(align = True).prop(context.scene,"enum_assets_quick_access_view_mode", expand = True)
+    if compact:
+        quick_access_column.prop(context.scene, "enum_assets_quick_access_view_mode", text="Parts")
+    else:
+        quick_access_column.row(align=True).prop(context.scene, "enum_assets_quick_access_view_mode", expand=True)
     quick_access_column.separator()
 
 
@@ -143,11 +157,12 @@ class VIEW3D_PT_bbe_project_recovery(bpy.types.Panel):
     bl_idname = 'VIEW3D_PT_bbe_project_recovery'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'HEADER'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Project Recovery'
     bl_ui_units_x = 16
 
     def draw(self, context):
-        project_recovery.draw_controls(self.layout, context)
+        project_recovery.draw_controls(i18n.localized_layout(self.layout), context)
 
 
 def _draw_toolbar_group(self, context):
@@ -171,13 +186,16 @@ def _draw_toolbar_group(self, context):
         if hasattr(source, "poll") and not source.poll(context):
             if group == "transform":
                 from ..save_editor.function_help import corner_help
-                header = self.layout.row(align=True)
+                header = i18n.localized_layout(self.layout).row(align=True)
                 header.label(text="Select a curve to edit its shape.", **icons.ui_icon("INFO"))
                 corner_help(header, 'CURVES')
             continue
         if len(sources[group]) > 1:
-            self.layout.label(text=source.bl_label)
-        source.draw(self, context)
+            i18n.localized_layout(self.layout).label(text=source.bl_label)
+        if source is NMS_PT_tools_panel:
+            source.draw_controls(self, context)
+        else:
+            source.draw(self, context)
 
 
 def _toolbar_panel(identifier, label, group, width):

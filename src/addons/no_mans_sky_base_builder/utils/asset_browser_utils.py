@@ -49,7 +49,7 @@ DATA_DIRECTORY_ENV = "NMS_BASE_BUILDER_DATA_DIR"
 
 # What the store holds. These were preference names first, and the keys were
 # kept the same so the migration is a straight copy.
-STORE_KEYS = ("favourite_objects", "favourite_categories", "recent_objects", "category_order")
+STORE_KEYS = ("favourite_objects", "favourite_categories", "recent_objects", "category_order", "category_enum_ids")
 
 # The file is read on every redraw through the panels, so it is held in memory
 # and only re-read when it changes underneath us - another Blender running at
@@ -464,7 +464,7 @@ def order_categories(categories, favourite_categories, stored_order=None):
     """All category names, favourites first, each group in its saved order.
 
     A category that has never been placed - a new one, or the very first time
-    this runs - is appended to its group in `categories`'s own order, so
+    this runs - is appended alphabetically within its group, so
     nothing goes missing just because it predates a reorder.
 
     Args:
@@ -484,7 +484,7 @@ def order_categories(categories, favourite_categories, stored_order=None):
 
     known_order = [name for name in stored_order if name in valid_set]
     known_set = set(known_order)
-    full_order = known_order + [name for name in valid_categories if name not in known_set]
+    full_order = known_order + sorted((name for name in valid_categories if name not in known_set), key=str.casefold)
 
     favourites = [name for name in full_order if name in favourite_set]
     others = [name for name in full_order if name not in favourite_set]
@@ -547,9 +547,9 @@ def build_sub_category_entries(categories_data, category):
     Returns:
         list: [(name, name, name), ...]
     """
-    entries = [("All", "All", "All")]
-    entries.extend(build_enum_entries(categories_data.get(category, ())))
-    return entries
+    # Preserve the old integer for each entry in existing Blender files.
+    entries = [(name, name, name, i) for i, name in enumerate(categories_data.get(category, ()), 1)]
+    return [('All', 'All', 'All', 0), *sorted(entries, key=lambda item: item[0].casefold())]
 
 
 def resolve_sub_categories(categories_data, category, sub_category):
@@ -585,7 +585,7 @@ def resolve_sub_categories(categories_data, category, sub_category):
 
 # --- searching and slicing ---------------------------------------------------
 
-def filter_objects(categories_data, search_filter):
+def filter_objects(categories_data, search_filter, localized_names=None):
     """Parts whose id or name contains `search_filter`, grouped by category.
 
     The ids and names are compared in lower case, so the query is lowered too -
@@ -611,7 +611,8 @@ def filter_objects(categories_data, search_filter):
                 obj_id_lower = obj_id.lower()
                 name_lower = str(obj_data.get("name", "")).lower()
 
-                if search_filter in obj_id_lower or search_filter in name_lower:
+                localized = (localized_names or {}).get(obj_id, "") if not obj_data.get("is_preset") else ""
+                if search_filter in obj_id_lower or search_filter in name_lower or search_filter in localized.lower():
                     search_results.setdefault(category, {})[obj_id] = obj_data
     return search_results
 
@@ -668,7 +669,7 @@ def collect_recent_objects(categories_data, recent_ids):
             if obj_id in all_objects}
 
 
-def build_presets_data():
+def build_presets_data(paths=None):
     """The presets, shaped like the part entries so the same drawing code works.
 
     Returns:
@@ -684,5 +685,5 @@ def build_presets_data():
             "link": preset_link,
             "is_preset": True,
         }
-        for preset_name, preset_link in Preset.get_presets().items()
+        for preset_name, preset_link in (Preset.get_presets() if paths is None else paths).items()
     }

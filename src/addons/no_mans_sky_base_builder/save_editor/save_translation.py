@@ -30,6 +30,7 @@ class SaveTranslation:
     base_name                   = eng_to_obf_translator("Name")
     base_type                   = eng_to_obf_translator("BaseType")
     persistent_base_types       = eng_to_obf_translator("PersistentBaseTypes")
+    position                    = eng_to_obf_translator("Position")
     galactic_address            = eng_to_obf_translator("GalacticAddress")
     save_name                   = eng_to_obf_translator("SaveName")
     user_data                   = eng_to_obf_translator("UserData")

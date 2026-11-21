@@ -38,7 +38,7 @@ class BuildTool(bpy.types.PropertyGroup):
     
     # direction for mirror in advanced mirroring options
     # There can only be three options X,Y and Z
-    mirror_direction: bpy.props.EnumProperty(
+    mirror_direction: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Mirror Direction",
         description = "Direction in which mirroring will occur",
         items = [
@@ -54,12 +54,13 @@ class BuildTool(bpy.types.PropertyGroup):
     # world origin will always be 0,0,0
     # 3d curson can be changed at any time with shift + right click
     # Object can be any object and it's origin will be take in to account for center of reflection
-    center_of_reflection: bpy.props.EnumProperty(
+    center_of_reflection: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Reflection Center",
         description = "Select center of reflection, a point arround which mirroring will take place",
         items = [
             ("World Origin", "World Origin", "World origin will always be 0,0,0","OBJECT_ORIGIN",0),
-            ("3D cursor", "3D cursor", "3d curson can be changed at any time with shift + right click","CURSOR",1)
+            ("3D cursor", "3D cursor", "Use the 3D cursor as the reflection centre","CURSOR",1),
+            ("Object Origin", "Object Origin", "Mirror the selection around the active object's world-space origin","OBJECT_ORIGIN",2),
         ],
         options={'SKIP_SAVE'},
         default = 'World Origin'
@@ -276,18 +277,12 @@ class BuildTool(bpy.types.PropertyGroup):
             ))
             self.mirror(axis = mirror_direction, center = center, auto_duplicate = auto_duplicate)
         # target object's origin will be passed here for center of reflection
-        elif self.center_of_reflection == "Object":
-            if self.target_object:
-                center = Vector((
-                    self.target_object.location.x,
-                    self.target_object.location.y,
-                    self.target_object.location.z
-                ))
-                self.mirror(axis = mirror_direction, center = center, auto_duplicate = auto_duplicate)
-            else:
-                ShowMessageBox(
-                    message="Make sure you have target object selected", title="Object Mirror"
-                )
+        elif self.center_of_reflection == "Object Origin":
+            active = bpy.context.active_object
+            if active is None or not active.select_get():
+                raise ValueError("Select the object whose origin should be the mirror pivot.")
+            self.mirror(axis=mirror_direction,center=active.matrix_world.translation.copy(),
+                        auto_duplicate=auto_duplicate)
                 
     def flip(self):
         """Mirror the object along X axis (if possible)."""

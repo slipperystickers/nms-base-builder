@@ -175,11 +175,14 @@ def hide_viewport_tools(context=None) -> None:
         original = _ORIGINAL_TOOLS_FROM_CONTEXT
 
         def tools_from_context(cls, context, mode=None):
-            yield from _strip_tool_items(original(cls, context, mode))
+            items=original(cls, context, mode)
+            yield from _strip_tool_items(items) if (context.screen.get("bbe_simple_screen_owner") or context.workspace.get("furby_simple_owner")) == "BBE" else items
 
         panel.tools_from_context = classmethod(tools_from_context)
 
-    _reset_hidden_active_tools(context)
+    if context is None:return
+    if context.workspace and context.workspace.get('furby_simple_origin'):
+        _reset_hidden_active_tools(context)
     _redraw_toolbars()
 
 

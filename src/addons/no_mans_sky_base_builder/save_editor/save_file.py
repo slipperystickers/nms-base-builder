@@ -165,6 +165,24 @@ class SaveFile:
     def search_base_with_identifier(self, base_identifier: BaseData):
         
         self.context = getattr(base_identifier, 'save_context', None)
+        if base_identifier.base_type in BaseType.LOCATED_BASES:
+            ctx = self.context or self.json_data[SaveTranslation.active_context]
+            key = SaveTranslation.base_context if ctx == "Main" else SaveTranslation.expedition_context
+            player = self.json_data.get(key, {}).get(SaveTranslation.player_state_data, {})
+            position = getattr(base_identifier, "base_position", None)
+            matches = [
+                base for base in player.get(SaveTranslation.persistent_player_bases, [])
+                if isinstance(base, dict)
+                and base.get(SaveTranslation.base_type, {}).get(SaveTranslation.persistent_base_types) == base_identifier.base_type
+                and str(base.get(SaveTranslation.galactic_address)) == str(base_identifier.galactic_address)
+                and (position is None or base.get(SaveTranslation.position) == position)
+                and (base[SaveTranslation.base_name] if base.get(SaveTranslation.base_name, "").strip() else "unknow_name") == base_identifier.base_name
+                and base.get(SaveTranslation.user_data) == base_identifier.user_data
+            ]
+            if len(matches) > 1:
+                raise ValueError(f'Multiple bases match {base_identifier.base_name} in {self.path.name}.')
+            return matches[0] if matches else None
+
         base_list = self.get_bases_list_pointer()
         
         #try looking for base in bases list

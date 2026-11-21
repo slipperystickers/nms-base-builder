@@ -1,4 +1,5 @@
 """Ship Management: isolated save draft and a draggable inventory grid."""
+from .. import i18n
 from ..furby_errors import report_error
 import copy
 import json
@@ -106,16 +107,16 @@ class Dialog:
 
 class BBE_OT_ship_class(Dialog,bpy.types.Operator):
     bl_idname='bbe.ship_class';bl_label='Ship Class'
-    ship_class:bpy.props.EnumProperty(name='Class',items=[(v,v+' class','') for v in ('C','B','A','S')])
+    ship_class:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Class',items=[(v,v+' class','') for v in ('C','B','A','S')])
     def invoke(self,context,event):
         s=state();ship=core.ships(s['root'],s['context'])[s['index']]
         if not core.occupied(ship):return self.fail(ValueError('Select an owned ship'))
         self.ship_class=core.get(core.get(core.get(ship,'Inventory',{}),'Class',{}),'InventoryClass','C')
         return context.window_manager.invoke_props_dialog(self,width=440)
     def draw(self,context):
-        self.layout.prop(self,'ship_class',expand=True)
-        self.layout.label(text='Changes ship class; preserves existing rolled base stats.')
-        self.layout.label(text='Inventory, technology and hyperslots are kept.')
+        i18n.localized_layout(self.layout).prop(self,'ship_class',expand=True)
+        i18n.localized_layout(self.layout).label(text='Changes ship class; preserves existing rolled base stats.')
+        i18n.localized_layout(self.layout).label(text='Inventory, technology and hyperslots are kept.')
     def execute(self,context):
         try:
             s=state();draft=copy.deepcopy(s['root']);core.set_class(draft,s['context'],s['index'],self.ship_class);s['root']=draft;s['dirty']=True
@@ -147,8 +148,8 @@ class BBE_OT_ship_stats(Dialog,bpy.types.Operator):
     def draw(self,context):
         for row in self.values:
             name=row.stat_id.lstrip('^').replace('SHIP_','').replace('_',' ').title()
-            self.layout.prop(row,'value',text=name)
-        self.layout.label(text='These are saved base rolls; technology bonuses are calculated in game.')
+            i18n.localized_layout(self.layout).prop(row,'value',text=name)
+        i18n.localized_layout(self.layout).label(text='These are saved base rolls; technology bonuses are calculated in game.')
     def execute(self,context):
         try:
             s=state();draft=copy.deepcopy(s['root'])
@@ -173,9 +174,9 @@ class BBE_OT_ship_add(Dialog,bpy.types.Operator):
     def invoke(self,context,event):
         return context.window_manager.invoke_props_dialog(self,width=430)
     def draw(self,context):
-        self.layout.label(text='Create an S-class starter Corvette in the selected EMPTY slot.')
-        self.layout.prop(self,'ship_name')
-        self.layout.label(text='Staged until Save Changes. Then export your Blender build to it.')
+        i18n.localized_layout(self.layout).label(text='Create an S-class starter Corvette in the selected EMPTY slot.')
+        i18n.localized_layout(self.layout).prop(self,'ship_name')
+        i18n.localized_layout(self.layout).label(text='Staged until Save Changes. Then export your Blender build to it.')
     def execute(self,context):
         try:
             s=state();draft=copy.deepcopy(s['root']);core.add_minimal(draft,s['context'],s['index'],self.ship_name);s['root']=draft;s['dirty']=True
@@ -198,10 +199,10 @@ def roll_choices(self,context):
 class BBE_OT_ship_item(Dialog,bpy.types.Operator):
     bl_idname='bbe.ship_item';bl_label='Edit Inventory Item'
     bl_description='Edit this item quantity or procedural roll, or remove the selected item from the draft'
-    action:bpy.props.EnumProperty(items=[('EDIT','Edit',''),('REMOVE','Remove','')])
+    action:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[('EDIT','Edit',''),('REMOVE','Remove','')])
     amount:bpy.props.IntProperty(name='Quantity / charge',min=-1,max=2147483647)
     roll:bpy.props.StringProperty(name='Procedural roll',description='Decimal RNG suffix after #. Changing it rerolls the upgrade; stats are calculated by the game')
-    existing:bpy.props.EnumProperty(name='Reuse existing roll',items=roll_choices)
+    existing:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Reuse existing roll',items=roll_choices)
     def invoke(self,context,event):
         state()['busy']=True
         item=at(current_inventory(),state()['selected'])
@@ -210,7 +211,7 @@ class BBE_OT_ship_item(Dialog,bpy.types.Operator):
         self.existing='KEEP'
         return context.window_manager.invoke_props_dialog(self,width=470)
     def draw(self,context):
-        item=at(current_inventory(),state()['selected']);l=self.layout
+        item=at(current_inventory(),state()['selected']);l=i18n.localized_layout(self.layout)
         l.label(text=catalog.info(item).get('name') or item['Id']);l.label(text=item['Id'])
         if self.action=='REMOVE':l.label(text='Remove this item from the draft?',icon='TRASH');return
         entry=catalog.info(item)
@@ -276,7 +277,7 @@ class BBE_OT_ship_insert(Dialog,bpy.types.Operator):
         st=context.window_manager.bbe_ship_catalog;st.search='';search_changed(st,context)
         return context.window_manager.invoke_props_dialog(self,width=620)
     def draw(self,context):
-        st=context.window_manager.bbe_ship_catalog;l=self.layout;l.prop(st,'search')
+        st=context.window_manager.bbe_ship_catalog;l=i18n.localized_layout(self.layout);l.prop(st,'search')
         l.template_list('BBE_UL_ship_catalog','',st,'results',st,'active',rows=9)
         if st.results:
             entry=catalog.BY_ID[st.results[st.active].item_id]
@@ -300,10 +301,11 @@ class BBE_OT_ship_insert(Dialog,bpy.types.Operator):
 
 class BBE_OT_ship_replace_file(Dialog, bpy.types.Operator):
     bl_idname = 'bbe.ship_replace_file'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Replace / Repair Ship'
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
     filter_glob: bpy.props.StringProperty(default='*.nmsship;*.json;*.txt;*.nmsbase;*.nmsprefab', options={'HIDDEN'})
-    mode: bpy.props.EnumProperty(name='Replacement', items=[
+    mode: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Replacement', items=[
         ('FULL', 'Replace entire ship', 'Replace ship, inventories, appearance and build from a complete Corvette package'),
         ('OBJECTS', 'Replace build objects only', 'Keep the ship record, inventories and appearance; requires a correctly linked Corvette')])
 
@@ -316,9 +318,9 @@ class BBE_OT_ship_replace_file(Dialog, bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def draw(self, context):
-        self.layout.prop(self, 'mode')
-        self.layout.label(text='Full replacement requires a complete .nmsship package.')
-        self.layout.label(text='Next: review destination and linked builds. No save writes yet.')
+        i18n.localized_layout(self.layout).prop(self, 'mode')
+        i18n.localized_layout(self.layout).label(text='Full replacement requires a complete .nmsship package.')
+        i18n.localized_layout(self.layout).label(text='Next: review destination and linked builds. No save writes yet.')
 
     def execute(self, context):
         try:
@@ -340,6 +342,7 @@ class BBE_OT_ship_replace_file(Dialog, bpy.types.Operator):
 
 class BBE_OT_ship_replace_review(Dialog, bpy.types.Operator):
     bl_idname = 'bbe.ship_replace_review'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Review Ship Replacement'
     anchor: bpy.props.IntProperty(name='Keep destination metadata from build record', min=1)
     confirm_duplicates: bpy.props.BoolProperty(name='Replace ALL duplicate linked builds listed above', default=False)
@@ -357,7 +360,7 @@ class BBE_OT_ship_replace_review(Dialog, bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=700, confirm_text='Stage Replacement')
 
     def draw(self, context):
-        s = state(); r = self._review; l = self.layout
+        s = state(); r = self._review; l = i18n.localized_layout(self.layout)
         from .function_help import help_button
         help_button(l, 'REPLACE')
         ship = core.ships(s['root'], r['context'])[r['index']]
@@ -421,7 +424,7 @@ class BBE_OT_ship_save(Dialog,bpy.types.Operator):
     bl_idname='bbe.ship_save';bl_label='Save Ship Changes'
     def invoke(self,context,event):return context.window_manager.invoke_props_dialog(self,width=610)
     def draw(self,context):
-        s=state();l=self.layout
+        s=state();l=i18n.localized_layout(self.layout)
         l.label(text='Write the reviewed draft to this save slot?',icon='QUESTION')
         for p in s['links']:l.label(text=str(p))
         l.label(text='Both save points will receive this draft, based on the latest save.')
@@ -451,7 +454,7 @@ class BBE_OT_ship_link_status(Dialog,bpy.types.Operator):
     def invoke(self,context,event):
         return context.window_manager.invoke_props_dialog(self,width=680,confirm_text='Close')
     def draw(self,context):
-        s=state();l=self.layout
+        s=state();l=i18n.localized_layout(self.layout)
         l.label(text='Inventory, technology, class, stats and hyperslot edits remain available.')
         l.label(text='Replace / Repair Ship reviews a specific replacement; other uncertain records stay unchanged.')
         l.label(text='Move Up/Down and Add Corvette are locked only in those contexts.')
@@ -532,7 +535,7 @@ class BBE_OT_ship_duplicate(Dialog,bpy.types.Operator):
             return context.window_manager.invoke_props_dialog(self,width=650,confirm_text='Create Copy')
         except Exception as exc:return self.fail(exc)
     def draw(self,context):
-        l=self.layout
+        l=i18n.localized_layout(self.layout)
         l.prop(self,'save_name');l.prop(self,'slot');l.label(text='Empty slots: '+', '.join(map(str,self._empty)))
         l.label(text='Check the bases and ships to keep. Each populated context needs one ship.')
         l.template_list('BBE_UL_ship_keep','',self.properties,'entries',self.properties,'active',rows=12)
@@ -864,8 +867,8 @@ class BBE_OT_ship_discard(Dialog,bpy.types.Operator):
         SESSION['busy']=True
         return context.window_manager.invoke_props_dialog(self,width=450,confirm_text='Discard Draft')
     def draw(self,context):
-        self.layout.label(text='Discard unsaved Ship Management changes?',icon='QUESTION')
-        self.layout.label(text='Nothing has been written to the game save.')
+        i18n.localized_layout(self.layout).label(text='Discard unsaved Ship Management changes?',icon='QUESTION')
+        i18n.localized_layout(self.layout).label(text='Nothing has been written to the game save.')
     def execute(self,context):
         global MANAGER_WINDOW,SESSION
         preview=SESSION.get('preview_scene') if SESSION else None
@@ -890,8 +893,8 @@ class BBE_OT_ship_lost(Dialog,bpy.types.Operator):
     def invoke(self,context,event):
         return context.window_manager.invoke_props_dialog(self,width=450,confirm_text='Discard Draft')
     def draw(self,context):
-        self.layout.label(text='The Ship Management window closed with unsaved changes.',icon='QUESTION')
-        self.layout.label(text='Discard this draft, or Cancel to reopen it.')
+        i18n.localized_layout(self.layout).label(text='The Ship Management window closed with unsaved changes.',icon='QUESTION')
+        i18n.localized_layout(self.layout).label(text='Discard this draft, or Cancel to reopen it.')
     def execute(self,context):
         global SESSION
         SESSION=None

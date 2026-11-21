@@ -1,4 +1,5 @@
 """Curve Studio workflow over BBE's existing followers and Blender transforms."""
+from . import i18n, curve_distribution as distribution
 import math
 import bpy
 from bpy.app.handlers import persistent
@@ -10,6 +11,52 @@ from .utils import curve, curve_utils
 _TRANSFORM_SESSION = 'bbe_curve_transform_session'
 _save_resume = {}
 _history_pending = False
+
+
+_GIZMO_FLAGS = ('show_gizmo', 'show_gizmo_tool', 'show_gizmo_object_translate',
+                'show_gizmo_object_rotate', 'show_gizmo_object_scale')
+
+
+def preferences(context):
+    addon = context.preferences.addons.get(__package__)
+    return addon.preferences if addon else None
+
+
+def use_blender_tools(context):
+    return getattr(preferences(context), 'curve_use_blender_tools', False)
+
+
+def native_settings(context):
+    area = context.area if context.area and context.area.type == 'VIEW_3D' else next(
+        (a for a in context.screen.areas if a.type == 'VIEW_3D'), None)
+    tool = context.workspace.tools.from_space_view3d_mode('OBJECT', create=False)
+    return dict(tool=tool.idname if tool else '', area=str(area.as_pointer()) if area else '',
+                gizmos={key: getattr(area.spaces.active, key) for key in _GIZMO_FLAGS} if area else {})
+
+
+def restore_native_settings(session):
+    # Resolve saved identities each time: never retain RNA objects over Undo/load.
+    window = next((w for w in bpy.context.window_manager.windows
+                   if str(w.as_pointer()) == session.get('window')), None)
+    if window is None: return
+    workspace = next((w for w in bpy.data.workspaces if w.session_uid == session.get('workspace')), None)
+    if workspace is None: return
+    area = next((a for a in window.screen.areas if str(a.as_pointer()) == session.get('area')
+                 and a.type == 'VIEW_3D'), None)
+    if area:
+        for key, value in session.get('gizmos', {}).items():
+            setattr(area.spaces.active, key, value)
+    tool = session.get('tool', '')
+    if not tool or workspace != window.workspace: return
+    area = area or next((a for a in window.screen.areas if a.type == 'VIEW_3D'), None)
+    if area is None: return
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    if region is None: return
+    try:
+        with bpy.context.temp_override(window=window, area=area, region=region):
+            bpy.ops.wm.tool_set_by_id(name=tool)
+    except (RuntimeError, TypeError):
+        pass  # The user may have unregistered a third-party tool.
 
 
 def transform_settings(scene):
@@ -30,6 +77,7 @@ def end_transform_session(scene):
     session = scene.get(_TRANSFORM_SESSION)
     if session is not None:
         orientation, pivot = session['orientation'], session['pivot']
+        restore_native_settings(session)
         del scene[_TRANSFORM_SESSION]
         set_transform_settings(scene, orientation, pivot)
 
@@ -98,7 +146,7 @@ def begin_transform_session(context, guide):
     orientation, pivot = transform_settings(scene)
     scene[_TRANSFORM_SESSION] = dict(orientation=orientation, pivot=pivot, guide=guide.session_uid,
                                      studio_pivot=pivot, window=str(context.window.as_pointer()),
-                                     workspace=context.workspace.session_uid)
+                                     workspace=context.workspace.session_uid, **native_settings(context))
     start_transform_watch()
     return True
 
@@ -110,7 +158,7 @@ def suspend_for_save(*_):
         session = scene.get(_TRANSFORM_SESSION)
         if session is not None:
             if session_visible(scene, session):
-                _save_resume[scene.session_uid] = (session.to_dict(), transform_settings(scene))
+                _save_resume[scene.session_uid] = (session.to_dict(), transform_settings(scene), native_settings(bpy.context))
             end_transform_session(scene)
 
 
@@ -121,6 +169,7 @@ def resume_after_save(*_):
         if saved and session_visible(scene, saved[0]):
             scene[_TRANSFORM_SESSION] = saved[0]
             set_transform_settings(scene, *saved[1])
+            restore_native_settings(dict(saved[0], **saved[2]))
             start_transform_watch()
     _save_resume.clear()
 
@@ -177,12 +226,15 @@ def select_children(context,obj):
     choose(context,children)
     if children:context.scene.nms_properties.set_active_obect(children[0])
     if children:
-        if begin_transform_session(context, obj):
+        entered = begin_transform_session(context, obj)
+        if use_blender_tools(context): return
+        if entered:
             set_transform_settings(context.scene, 'LOCAL', 'INDIVIDUAL_ORIGINS')
             context.scene[_TRANSFORM_SESSION]['studio_pivot'] = 'INDIVIDUAL_ORIGINS'
         set_native_tool(context,obj,obj.get('bbe_studio_tool','MOVE'))
 
 def set_native_tool(context,obj,kind):
+    begin_transform_session(context, obj)
     obj['bbe_studio_tool']=kind
     area=context.area if context.area and context.area.type=='VIEW_3D' else next(
         (a for a in context.screen.areas if a.type=='VIEW_3D'),None)
@@ -204,16 +256,22 @@ def length(obj):
     return curve_utils.build_curve_eval_data(obj,32)[1]*obj.matrix_world.to_scale().x
 
 def spacing(obj):
+    if distribution.KEY in obj:return distribution.pitch(obj)
     n=int(obj.get('objects_count',1))
     if n<2:return 0
     interval=n if obj.data.splines[0].use_cyclic_u else n-1
     return min(float(obj.get('bbe_curve_spacing',1e30)),length(obj)/interval)
 
 def set_spacing(obj,value):
+    from . import duplication_tools
+    if duplication_tools.open_edge(obj):
+        duplication_tools.adjust_edge(obj,'spacing',value);return
     n=int(obj.get('objects_count',1))
     if n<2:return
     interval=n if obj.data.splines[0].use_cyclic_u else n-1
-    obj['bbe_curve_spacing']=max(.001,min(value,length(obj)/interval))
+    if distribution.KEY in obj:
+        distribution.set_pitch(obj,min(value,distribution.max_pitch(obj,length(obj),n,obj.bbe_curve)))
+    else:obj['bbe_curve_spacing']=max(.001,min(value,length(obj)/interval))
     curve.update_curve_children(obj)
 
 def apply_transform(context,kind,value,axis='Z'):
@@ -251,7 +309,7 @@ def apply_transform(context,kind,value,axis='Z'):
 class BBE_OT_studio_drag(bpy.types.Operator):
     bl_idname='bbe.studio_drag';bl_label='Adjust Curve Objects';bl_options={'REGISTER','UNDO','BLOCKING'}
     bl_description='Drag left/right to adjust this axis. Shift: fine adjustment; Escape: restore'
-    axis:bpy.props.EnumProperty(items=[(a,a,a) for a in 'XYZ'],default='X')
+    axis:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[(a,a,a) for a in 'XYZ'],default='X')
     def invoke(self,context,event):
         from .curve_tools import active_curve,press_position
         self.obj=active_curve(context)
@@ -288,6 +346,7 @@ class BBE_OT_studio_action(bpy.types.Operator):
     @classmethod
     def description(cls,context,props):
         return {'CHILDREN':'Edit all objects on this curve; click one object afterward to adjust it alone',
+          'NATIVE':'Keep your Blender tool and gizmos instead of switching to simplified Move, Rotate or Scale controls',
           'PARENT':'Return to shaping the curve', 'ALL':'Select all objects on this curve',
           'DUPLICATE':'Repeat the selected parts together along the curve',
           'WORLD':'World axes: use the same scene directions for every object',
@@ -312,7 +371,15 @@ class BBE_OT_studio_action(bpy.types.Operator):
         a=self.action
         if a in {'WORLD','LOCAL','EACH','TOGETHER','AXES','PIVOT'}:
             begin_transform_session(context, obj)
-        if a=='PARENT':select_parent(context,obj)
+        if a=='NATIVE':
+            prefs = preferences(context)
+            if prefs is not None:
+                prefs.curve_use_blender_tools = not use_blender_tools(context)
+                try: bpy.ops.wm.save_userpref()
+                except RuntimeError: pass
+            if use_blender_tools(context): end_transform_session(context.scene)
+            else: select_children(context, obj)
+        elif a=='PARENT':select_parent(context,obj)
         elif a in {'CHILDREN','ALL'}:select_children(context,obj)
         elif a=='DUPLICATE':
             if context.scene.nms_build_tool.duplicate_along_curve(10, 1) == {'CANCELLED'}:
@@ -325,6 +392,7 @@ class BBE_OT_studio_action(bpy.types.Operator):
         elif a in {'MOVE','ROTATE','SCALE'}:
             set_native_tool(context,obj,a)
         elif a=='FILL':
+            distribution.fill(obj,length(obj),int(obj.get('objects_count',1)),obj.bbe_curve)
             if 'bbe_curve_spacing' in obj:del obj['bbe_curve_spacing']
             refresh(obj)
         elif a=='FACE':
@@ -354,19 +422,19 @@ class BBE_OT_studio_action(bpy.types.Operator):
 
 class BBE_OT_studio_transform(bpy.types.Operator):
     bl_idname='bbe.studio_transform';bl_label='Adjust Selected Objects';bl_options={'REGISTER','UNDO'}
-    kind:bpy.props.EnumProperty(items=[('MOVE','Position','Move the selected objects'),('ROTATE','Rotation','Rotate the selected objects'),('SCALE','Size','Resize the selected objects')])
+    kind:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[('MOVE','Position','Move the selected objects'),('ROTATE','Rotation','Rotate the selected objects'),('SCALE','Size','Resize the selected objects')])
     move:bpy.props.FloatVectorProperty(name='Move by',subtype='TRANSLATION',unit='LENGTH')
     angle:bpy.props.FloatProperty(name='Rotate by',subtype='ANGLE')
-    axis:bpy.props.EnumProperty(name='Axis',items=[(a,a,a) for a in 'XYZ'],default='Z')
+    axis:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Axis',items=[(a,a,a) for a in 'XYZ'],default='Z')
     size:bpy.props.FloatVectorProperty(name='Multiply size',default=(1,1,1),min=.001,subtype='XYZ')
-    axes:bpy.props.EnumProperty(name='Axes',items=[('GLOBAL','World axes','Same directions for all objects'),('LOCAL','Object axes','The objects own directions')])
-    center:bpy.props.EnumProperty(name='Center',items=[('INDIVIDUAL_ORIGINS','Each center','Rotate or scale each object in place'),('MEDIAN_POINT','Group center','Transform around the shared center')])
+    axes:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Axes',items=[('GLOBAL','World axes','Same directions for all objects'),('LOCAL','Object axes','The objects own directions')])
+    center:bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Center',items=[('INDIVIDUAL_ORIGINS','Each center','Rotate or scale each object in place'),('MEDIAN_POINT','Group center','Transform around the shared center')])
     def invoke(self,context,event):
         self.axes='LOCAL' if context.scene.transform_orientation_slots[0].type=='LOCAL' else 'GLOBAL'
         self.center='INDIVIDUAL_ORIGINS' if context.scene.tool_settings.transform_pivot_point=='INDIVIDUAL_ORIGINS' else 'MEDIAN_POINT'
         return context.window_manager.invoke_props_dialog(self,width=340)
     def draw(self,context):
-        l=self.layout
+        l=i18n.localized_layout(self.layout)
         l.prop(self,'kind',expand=True)
         l.prop(self,'axes',expand=True)
         l.prop(self,'center',expand=True)
@@ -399,6 +467,7 @@ def before_history(*_):
         session = scene.get(_TRANSFORM_SESSION)
         if session is not None:
             scene.tool_settings.transform_pivot_point = session['pivot']
+            restore_native_settings(session)
 
 
 @persistent

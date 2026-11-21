@@ -13,7 +13,7 @@ BUILDER = builder.get_builder()
 
 class BatchTool(bpy.types.PropertyGroup):
 
-    nms_batch_replace_type: bpy.props.EnumProperty(
+    nms_batch_replace_type: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Swap With",
         description="Replace all selected objects with another object of choosing",
         items = [
@@ -157,6 +157,14 @@ class BatchTool(bpy.types.PropertyGroup):
 
                 # Copy transforms
                 replaced_object.matrix_world = source_object.matrix_world.copy()
+                # Preview preferences belong to the placed decal, not the newly
+                # loaded browser template. Never reuse its projected surface.
+                from .. import decals
+                if decals.is_decal(source_object) and decals.is_decal(replaced_object):
+                    replaced_object.data = decals.source_mesh(target_object)
+                    replaced_object[decals.SOURCE] = replaced_object.data
+                    replaced_object[decals.PREVIEW_DISABLED] = bool(source_object.get(decals.PREVIEW_DISABLED, False))
+                    decals.request_refresh()
                 # Link the new object to the scene
                 current_collection.objects.link(replaced_object)
 

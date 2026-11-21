@@ -3,7 +3,6 @@ import bpy
 
 
 def clear(scene):
-    from .tools.asset_browser_grid import _is_browser_pin
 
     objects = list(scene.objects)
     pending = list(scene.collection.children)
@@ -15,14 +14,8 @@ def clear(scene):
         collections.add(collection)
         pending.extend(collection.children)
 
-    # The browser uses a hidden pinned context object, not build content.
-    pins = {obj for obj in objects if _is_browser_pin(obj)}
-    for obj in pins:
-        if obj.name not in scene.collection.objects:
-            scene.collection.objects.link(obj)
     for obj in list(scene.collection.objects):
-        if obj not in pins:
-            scene.collection.objects.unlink(obj)
+        scene.collection.objects.unlink(obj)
     for collection in list(scene.collection.children):
         scene.collection.children.unlink(collection)
 
@@ -35,7 +28,7 @@ def clear(scene):
         for collection in unused:
             collections.remove(collection)
             bpy.data.collections.remove(collection)
-    remaining = {obj for obj in objects if obj not in pins}
+    remaining = set(objects)
     while remaining:
         unused = [obj for obj in remaining if obj.users == 0 and obj.library is None]
         if not unused:

@@ -76,7 +76,7 @@ class Range:
 class Activity:
     """Context-managed progress with cleanup on success and failure."""
 
-    def __init__(self, title, detail='Preparing…', *, visible=True):
+    def __init__(self, title, detail='Preparing…', *, visible=True, deferred_redraw=False):
         self.title = title
         self.detail = detail
         self.fraction = 0.0
@@ -85,6 +85,7 @@ class Activity:
         self._owns_ui = False
         self._last_draw = 0.0
         self._visible = visible
+        self._deferred_redraw = deferred_redraw
 
     def __enter__(self):
         global _active
@@ -127,6 +128,8 @@ class Activity:
             for area in window.screen.areas:
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
+        if self._deferred_redraw:
+            return
         try:
             bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
         except (RuntimeError, AttributeError):

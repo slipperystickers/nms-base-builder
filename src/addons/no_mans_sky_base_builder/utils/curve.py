@@ -1,3 +1,4 @@
+from .. import i18n
 import json
 import math
 import os
@@ -34,9 +35,9 @@ def duplication_selection(objects):
 def show_duplicate_selection_help(context):
     """Explain the required selection at either curve duplication entry point."""
     def draw(self, _context):
-        self.layout.label(text="Select one curve and the parts to repeat, or one existing group.")
-        self.layout.label(text="Multiple parts will be grouped automatically.")
-        self.layout.label(text="Then click Duplicate Along Curve.")
+        i18n.localized_layout(self.layout).label(text="Select one curve and the parts to repeat, or one existing group.")
+        i18n.localized_layout(self.layout).label(text="Multiple parts will be grouped automatically.")
+        i18n.localized_layout(self.layout).label(text="Then click Duplicate Along Curve.")
     context.window_manager.popup_menu(draw, title="Select Parts and a Curve", icon='INFO')
 
 
@@ -131,7 +132,13 @@ def get_curve_children_map(objects=None):
     return children_by_curve
 
 
+from .. import curve_distribution as distribution
+
+
 def update_curves(updated_curves, children_by_curve=None):
+    # Deferred depsgraph notifications can arrive during add-on teardown.
+    if not hasattr(bpy.types.Object, 'bbe_curve'):
+        return
     if not updated_curves:
         return
 
@@ -162,7 +169,7 @@ def update_curves(updated_curves, children_by_curve=None):
                 # User changed count manually via UI, store the new density step
                 denom = max(1, new_number_of_objects - 1)
                 curve_obj[Curve.PROP_DENSITY_STEP] = total_density / denom
-            else:
+            elif distribution.KEY not in curve_obj:
                 # Weight changed (no UI count change), dynamically calculate new object count to maintain spacing
                 density_step = curve_obj[Curve.PROP_DENSITY_STEP]
                 # One follower has no spacing interval. Do not turn the
@@ -190,7 +197,7 @@ def update_curves(updated_curves, children_by_curve=None):
                     None, curve_obj, new_number_of_objects, new_radius_multiplier,
                     existing_objs=children
                 )
-                curve_obj[Curve.PROP_OBJECTS_COUNT] = new_number_of_objects
+                # duplicate_along_curve stores the capacity-limited count.
                 continue
 
             # Update children
@@ -228,13 +235,23 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
     if not children:
         return
         
+    if distribution.KEY in curve_obj:
+        limit=distribution.max_pitch(curve_obj,total_length*abs(curve_obj.matrix_world.to_scale().x),len(children),curve_obj.bbe_curve)
+        if distribution.pitch(curve_obj)>limit+1e-6:distribution.set_pitch(curve_obj,limit)
     curve_utils.calculate_curve_factors(curve_obj, children)
     # the curve's own scale and multipliers are the same for every child, so
     # they get read here rather than once per object down in the loop
     curve_context = curve_utils.build_curve_context(curve_obj)
     curve_name = curve_obj.name
-    for obj in children:
+    reduction = curve_obj.bbe_curve.taper / (100 * max(1, len(children) - 1))
+    axes=(list(curve_utils.curve_world_tangents(curve_obj,[o.get('curve_factor',0) for o in children]))
+          if Curve.PROP_SOURCE_TRANSFORM in curve_obj and abs(curve_obj.bbe_curve.twist)>1e-8 else [None]*len(children))
+    for index, obj in enumerate(children):
         if obj.get("curve_parent") == curve_name:
+            taper = 1 - index * reduction
+            if abs(obj.get("bbe_taper_factor", 1) - taper) > 1e-7:
+                obj["bbe_taper_factor"] = taper
+            curve_utils.apply_curve_twist(obj,curve_obj,distribution.twist_at(curve_obj,index,len(children),curve_obj.bbe_curve),axes[index])
             curve_utils.update_obj_transformations(
                 obj, curve_obj, val_data, total_length, curve_context
             )
@@ -297,6 +314,10 @@ def duplicate_along_curve( bpy_object, curve, number_of_duplicates=10, radius_mu
         
     curve[Curve.PROP_HAS_LINKED_OBJECTS] = True
     curve[Curve.PROP_RADIUS_MULTIPLIER] = radius_multiplier
+    from ..curve_studio import length
+    distribution.prepare(curve,length(curve),number_of_duplicates,curve.bbe_curve)
+    number_of_duplicates=min(number_of_duplicates,distribution.capacity(curve,length(curve),curve.bbe_curve))
+    curve[Curve.PROP_OBJECTS_COUNT]=number_of_duplicates
     
     if Curve.PROP_INITIAL_CURVE_SCALE not in curve:
         curve[Curve.PROP_INITIAL_CURVE_SCALE] = curve.scale.x
@@ -413,6 +434,7 @@ def add_objects_to_curve(number_to_add, curve, existing_objs, bpy_object = None)
             
             new_obj[Curve.PROP_CURVE_PARENT] = curve.name
             new_obj[Curve.PROP_BASE_SCALE] = 1.0
+            if 'bbe_curve_roll' in new_obj:del new_obj['bbe_curve_roll']
             if preserve_transform:
                 values = curve[Curve.PROP_SOURCE_TRANSFORM]
                 matrix = Matrix([values[i:i+4] for i in range(0, 16, 4)])
@@ -497,6 +519,7 @@ def apply_curve_transforms_and_detach(curve):
     unlinked_curve_obj_col = collection_utils.get_collection(collection_utils.UNLINKED_CURVE_OBJ_COL)
     
     child_props_to_delete = [
+        'bbe_curve_roll',
         Curve.PROP_BASE_SCALE,
         Curve.PROP_CURVE_FACTOR,
         Curve.PROP_RADIUS,
@@ -536,6 +559,7 @@ def apply_curve_transforms_and_detach(curve):
     
     
     curve_props_to_delete = [
+        distribution.KEY,
         Curve.PROP_CURVE_ID,
         Curve.PROP_HAS_LINKED_OBJECTS,
         Curve.PROP_DUP_OBJECT_ID,
@@ -861,17 +885,18 @@ def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from
 # scale of a child object of curve is mix of multiple products
 # base scale is scale of object before getting influenced by curve's points
 def calculate_base_scale(curve, obj):
+    taper = obj.get("bbe_taper_factor", 1)
     if Curve.PROP_START_ALIGNMENT in curve:
         multiplier = (curve.scale.x / curve.get("initial_curve_scale", curve.scale.x)
                       * curve[Curve.PROP_RADIUS_MULTIPLIER] * obj.get("radius", 1.0))
-        scale = tuple(v / max(.00001, multiplier) for v in obj.scale)
+        scale = tuple(v / max(.00001, multiplier * taper) for v in obj.scale)
         previous = obj.get(Curve.PROP_SOURCE_SCALE, ())
         if len(previous) != 3 or any(abs(a-b) > 1e-6 for a,b in zip(previous, scale)):
             obj[Curve.PROP_SOURCE_SCALE] = scale
         return 1.0
     if Curve.PROP_SOURCE_TRANSFORM in curve:
         multiplier = max(.001, curve.get(Curve.PROP_RADIUS_MULTIPLIER, 1.0))
-        scale = tuple(v / multiplier for v in obj.scale)
+        scale = tuple(v / (multiplier * taper) for v in obj.scale)
         previous = obj.get(Curve.PROP_SOURCE_SCALE, ())
         if len(previous) != 3 or any(abs(a-b) > 1e-6 for a,b in zip(previous, scale)):
             obj[Curve.PROP_SOURCE_SCALE] = scale
@@ -880,7 +905,7 @@ def calculate_base_scale(curve, obj):
     curve_scale_multiplier = curve.scale.x/curve.get("initial_curve_scale", curve.scale.x)
     radius_multiplier = curve[Curve.PROP_RADIUS_MULTIPLIER]
     point_radius = obj.get("radius",1.0)
-    return obj.scale.x/( point_radius* radius_multiplier * curve_scale_multiplier )
+    return obj.scale.x/( point_radius* radius_multiplier * curve_scale_multiplier * taper )
 
 # change color of objects on curve
 def apply_color(curve_obj, user_data):

@@ -1,0 +1,48 @@
+{
+  "source": "Native placement graphs, PIPELINE_CONNECTION / SnapPoint_Pipeline_ at reference origin; separate from Pylon_Out electrical sockets",
+  "game_build": "26386568",
+  "parts": {
+    "U_EXTRACTOR_S": {
+      "SUPPLY_1": [
+        0,
+        0.433087,
+        0.977848
+      ]
+    },
+    "U_GASEXTRACTOR": {
+      "SUPPLY_1": [
+        0,
+        0.433087,
+        0.977848
+      ]
+    },
+    "U_SILO_S": {
+      "SUPPLY_1": [
+        0,
+        0.32845,
+        0.97785
+      ],
+      "SUPPLY_2": [
+        -0.97785,
+        0.32845,
+        0
+      ],
+      "SUPPLY_3": [
+        0,
+        0.32845,
+        -0.97785
+      ],
+      "SUPPLY_4": [
+        0.97785,
+        0.32845,
+        0
+      ]
+    }
+  },
+  "scene_sha256": {
+    "models/planets/biomes/common/buildings/parts/buildableparts/utilityparts/module_pumps_placement.scene.mbin": "ec4ef7039b7cf0ec5e38af443a7da3d84617d6ec38865c595e4cccde7dff3bf9",
+    "models/planets/biomes/common/buildings/parts/buildableparts/utilityparts/module_gasextractor_placement.scene.mbin": "ed6ac28dc34d6b516e5a97728980bea985e294052ed40bc8ec6b57f529bc39fd",
+    "models/planets/biomes/common/buildings/parts/buildableparts/utilityparts/module_silos_placement.scene.mbin": "7fcbfdd946c75060da48a13d3dd39260f3e1f42bf1d4c6b41b47c840c6e2deca",
+    "models/planets/biomes/common/buildings/parts/buildableparts/utilityparts/pipeline_connection.scene.mbin": "7da95813dbf056190c9b08d33cc44998cac6140b2dc1ea86bb0066cee2e9e82d"
+  }
+}

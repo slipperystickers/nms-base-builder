@@ -1,4 +1,5 @@
 """Early Corvette warnings and reviewed repairs from the shared I/O controls."""
+from .. import i18n
 from pathlib import Path
 import textwrap
 from uuid import uuid4
@@ -47,6 +48,7 @@ def repair_button(layout, data, ctx, index, base_index=-1):
 
 class BBE_OT_select_corvette(bpy.types.Operator):
     bl_idname = 'bbe.select_corvette'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Select Corvette'
     value: bpy.props.StringProperty()
     expected: bpy.props.StringProperty()
@@ -68,32 +70,33 @@ class BBE_OT_select_corvette(bpy.types.Operator):
 
 
 class BBE_MT_corvette_picker(bpy.types.Menu):
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Select Corvette'
 
     def draw(self, context):
         from .function_help import corner_help
-        corner_help(self.layout, 'PICK_SHIP')
+        corner_help(i18n.localized_layout(self.layout), 'PICK_SHIP')
         data = context.scene.nms_save_data
         for ctx in ('Main', 'Season'):
             builds = [b for b in entries(data) if b.save_context == ctx]
             missing = [b for b in data.extracted_base_data.get('missing_corvettes', []) if b['context'] == ctx]
             if not builds and not missing:
                 continue
-            self.layout.label(text='Main save' if ctx == 'Main' else 'Expedition')
+            i18n.localized_layout(self.layout).label(text='Main save' if ctx == 'Main' else 'Expedition')
             for base in builds:
-                row = self.layout.row(); row.alert = bool(base.issues)
+                row = i18n.localized_layout(self.layout).row(); row.alert = bool(base.issues)
                 op = row.operator('bbe.select_corvette', text=label(base),
                                   icon='ERROR' if base.issues else 'CHECKMARK' if identifier(base) == data.nms_base_index else 'NONE')
                 op.value = identifier(base); op.expected = cache_key(data)
                 op.explanation = ' '.join(base.issues) or 'Select this saved build'
                 if base.issues:
-                    note = self.layout.row(); note.alert = True
+                    note = i18n.localized_layout(self.layout).row(); note.alert = True
                     note.label(text=textwrap.shorten(base.issues[0], width=57, placeholder='…'))
             for item in missing:
-                row = self.layout.row(); row.alert = True
+                row = i18n.localized_layout(self.layout).row(); row.alert = True
                 row.label(text=f"Slot {item['index'] + 1}: {item['name']} — no linked build", icon='ERROR')
-                repair_button(self.layout, data, ctx, item['index'])
-        op = self.layout.operator('bbe.select_corvette', text='Clear Selection', icon='X')
+                repair_button(i18n.localized_layout(self.layout), data, ctx, item['index'])
+        op = i18n.localized_layout(self.layout).operator('bbe.select_corvette', text='Clear Selection', icon='X')
         op.value = 'Default'; op.expected = cache_key(data)
 
 
@@ -129,6 +132,7 @@ def draw_status(layout, data):
 
 class BBE_OT_corvette_repair_file(bpy.types.Operator):
     bl_idname = 'bbe.corvette_repair_file'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Choose Replacement Corvette'
     bl_description = 'Replace this slot’s build and ship data with a complete .nmsship after review, with backups. Use Repair — Keep My Build to retain the existing data'
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
@@ -167,9 +171,9 @@ class BBE_OT_corvette_repair_file(bpy.types.Operator):
             report_error(self, {'ERROR'}, str(exc)); return {'CANCELLED'}
 
     def draw(self, context):
-        self.layout.label(text=f'Destination: {self.context_name} / Slot {self.index + 1}')
-        self.layout.label(text='Select a complete .nmsship package.')
-        self.layout.label(text='Next: review the ship, inventory and build replacement.')
+        i18n.localized_layout(self.layout).label(text=f'Destination: {self.context_name} / Slot {self.index + 1}')
+        i18n.localized_layout(self.layout).label(text='Select a complete .nmsship package.')
+        i18n.localized_layout(self.layout).label(text='Next: review the ship, inventory and build replacement.')
 
     def execute(self, context):
         try:
@@ -194,6 +198,7 @@ class BBE_OT_corvette_repair_file(bpy.types.Operator):
 
 class BBE_OT_corvette_repair_review(bpy.types.Operator):
     bl_idname = 'bbe.corvette_repair_review'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Review Corvette Repair'
     token: bpy.props.StringProperty(options={'HIDDEN'})
     confirm: bpy.props.BoolProperty(name='This slot should be a Corvette; replace it with the file shown', default=False)
@@ -208,9 +213,9 @@ class BBE_OT_corvette_repair_review(bpy.types.Operator):
     def draw(self, context):
         s = _reviews.get(self.token)
         if not s:
-            self.layout.label(text='Review expired. Start the repair again.'); return
+            i18n.localized_layout(self.layout).label(text='Review expired. Start the repair again.'); return
         ship = core.ships(s['root'], s['context'])[s['index']]
-        l = self.layout
+        l = i18n.localized_layout(self.layout)
         from .function_help import help_button
         help_button(l, 'REPLACE')
         l.label(text=f"Destination: {s['context']} / Slot {s['index']+1}: {core.get(ship, 'Name') or 'Unnamed / empty'}", icon='ERROR')

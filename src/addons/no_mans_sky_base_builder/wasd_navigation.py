@@ -14,12 +14,15 @@ MOVEMENT = {'W', 'A', 'S', 'D', 'Q', 'E', 'UP_ARROW', 'DOWN_ARROW', 'LEFT_ARROW'
 CONTEXT_MENUS = {'OBJECT': 'VIEW3D_MT_object_context_menu', 'EDIT_MESH': 'VIEW3D_MT_edit_mesh_context_menu'}
 # These long-lived browser listeners pass through events outside their grid.
 # Their presence in a window does not mean the viewport is being edited.
-PASSIVE_LISTENERS = {'BBE_OT_asset_grid', 'BBE_OT_sidebar_asset_grid'}
+# Screencast observes input; its persistent modal must not block navigation.
+PASSIVE_LISTENERS = {'BBEPLUS_OT_sidebar_asset_grid', 'BBEPLUS_OT_asset_grid',
+                     'BBE_OT_sidebar_asset_grid', 'BBE_OT_asset_grid',
+                     'WM_OT_sk_screencast_keys'}
 
 
-def input_is_owned(context):
-    return any(operator.bl_idname not in PASSIVE_LISTENERS
-               for operator in getattr(context.window, 'modal_operators', ()))
+def input_is_owned(context, owner=None):
+    return any(operator != owner and operator.bl_idname not in PASSIVE_LISTENERS
+               for operator in getattr(context.window, 'modal_operators', ()) if operator is not None)
 
 
 def preferences(context):
@@ -36,24 +39,31 @@ def direction(keys, rotation):
     return value.normalized() if value.length_squared else value
 
 
-def draw_controls(layout, context):
+def draw_controls(layout, context, *, include_details=True):
     prefs = preferences(context)
     if prefs is None:
         return
     col = layout.column(align=True)
-    col.prop(prefs, 'bbe_wasd_enabled', text='WASD Navigation', toggle=True, icon='ORIENTATION_VIEW')
-    if prefs.bbe_wasd_enabled:
-        from .save_editor.function_help import help_button
-        help_button(col, 'NAVIGATION')
-        col.label(text='Hold right mouse: look + WASD', icon='MOUSE_RMB')
-        col.label(text='Q/E: down/up · Shift: fast · Ctrl: slow')
-        col.prop(prefs, 'bbe_wasd_speed', text='Speed')
-        col.prop(prefs, 'bbe_wasd_sensitivity', text='Look sensitivity')
+    row=col.row(align=True)
+    row.prop(prefs, 'bbe_wasd_enabled', text='WASD Navigation', toggle=True, icon='ORIENTATION_VIEW')
+    from .save_editor.function_help import corner_help
+    corner_help(row, 'NAVIGATION')
+    if include_details and prefs.bbe_wasd_enabled:
+        draw_navigation_details(col, prefs)
+
+
+def draw_navigation_details(col, prefs):
+    col.label(text='Hold right mouse: look + WASD', icon='MOUSE_RMB')
+    col.label(text='Q/E: down/up · Shift: fast · Ctrl: slow')
+    col.prop(prefs, 'bbe_wasd_speed', text='Speed')
+    col.prop(prefs, 'bbe_wasd_sensitivity', text='Look sensitivity')
 
 
 def settings_changed(self, context):
     if not self.bbe_wasd_enabled:
         stop()
+    from . import settings_memory
+    settings_memory.flush()
 
 
 def stop():
@@ -87,9 +97,12 @@ def before_load(_):
 
 class BBE_OT_wasd_navigation(bpy.types.Operator):
     bl_idname = 'bbe.wasd_navigation'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'BBE WASD Navigation'
     bl_description = 'Hold right mouse to look; WASD moves, Q/E moves vertically, wheel changes speed'
     bl_options = {'BLOCKING', 'GRAB_CURSOR'}
+    from_alignment: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    from_repeat: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
@@ -101,10 +114,23 @@ class BBE_OT_wasd_navigation(bpy.types.Operator):
 
     def invoke(self, context, event):
         global _active, _resources
-        if not self.poll(context) or event.type != 'RIGHTMOUSE':
+        if not self.poll(context):
             return {'PASS_THROUGH'}
-        # A controller / placement / transform session owns its input until it ends.
-        if input_is_owned(context):
+        self._owner = None
+        if self.from_alignment:
+            from . import alignment_tools
+            self._owner = next((op for op in alignment_tools._sessions
+                                if op.window == context.window and op.area == context.area), None)
+            if self._owner is None:
+                return {'CANCELLED'}
+        elif self.from_repeat:
+            from . import repeat_along
+            self._owner = repeat_along._sessions.get(context.area.as_pointer())
+            if self._owner is None:
+                return {'CANCELLED'}
+        elif event.type != 'RIGHTMOUSE':
+            return {'PASS_THROUGH'}
+        if input_is_owned(context, self._owner):
             return {'PASS_THROUGH'}
         for name, module in tuple(sys.modules.items()):
             if name.endswith('bbe_controller_companion') and getattr(module, '_session', None) is not None:
@@ -155,7 +181,7 @@ class BBE_OT_wasd_navigation(bpy.types.Operator):
                 self.finish()
                 return {'FINISHED'}
             if event.type == 'RIGHTMOUSE' and event.value == 'RELEASE':
-                menu = CONTEXT_MENUS.get(context.mode) if not self._moved else None
+                menu = CONTEXT_MENUS.get(context.mode) if not self._moved and self._owner is None else None
                 self.finish()
                 if menu:
                     bpy.ops.wm.call_menu('INVOKE_DEFAULT', name=menu)

@@ -5,11 +5,12 @@ on the original objects; removing/moving an attachment restores the closed secti
 """
 import json
 import re
+from time import perf_counter
 from functools import lru_cache
 from pathlib import Path
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Vector, Matrix
 from mathutils.kdtree import KDTree
 from bpy.app.handlers import persistent
 from .utils import materials_v2
@@ -18,10 +19,13 @@ from . import undo_guard, corvette_snapping
 SOURCE = 'bbe_hab_closed_mesh'
 OPEN = 'bbe_hab_open_slots'
 DOORWAYS = 'bbe_hab_doorway_slots'
-WINDOWS = {'B_WALL_WIND0', 'B_WALL_WIND1', 'B_WALL_WIND2'}
+WINDOWS = {f'B_WALL_WIND{i}' for i in range(4)}
+STAIRS = 'B_STAIRS0'
 WASTE = 'B_WALL_TOIL0'
 MAGNETS = {'B_MAG_1X1', 'B_MAG_1X2'}
-ATTACHMENTS = WINDOWS | {'B_DOOR0', WASTE} | MAGNETS
+TECH = {'B_WALL_TECH0', 'B_WALL_TECH1'}
+UTILITY = TECH | WINDOWS | {'B_WALL_BUNK0','B_WALL_PLAN0','B_WALL_KITC0','B_WALL_MED0','B_WALL_CANT0'} | {f'B_WALL_CARG{i}' for i in range(10)}
+ATTACHMENTS = UTILITY | {'B_DOOR0', WASTE} | MAGNETS | TECH
 GHOST = 'bbe_waste_ghost_state'
 REFERENCE = 'bbe_waste_reference_mesh'
 GHOST_MESH = 'bbe_waste_ghost_mesh'
@@ -43,7 +47,7 @@ def deck_slots():
 
 
 def source_mesh(obj):
-    if not obj.data.get(OPEN):
+    if not obj.data.get(OPEN) and obj.get(SOURCE) != obj.data:
         obj[SOURCE] = obj.data
     return obj.get(SOURCE, obj.data)
 
@@ -162,6 +166,86 @@ def display_waste(obj, style):
         ghost(obj, True)
 
 
+TECH_SOURCE = 'bbe_tech_wall_source'
+TECH_VARIANT = 'bbe_tech_wall_variant'
+
+
+@lru_cache(maxsize=1)
+def utility_variants():
+    return json.loads((Path(__file__).parent / 'resources/utility_walls/variants.json').read_text())
+
+
+def display_tech(obj, hab=None, slot=None):
+    """Swap only display geometry, aligned with the host's authored wall locator."""
+    source = obj.data.get(TECH_SOURCE) or obj.data
+    if hab is None:
+        if obj.data != source:
+            undo_guard.track_generated_preview()
+            obj.data = source
+        return False
+    pid = obj.get('ObjectID')
+    host_id = hab.get('ObjectID')
+    axis = 'NS' if slot[4] in 'NS' else 'EW'
+    style = host_id[-1]
+    detailed = 'nms_high_res_id' in source
+    quality = 'detailed' if detailed else 'simple'
+    model = utility_variants().get(f'{pid}:{axis}:{style}')
+    if not model:
+        return False
+    directory = Path(__file__).parent / 'resources/utility_walls'
+    if detailed:
+        from . import hd_library
+        additions = hd_library.additions_root()
+        path = additions / 'utility_walls' / f'{model}_detailed.blend' if additions else None
+    else:
+        path = directory / f'{model}_simple.blend'
+    if not path or not path.is_file():
+        # Older HD packs still contain the original refiner and radar assemblies.
+        legacy = additions / 'tech_walls/detailed.blend' if detailed and additions and pid in TECH else None
+        if legacy and legacy.is_file() and axis=='EW':
+            path=legacy
+        else:
+            path=directory / f'{model}_simple.blend'
+            quality='simple'
+    mesh_name = f'BBE Tech Wall {pid[-1]} {axis} {style} detailed' if path.parent.name=='tech_walls' else 'BBE '+model
+    # The wall mesh is authored in host-local coordinates. Convert the wall
+    # locator into the attachment's existing local space; never move its origin.
+    local = (obj.matrix_world.inverted_safe() @ corvette_snapping._native_target(hab)
+             @ Matrix(table()[host_id]['slots'][slot]['matrix']))
+    key = f'{model} {quality} ' + ','.join(str(round(v,5)) for row in local for v in row)
+    if obj.data.get(TECH_VARIANT) == key:
+        return True
+    mesh = next((m for m in bpy.data.meshes if m.get(TECH_VARIANT) == key
+                 and m.get(TECH_SOURCE) == source), None)
+    if mesh is None:
+        with bpy.data.libraries.load(str(path), link=False) as (src, dst):
+            # Per-assembly libraries contain one mesh. Blender may suffix its
+            # name if the generator has already built the other proxy quality.
+            dst.meshes = [mesh_name] if mesh_name in src.meshes else src.meshes[:1] if path.parent.name=='utility_walls' else []
+        if not dst.meshes:
+            return False
+        mesh = dst.meshes[0]
+        if mesh is None:
+            return False
+        mesh.transform(local)
+        if quality=='simple':
+            for mat in source.materials:
+                mesh.materials.append(mat)
+        if detailed:
+            from . import builder_v2
+            builder_v2._relink_mesh_textures(mesh)
+            materials_v2.note_appended_data()
+            materials_v2.dedupe_appended_data()
+        for key_name, value in source.items():
+            mesh[key_name] = value
+        mesh[TECH_SOURCE] = source
+        mesh[TECH_VARIANT] = key
+        mesh.update()
+    undo_guard.track_generated_preview()
+    obj.data = mesh
+    return True
+
+
 def matching_slots(attachment, hab):
     """Native socket compatibility plus pose, including scaled/rotated ships."""
     if attachment.get('ObjectID') == 'B_MAG_1X1':
@@ -172,7 +256,7 @@ def matching_slots(attachment, hab):
     points = corvette_snapping.DATA.get(hab.get('ObjectID'), ())
     for key, _, _, candidate in corvette_snapping.options(attachment, hab):
         name = points[int(key.split(':')[0])]['name']
-        if attachment.get('ObjectID') == WASTE and not name.startswith('SnapPoint_Int'):
+        if attachment.get('ObjectID') in (UTILITY - WINDOWS) | {WASTE} and not name.startswith('SnapPoint_Int'):
             # An opposite-side socket keeps the host wall in place.
             continue
         match = re.fullmatch(r'SnapPoint_(?:SPIGN_)?(?:IntOpp|Int)?([NSEW]\d+)', name)
@@ -191,6 +275,56 @@ def matching_slots(attachment, hab):
     return slots
 
 
+@lru_cache(maxsize=32)
+def stair_poses(pid):
+    """Legal stair placements and the authored deck panel each one replaces."""
+    result = []
+    for key, _, _, pose in corvette_snapping._local_options(STAIRS, pid):
+        name = corvette_snapping.DATA[pid][int(key.split(':')[0])]['name']
+        site = re.fullmatch(r'SnapPoint_(Int)?Stairs(\d+)', name)
+        if site:
+            slot = ('FLOOR' if site[1] else 'CEILING') + site[2] + '_'
+            if slot in deck_slots()[pid]['detailed']:
+                result.append((slot, pose))
+    return result
+
+
+def frames_match(inverse, other):
+    delta = inverse @ other
+    return (delta.translation.length < .05 and
+            max(abs(delta[r][c] - (r == c)) for r in range(3) for c in range(3)) < .025)
+
+
+def mounted_stairs(parts, habs):
+    frames = [corvette_snapping._native_target(obj) for obj in parts if obj.get('ObjectID') == STAIRS]
+    mounted = set()
+    if not frames:
+        return mounted
+    tree = KDTree(len(frames))
+    for index, frame in enumerate(frames):
+        tree.insert(frame.translation, index)
+    tree.balance()
+    for hab in habs:
+        native = corvette_snapping._native_target(hab)
+        if abs(native.determinant()) < 1e-12:
+            continue
+        for slot, local in stair_poses(hab['ObjectID']):
+            pose = native @ local
+            for _, index, _ in tree.find_range(pose.translation, .05 * max(map(abs, pose.to_scale()))):
+                if frames_match(pose.inverted(), frames[index]):
+                    mounted.add((hab, slot))
+                    break
+    return mounted
+
+
+@lru_cache(maxsize=128)
+def deck_panel(locator):
+    site = re.fullmatch(r'SnapPoint_([TB])([13])', locator)
+    if site:
+        return ('CEILING' if site[1] == 'T' else 'FLOOR') + ('0_' if site[2] == '1' else '1_')
+    return None
+
+
 def room_connections(parts, habs):
     """Match Room outputs to inputs, not merely nearby geometry or Block snaps.
 
@@ -198,6 +332,8 @@ def room_connections(parts, habs):
     Index socket positions so moving a part does not compare every room pair.
     """
     inputs=[];outputs=[]
+    mounted = mounted_stairs(parts, habs)
+    hab_set=set(habs)
     for obj in parts:
         pid=obj.get('ObjectID','')
         if pid not in table() and not pid.startswith('B_COK_'):
@@ -206,29 +342,38 @@ def room_connections(parts, habs):
         for key, _, kind, role, local in corvette_snapping._sockets(pid):
             if kind!='Room':continue
             world=native@local
-            if role=='In':inputs.append((obj,world))
-            elif obj in habs:
-                name=corvette_snapping.DATA[pid][int(key.split(':')[0])]['name']
+            name=corvette_snapping.DATA[pid][int(key.split(':')[0])]['name']
+            deck = deck_panel(name) if mounted and obj in hab_set else None
+            if role=='In':inputs.append((obj,world,deck))
+            elif deck and (obj, deck) in mounted:
+                outputs.append((obj,deck,world))
+            elif obj in hab_set:
                 match=re.fullmatch(r'SnapPoint_([NSEW]\d+)',name)
                 if match and 'WALL'+match.group(1)+'_' in table()[pid]['slots']:
                     outputs.append((obj,'WALL'+match.group(1)+'_',world))
     occupied={obj:set() for obj in habs}
+    for hab, slot in mounted:
+        occupied[hab].add(slot)
     if not inputs:return occupied
     tree=KDTree(len(inputs))
-    for i,(_,frame) in enumerate(inputs):tree.insert(frame.translation,i)
+    for i,(_,frame,_) in enumerate(inputs):tree.insert(frame.translation,i)
     tree.balance()
     for obj,slot,frame in outputs:
         if abs(frame.determinant())<1e-12:continue
         inverse=frame.inverted()
-        radius=max(frame.to_scale())*.05
+        radius=max(map(abs, frame.to_scale()))*.05
         for _,index,_ in tree.find_range(frame.translation,radius):
-            other,other_frame=inputs[index]
-            if other==obj:continue
-            delta=inverse@other_frame
-            if (delta.translation.length<.05 and
-                max(abs(delta[r][c]-(r==c)) for r in range(3) for c in range(3))<.025):
+            other,other_frame,other_deck=inputs[index]
+            if other==obj or not frames_match(inverse, other_frame):
+                continue
+            if slot.startswith('WALL'):
                 occupied[obj].add(slot)
-                break
+            elif other_deck:
+                # A stair landing also clears the mating panel on the next deck.
+                occupied[other].add(other_deck)
+            else:
+                continue
+            break
     return occupied
 
 
@@ -266,49 +411,39 @@ def open_mesh(source, pid, slots, detailed=True, doorways=()):
             ranges = deck_slots()[pid]['detailed' if detailed else 'simple'][slot]
         for first, last in ranges:
             keep[first:last+1] = False
-    faces = [p for p in source.polygons if keep[p.index]]
-    loop_ids = np.array([i for p in faces for i in p.loop_indices], dtype=np.int32)
-    mesh = bpy.data.meshes.new('BBE Hab / '+pid+' / '+token)
-    mesh.from_pydata([v.co[:] for v in source.vertices], [], [p.vertices[:] for p in faces])
-    for material in original.materials:
-        mesh.materials.append(material)
-    mesh.polygons.foreach_set('material_index', [p.material_index for p in faces])
-    mesh.polygons.foreach_set('use_smooth', [p.use_smooth for p in faces])
-    for uv in source.uv_layers:
-        values = np.empty(len(source.loops)*2, dtype=np.float32)
-        uv.data.foreach_get('uv', values)
-        mesh.uv_layers.new(name=uv.name).data.foreach_set('uv', values.reshape(-1,2)[loop_ids].ravel())
-    if len(source.corner_normals) == len(source.loops):
-        normals = np.empty(len(source.loops)*3, dtype=np.float32)
-        source.corner_normals.foreach_get('vector', normals)
-        mesh.normals_split_custom_set(normals.reshape(-1,3)[loop_ids].tolist())
-    for key, value in original.items():
-        mesh[key] = value
+    from . import hab_doorways
+    mesh = hab_doorways.build_preview(source, original, pid, keep, doorways, detailed,
+                                      'BBE Hab / '+pid+' / '+token)
     mesh[OPEN] = token
     mesh[SOURCE] = original
-    mesh.update()
-    if doorways:
-        from . import hab_doorways
-        combined=hab_doorways.add_frames(mesh,pid,doorways,detailed)
-        bpy.data.meshes.remove(mesh)
-        mesh=combined
     mesh[DOORWAYS]=doorway_token
     return mesh
 
 
-def refresh(scene=None, force=False):
+_activities = {}
+
+
+def finish_activity(key):
+    activity = _activities.pop(key, None)
+    if activity:
+        activity.__exit__(None, None, None)
+
+
+def refresh(scene=None, force=False, *, interactive=False):
     global _busy
     if _busy or not undo_guard.history_ready():
         return
     scene = scene or bpy.context.scene
+    supported = table().keys() | ATTACHMENTS | {STAIRS}
     parts = [o for o in scene.objects if o.type == 'MESH' and
-             (o.get('ObjectID') in set(table())|ATTACHMENTS or
+             (o.get('ObjectID') in supported or
               str(o.get('ObjectID','')).startswith('B_COK_'))]
     signature = (getattr(scene, 'bbe_detailed_proxies', True), tuple(
         (o.as_pointer(), o.data.as_pointer(), o.get('ObjectID'), tuple(round(v,5) for row in o.matrix_world for v in row))
         for o in parts))
     key = scene.as_pointer()
     if not force and _signatures.get(key) == signature:
+        finish_activity(key)
         return
     _busy = True
     try:
@@ -321,19 +456,42 @@ def refresh(scene=None, force=False):
             for hab in habs:
                 slots = matching_slots(attachment, hab)
                 if slots:
+                    if attachment.get('ObjectID') in UTILITY and not display_tech(attachment, hab, sorted(slots)[0]):
+                        continue
                     occupied[hab].update(slots)
                     matches.append((attachment, hab, slots))
+        deadline = perf_counter() + .012
+        deferred = 0
+        built = False
         for hab in habs:
             # An explicit wall attachment supplies its own frame/panel.
-            doorways=connections[hab]-occupied[hab]
+            doorways={slot for slot in connections[hab]-occupied[hab] if slot.startswith('WALL')}
             occupied[hab].update(connections[hab])
             source = source_mesh(hab)
-            wanted = open_mesh(source, hab['ObjectID'], occupied[hab],
-                               materials_v2.is_high_res(hab),doorways) if occupied[hab] else source
+            slots = occupied[hab]
+            if slots and hab.data.get(SOURCE) == source and (
+                    hab.data.get(OPEN) == ','.join(sorted(slots)) and
+                    hab.data.get(DOORWAYS, '') == ','.join(sorted(doorways))):
+                continue
+            if interactive and built and slots and perf_counter() > deadline:
+                deferred += 1
+                continue
+            wanted = open_mesh(source, hab['ObjectID'], slots,
+                               materials_v2.is_high_res(hab), doorways) if slots else source
             if hab.data != wanted:
+                built = True
                 undo_guard.track_generated_preview()
                 hab.data = wanted
+        if deferred:
+            if key not in _activities:
+                from .progress_ui import Activity
+                _activities[key] = Activity('Updating hab doorways', deferred_redraw=True).__enter__()
+            _activities[key].batch(len(habs)-deferred, len(habs), label='Habs')
+            return True
+        finish_activity(key)
         for attachment in attachments:
+            if attachment.get('ObjectID') in UTILITY and not any(a == attachment for a, _, _ in matches):
+                display_tech(attachment)
             if attachment.get('ObjectID') in MAGNETS:
                 from . import magnetic_mounts
                 mount = next(((hab, slots) for a, hab, slots in matches if a == attachment), None)
@@ -356,15 +514,25 @@ def refresh(scene=None, force=False):
 def tick():
     try:
         if not bpy.app.is_job_running('RENDER'):
+            pending = False
+            if _activities:
+                for key in _activities.keys() - {scene.as_pointer() for scene in bpy.data.scenes}:
+                    finish_activity(key)
             for scene in bpy.data.scenes:
-                refresh(scene)
+                pending = refresh(scene, interactive=True) or pending
+            if pending:
+                return .016
     except Exception as exc:
+        for key in tuple(_activities):
+            finish_activity(key)
         print('BBE hab windows:', exc)
     return .25
 
 
 @persistent
 def loaded(_):
+    for key in tuple(_activities):
+        finish_activity(key)
     _signatures.clear()
     # The timer refreshes after the load/undo settle period.
 
@@ -386,6 +554,7 @@ def register():
 
 
 def unregister():
+    loaded(None)
     if bpy.app.timers.is_registered(tick):
         bpy.app.timers.unregister(tick)
     for handlers, callback in ((bpy.app.handlers.load_post, loaded),
@@ -395,6 +564,8 @@ def unregister():
         if callback in handlers:
             handlers.remove(callback)
     for obj in bpy.data.objects:
+        if obj.type == 'MESH' and obj.get('ObjectID') in UTILITY:
+            display_tech(obj)
         if obj.type == 'MESH' and obj.get('ObjectID') in MAGNETS:
             from . import magnetic_mounts
             magnetic_mounts.refresh(obj, None)

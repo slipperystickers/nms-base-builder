@@ -184,9 +184,25 @@ def scenes_root():
     return None
 
 
+_ready_cache = (0.0, None)
+
+
+def invalidate_ready():
+    global _ready_cache
+    _ready_cache = (0.0, None)
+
+
 def ready():
-    return (available() and scenes_root() is not None and additions_root(allow_previous=False) is not None
-            and characters_root() is not None)
+    import time
+    global _ready_cache
+    now = time.monotonic()
+    checked, value = _ready_cache
+    if value is not None and now - checked < 3:
+        return value
+    value = (available() and scenes_root() is not None
+             and additions_root(allow_previous=False) is not None and characters_root() is not None)
+    _ready_cache = (now, value)
+    return value
 
 
 def characters_specification():
@@ -299,6 +315,7 @@ def remove_installed(expected_root):
                 if path.is_file() and path.relative_to(pack_root).as_posix() not in allowed:
                     raise ValueError('The HD pack contains extra files; nothing was deleted.')
     # Invalidate detection first, including if an OS file lock prevents cleanup.
+    invalidate_ready()
     for root, spec in packs:
         marker = dict(id=spec['id'], content_sha256=spec['content_sha256'], removing=True)
         (root / 'installed.json').write_text(json.dumps(marker), encoding='utf-8')
@@ -450,6 +467,7 @@ def start(archive=None):
                     _PROGRESS.segment = (offset / total, spec['download_bytes'] / total)
                     download_and_install(spec)
                     offset += spec['download_bytes']
+            invalidate_ready()
             complete = ready()
             STATE.update(message='Detailed Proxy pack is up to date.' if complete else
                          'HD update incomplete. Click Detailed Proxies to finish updating.',

@@ -18,7 +18,7 @@ from .part_overrides import parts_override
 from .utils import blend_utils, dictionary
 
 
-def native_placeable_objects(objects, bubble_hints=None):
+def native_placeable_objects(objects, bubble_hints=None, *, for_save=False):
     """Reject Blender-only corner proxies until a native duct layout is proven.
 
     Renaming BASE_BUBPIPE_L to BASE_BUBPIPE produced straight tubes in-game.
@@ -32,7 +32,7 @@ def native_placeable_objects(objects, bubble_hints=None):
             "convert the route to connected native bubble-duct placements first."
         )
     from . import bubble_export
-    return bubble_export.compile_objects(objects, bubble_hints or {})
+    return bubble_export.compile_objects(objects, bubble_hints or {}, for_save=for_save)
 
 
 class Builder(object):
@@ -202,6 +202,8 @@ class Builder(object):
         
         if placement_matrix is not None:
             item.object.matrix_world = placement_matrix
+        from . import decals
+        decals.initialize_settings(item.object)
         return item
 
     def add_preset(self, preset_id):
@@ -280,16 +282,9 @@ class Builder(object):
         return part_object
 
     # Serialising ---
-    def serialise(self, get_presets=False, add_timestamp=False, as_prefab=False,
-                  include_groups=True, progress=None, progress_range=(.02, .70)):
-        """Return NMS compatible dictionary.
-
-        Args:
-            get_presets (bool): This will generate data for presets. And
-                exclude parts generated from presets.
-        Returns:
-            dict: Dictionary of base information.
-        """
+    def object_records(self, *, get_presets=False, include_groups=True, progress=None,
+                       progress_range=(.02, .70), for_save=False, sources=None, read_only=False):
+        """Collect ordered records. Panel comparisons must only read Blender data."""
         # Get all object part data.
         object_list = []
         bubble_hints = {}
@@ -298,8 +293,11 @@ class Builder(object):
         for index, item in enumerate(parts):
             object_id = item["ObjectID"]
             use_class = self.get_part_class(object_id)
-            item_obj = use_class.deserialise_from_object(item, builder_object=self)
-            record = item_obj.serialise()
+            if read_only:
+                record = use_class.read_record(item)
+            else:
+                item_obj = use_class.deserialise_from_object(item, builder_object=self)
+                record = item_obj.serialise()
             if item.get('bbe_bubble_shape') and object_id == 'BASE_BUBPIPE':
                 if get_presets:
                     record['bbe_bubble_shape'] = item['bbe_bubble_shape']
@@ -309,6 +307,8 @@ class Builder(object):
                         raise ValueError(f'{item.name}: bubble ducts need the same positive scale on X, Y and Z before exporting.')
                     bubble_hints[len(object_list)] = {'shape': item['bbe_bubble_shape'], 'name': item.name}
             object_list.append(record)
+            if sources is not None:
+                sources.append((item, ''))
             if progress and (index % 8 == 0 or index + 1 == len(parts)):
                 progress.batch(index + 1, len(parts), *progress_range, label='Parts')
             
@@ -316,7 +316,7 @@ class Builder(object):
         if include_groups:
             for item in self.get_all_groups():
                 group_hints = {}
-                group_objects = group.Group.serialise(item, bubble_hints=group_hints)
+                group_objects = group.Group.serialise(item, bubble_hints=group_hints, sources=sources, read_only=read_only)
                 if group_objects is not None:
                     if get_presets:
                         for i, hint in group_hints.items():
@@ -328,7 +328,24 @@ class Builder(object):
         # BBE project JSON keeps the curved preview ID for later editing.
         # Game-facing clipboard, save and standalone exports use vanilla IDs.
         if not get_presets:
-            object_list = native_placeable_objects(object_list, bubble_hints)
+            object_list = native_placeable_objects(object_list, bubble_hints, for_save=for_save)
+
+        return object_list
+
+    def serialise(self, get_presets=False, add_timestamp=False, as_prefab=False,
+                  include_groups=True, progress=None, progress_range=(.02, .70), for_save=False,
+                  sources=None):
+        """Return NMS compatible dictionary.
+
+        Args:
+            get_presets (bool): This will generate data for presets. And
+                exclude parts generated from presets.
+        Returns:
+            dict: Dictionary of base information.
+        """
+        object_list = self.object_records(get_presets=get_presets, include_groups=include_groups,
+                                          progress=progress, progress_range=progress_range,
+                                          for_save=for_save, sources=sources)
 
         # Create full dictionary.
         key = "Prefab" if as_prefab else "Objects"
@@ -367,6 +384,8 @@ class Builder(object):
     def _deserialise_with_progress(self, data, stages, progress):
         progress.update(.02, 'Preparing scene')
         stages.prepare_import(bpy.context.scene)
+        from . import cable_connections
+        existing_lines = {obj.session_uid for obj in bpy.context.scene.objects if obj.get('ObjectID') in cable_connections.KINDS}
 
         base_version = data.get("BaseVersion", 8)
 
@@ -396,10 +415,10 @@ class Builder(object):
 
         # Build Rigs.
         self.build_rigs()
-        # Optimise control points.
+        # Infer attachments only on incoming lines, before joining like endpoints.
+        bpy.context.view_layer.update()
+        cable_connections.bind_imported(bpy.context.scene, existing_lines)
         self.optimise_control_points()
-        from . import cable_connections
-        cable_connections.bind_imported(bpy.context.scene)
         progress.update(1.0, 'Import complete')
 
     @staticmethod
@@ -547,63 +566,76 @@ class Builder(object):
             json.dump(self.serialise(add_timestamp=False, as_prefab=True), stream, indent=4)
 
     def build_rigs(self):
-        """Get all items that require a rig and build them."""
+        """Build missing rigs without resetting live connections during paste."""
+        from . import cable_connections as cables
         blend_utils.scene_refresh()
-        parts = self.get_all_parts(exclude_presets=True)
-        for part in parts:
+        for part in self.get_all_parts(exclude_presets=True):
+            if part.get('ObjectID') in cables.COLLECTIONS:
+                # Text endpoint names are copied with cached parts. Only live
+                # constraint/driver IDs prove this object already has a rig.
+                track = next((c.target for c in part.constraints if c.type == 'TRACK_TO'), None)
+                animation = part.animation_data
+                driven = next((v.targets[0].id for f in animation.drivers
+                               if f.data_path == 'location' for v in f.driver.variables
+                               if v.targets[0].id is not None), None) if animation else None
+                if track is not None and driven is not None:
+                    continue
             builder_object = self.get_builder_object_from_bpy_object(part)
             if hasattr(builder_object, "build_rig"):
                 builder_object.build_rig()
 
+        imported_pipes = [part for part in bpy.context.scene.objects if 'bbe_pipe_import_up' in part]
+        if imported_pipes:
+            from .part_overrides.u_pipeline import restore_roll
+            bpy.context.view_layer.update()
+            for pipe in imported_pipes:
+                restore_roll(pipe)
+
     def optimise_control_points(self):
-        """Find all control points that share the same location and combine them."""
+        """Merge colocated endpoints through all live cable references.
+
+        A junction may serve many cables. The legacy ``power_line`` text
+        backlink describes only the last cable and must never decide which
+        drivers get rebound before an endpoint is removed.
+        """
+        from . import cable_connections as cables
         blend_utils.scene_refresh()
-
-        # First build a dictionary of controls that match.
-        power_control_objects = [obj for obj in bpy.data.objects if "rig_item" in obj]
-        power_control_reference = defaultdict(list)
-        for power_control in power_control_objects:
-            # Create a key that will group the controls based on their location.
-            # I am rounding the decimal point to 4 as the accuracy means items
-            # in the same location have slightly different values.
-            key = ",".join(
-                [
-                    str(round(loc, 3))
-                    for loc in power_control.matrix_world.decompose()[0]
-                ]
-            )
-            # Append the control to the key.
-            # Electrical and teleport cables are independent even when their
-            # endpoints occupy the same location (e.g. a stacked SRT build).
-            key = (power_control.get('bbe_cable_kind', ''), key)
-            if power_control.get('bbe_socket_key'):
-                from . import cable_connections
-                owner = cable_connections.control_owner(power_control)
-                key += (owner.as_pointer() if owner else None, power_control['bbe_socket_key'])
-            power_control_reference[key].append(power_control)
-
-        # Swap any duplicate controls with the first instance.
-        for key, value in power_control_reference.items():
-            unique_control = value[0]
-            other_controls = value[1:]
-
-            if not other_controls:
+        scene = bpy.context.scene
+        connections = []
+        controls = {}
+        for obj in list(scene.objects):
+            if obj.get('ObjectID') not in cables.COLLECTIONS:
                 continue
-
-            for control in other_controls:
-                power_line = blend_utils.get_item_by_name(control["power_line"])
-                power_line_obj = self.get_builder_object_from_bpy_object(power_line)
-                prev_start_control = bpy.data.objects[power_line_obj.start_control]
-                prev_end_control = bpy.data.objects[power_line_obj.end_control]
-
-                # Assign new controls.
-                if control == prev_start_control:
-                    power_line_obj.build_rig(unique_control, prev_end_control)
-                else:
-                    power_line_obj.build_rig(prev_start_control, unique_control)
-
-                # Hide away control.
-                blend_utils.remove_object(control.name)
+            ends = cables.endpoints(obj)
+            if not all(ends):
+                continue
+            connections.append((obj, ends))
+            for control in ends:
+                if control.get('rig_item'):
+                    # Don't merge a control shared with another scene or cable
+                    # type; preserving it is safer than changing external rigs.
+                    controls.setdefault(control, set()).add(obj.get('ObjectID'))
+        unique = {}
+        replacements = {}
+        for control, kinds in controls.items():
+            if len(kinds) != 1 or len(control.users_scene) > 1:
+                continue
+            position = tuple(round(v, 3) for v in control.matrix_world.translation)
+            owner = cables.control_owner(control) if control.get('bbe_socket_key') else None
+            key = (next(iter(kinds)), position, owner,
+                   control.get('bbe_socket_key', '') if owner is not None else '')
+            if key in unique:
+                replacements[control] = unique[key]
+            else:
+                unique[key] = control
+        for cable, (start, end) in connections:
+            new_start, new_end = replacements.get(start, start), replacements.get(end, end)
+            if new_start != start or new_end != end:
+                self.get_builder_object_from_bpy_object(cable).build_rig(new_start, new_end)
+        for old in replacements:
+            # Other drivers, parents or constraints may also use this object.
+            if old.users <= len(old.users_collection):
+                bpy.data.objects.remove(old, do_unlink=True)
 
 
 # Public integration hook used by companion add-ons such as Charon Forge.

@@ -232,15 +232,15 @@ def imported_station(context,base,parts,transfer=False):
     manager.station_status='Saved station visibility' if profile else 'Choose a hull and big parts with the Outliner eyes'
     organise_parts(context,parts)
     assemble(context,choices,profile.get('visibility'))
-    for screen in bpy.data.screens:
-        for area in screen.areas:
-            if area.type=='VIEW_3D':
-                space=area.spaces.active; space.clip_end=30000
-                space.region_3d.view_location=(0,942,4)
-                space.region_3d.view_distance=220
-                space.region_3d.view_rotation=(Vector((0,942,4))-Vector((130,780,200))).to_track_quat('-Z','Y')
-                space.region_3d.view_perspective='ORTHO'
-            if area.type=='OUTLINER': area.spaces.active.show_restrict_column_hide=True
+    for window in context.window_manager.windows:
+        if window.scene != context.scene:
+            continue
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                space = area.spaces.active
+                space.clip_end = max(space.clip_end, 30000)
+            if area.type == 'OUTLINER':
+                area.spaces.active.show_restrict_column_hide = True
 
 # Dynamic enum strings must remain alive for Blender RNA.
 _enum_cache={}
@@ -283,6 +283,7 @@ def option_changed(self,context):
 
 class ApplyStationReference(bpy.types.Operator):
     bl_idname='object.nms_apply_station_reference'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label='Refresh Reference Library'
     bl_description='Load all six hull families and large eye-toggle parts; keep player parts in place'
     bl_options={'REGISTER','UNDO'}
@@ -303,6 +304,7 @@ class ApplyStationReference(bpy.types.Operator):
 
 class RememberStationVisibility(bpy.types.Operator):
     bl_idname='object.nms_remember_station_visibility'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label='Remember Station Visibility'
     bl_description='Remember these Outliner eye settings when this station is imported again'
     def execute(self,context):

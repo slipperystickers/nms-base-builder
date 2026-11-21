@@ -5,6 +5,7 @@ class ResetTransformations(bpy.types.Operator):
     """Reset Scale and Rotation of an object"""
 
     bl_idname = "object.nms_reset_transformations"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Reset Transformations"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -26,6 +27,7 @@ class CopyTransformations(bpy.types.Operator):
     """Copy Transformation of active object"""
 
     bl_idname = "object.nms_copy_transformations"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Copy Transformations"
     
 
@@ -51,6 +53,7 @@ class PasteTransformations(bpy.types.Operator):
     """Paste Copied transformations"""
 
     bl_idname = "object.nms_paste_transformations"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Paste Transformations"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -69,6 +72,7 @@ class PasteLocation(bpy.types.Operator):
     """Paste Copied location"""
 
     bl_idname = "object.nms_paste_location"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Paste Location"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -88,6 +92,7 @@ class PasteRotation(bpy.types.Operator):
     """Paste Copied Rotation"""
 
     bl_idname = "object.nms_paste_rotation"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Paste Rotation"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -106,6 +111,7 @@ class PasteScale(bpy.types.Operator):
     """Paste Copied Scale"""
 
     bl_idname = "object.nms_paste_scale"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Paste Scale"
     bl_options = {"UNDO", "REGISTER"}
 

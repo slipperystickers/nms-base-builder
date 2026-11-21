@@ -112,7 +112,10 @@ def deserialise_from_data(data):
 
     from . import progress_ui
     with progress_ui.Activity('Importing models') as progress:
-        return _deserialise_from_data(data, progress)
+        result = _deserialise_from_data(data, progress)
+        from . import base_boundary
+        base_boundary.imported(bpy.context.scene, data)
+        return result
 
 
 def _deserialise_from_data(data, progress):
@@ -120,6 +123,8 @@ def _deserialise_from_data(data, progress):
 
     from . import stages
     stages.prepare_import(bpy.context.scene)
+    from . import cable_connections
+    existing_lines = {obj.session_uid for obj in bpy.context.scene.objects if obj.get('ObjectID') in cable_connections.KINDS}
 
     # High res meshes, keyed by object id. Shared by every placement.
     unique_meshes = {}
@@ -231,10 +236,10 @@ def _deserialise_from_data(data, progress):
 
     # Build Rigs.
     BUILDER.build_rigs()
-    # Optimise control points.
+    # Infer attachments only on incoming lines, before joining like endpoints.
+    bpy.context.view_layer.update()
+    cable_connections.bind_imported(bpy.context.scene, existing_lines)
     BUILDER.optimise_control_points()
-    from . import cable_connections
-    cable_connections.bind_imported(bpy.context.scene)
     progress.update(1.0, 'Import complete')
 
 
@@ -314,6 +319,8 @@ def add_part(
     bpy_object.hide_select = False
     bpy_object[Part.PROP_OBJECT_ID] = object_id
     bpy_object[Part.PROP_SNAP_ID] = object_id
+    from . import decals
+    decals.initialize_settings(bpy_object)
     bpy_object[Part.PROP_TIMESTAMP] = str(int(time.time()))
     bpy_object[Part.PROP_BELONGS_TO_PRESET] = Part.DEFAULT_BELONGS_TO_PRESET
     bpy_object[Part.PROP_ORDER] = len(bpy.data.objects)

@@ -1,3 +1,4 @@
+from . import i18n
 from .reload_support import prepare_package as _prepare_package
 _prepare_package(globals())
 
@@ -22,11 +23,12 @@ from pathlib import Path
 
 from . import builder, icons, part, preset, group, builder_v2, viewport_overlay, undo_guard, interchange, project_recovery, progress_ui, compatibility, wasd_navigation
 from . import build_metadata, build_metadata_ui
+from .charon_upload import UploadToCharon
 from .base_properties import NMSBaseProperties
 from .addon_preferences import NMSAddonPreferences
 from .part_overrides import line
 from .save_editor import save_editor_operators, save_editor_utils, station_reference
-from .save_editor.save_editor_presentation import NMS_PT_save_editor_panel, BBE_OT_backup_settings, BBE_OT_refresh_save_counts, BBE_OT_save_refresh_notice
+from .save_editor.save_editor_presentation import NMS_PT_save_editor_panel, BBE_OT_backup_settings, BBE_OT_choose_backup_folder, BBE_OT_refresh_save_counts, BBE_OT_save_refresh_notice
 from .save_editor.save_manager import SaveManager
 from .save_editor import save_manager
 
@@ -34,7 +36,7 @@ from .tools import batch_tool_operators, build_tool_operators, prooperties_opera
 from .tools_menu import base_builder_menu, base_builder_menu_operators
 from .tools.batch_tool import BatchTool
 from .tools.batch_tool_presentation import NMS_PT_batch_tools_panel
-from . import part_counts
+from . import part_counts, build_timer
 from .tools.build_tool import BuildTool
 from .tools.build_tool_presentation import NMS_PT_tools_panel
 from .tools.properties import Properties
@@ -106,20 +108,20 @@ with open(Path(FILE_PATH) / "blender_manifest.toml", "rb") as _manifest_stream:
 # Setting Support Methods ---
 def ShowMessageBox(message="", title="Message Box", icon="INFO"):
     def draw(self, context):
-        self.layout.label(text=message)
+        i18n.localized_layout(self.layout).label(text=message)
 
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
 def get_line_type_from_enum(context):
     return {"POWER": "U_POWERLINE", "TELEPORT": "U_PORTALLINE",
-            "BYTEBEAT": "U_BYTEBEATLINE"}[context.scene.nms_main.line_switch]
+            "BYTEBEAT": "U_BYTEBEATLINE", "SUPPLY":"U_PIPELINE"}[context.scene.nms_main.line_switch]
 
 
 def cable_choice(settings):
     # Older scenes may contain the retired Pipe (3) or Automatic (4) value.
     value = settings.get("line_switch", 0)
-    return value if value in (0, 1, 2) else 0
+    return value if value in (0, 1, 2, 5) else 0
 
 
 def set_cable_choice(settings, value):
@@ -127,20 +129,37 @@ def set_cable_choice(settings, value):
 
 
 # Core Settings Class
+def _finish_build_import(context, data, previous_objects):
+    from . import import_view
+    station_reference.finish_transfer_import(context, data, previous_objects)
+    parts = (obj for obj in context.scene.objects
+             if obj not in previous_objects and obj.get('ObjectID'))
+    import_view.finish(context, parts)
+
+
 class NMSMain(PropertyGroup):
-    material_switch: EnumProperty(
+    material_category: EnumProperty(
+        name="Palette",
+        description="Choose a family of colour swatches",
+        items=_material.CATEGORY_ITEMS,
+        get=_material.get_palette_category,
+        set=_material.set_palette_category,
+    )
+
+    material_switch: EnumProperty(translation_context="BBEExtendedInterface", 
         name="Material Palette",
         description="Decide what type of material to apply",
         items=_material.BAKED_PALETTES_UI,
     )
 
-    line_switch: EnumProperty(
+    line_switch: EnumProperty(translation_context="BBEExtendedInterface", 
         name="line_switch",
         description="Decide what type of cable to build",
         items=[
             ("POWER", "Electrical Wire", "Electrical Wire", 0),
             ("TELEPORT", "Teleport Wire", "Teleport Wire", 1),
             ("BYTEBEAT", "Byte-Beat Cable", "Byte-Beat Cable", 2),
+            ("SUPPLY", "Supply Pipe", "Gas and mineral supply connections", 5),
         ],
         get=cable_choice, set=set_cable_choice, default="POWER",
     )
@@ -179,7 +198,7 @@ class NMSMain(PropertyGroup):
         base_props.deserialise_from_data(nms_data)
 
     def serialise(self, get_presets=False, objects_only=False, progress=None,
-                  progress_range=(.02, .70)):
+                  progress_range=(.02, .70), for_save=False, sources=None):
         """Export the data in the blender scene to NMS compatible data.
 
         This will slot the data into the clip-board so you can easy copy
@@ -188,7 +207,7 @@ class NMSMain(PropertyGroup):
 
         # Capture Individual Objects
         objects_data = BUILDER.serialise(get_presets=get_presets, progress=progress,
-                                         progress_range=progress_range)
+                                         progress_range=progress_range, for_save=for_save, sources=sources)
         if objects_only:
             return objects_data["Objects"]
 
@@ -252,7 +271,7 @@ class NMSMain(PropertyGroup):
                 scene['bbe_ship_source_error'] = source_error
         previous_objects = set(bpy.context.scene.objects)
         builder_v2.deserialise_from_data(nms_import_data)
-        station_reference.finish_transfer_import(bpy.context, nms_import_data, previous_objects)
+        _finish_build_import(bpy.context, nms_import_data, previous_objects)
         #BUILDER.deserialise_from_data(nms_import_data)
 
     def export_nms_data(self, objects_only=False):
@@ -279,7 +298,7 @@ class NMSMain(PropertyGroup):
         self.deserialise_from_data(data)
         previous_objects = set(bpy.context.scene.objects)
         builder_v2.deserialise_from_data(data)
-        station_reference.finish_transfer_import(bpy.context, data, previous_objects)
+        _finish_build_import(bpy.context, data, previous_objects)
         _store_build_source(bpy.context.scene, build_file, path.suffix)
         return len(build_file.objects), build_file.kind
 
@@ -385,13 +404,20 @@ class NMSMain(PropertyGroup):
         self.deserialise_from_data(save_data)
         previous_objects = set(bpy.context.scene.objects)
         BUILDER.deserialise_from_data(save_data)
-        station_reference.finish_transfer_import(bpy.context, save_data, previous_objects)
+        _finish_build_import(bpy.context, save_data, previous_objects)
         from . import bubble_preview
         bubble_preview.inspect_loaded_tubes(bpy.context.scene)
 
     def new_file(self):
         """Clear the current build's objects, helpers, collections and metadata."""
         from . import stages, scene_cleanup
+        build_timer.clear_build(bpy.context.scene)
+        bpy.context.scene.bbe_optimizer_order.clear()
+        bpy.context.scene.pop('bbe_optimizer_order_revision', None)
+        from . import base_boundary
+        base_boundary.clear(bpy.context.scene)
+        from . import viewport_cutaway
+        viewport_cutaway.clear_build(bpy.context.scene)
 
         _clear_build_source(bpy.context.scene)
         stages.prepare_import(bpy.context.scene)
@@ -630,8 +656,20 @@ class NMSMain(PropertyGroup):
                     else:
                         _material.restore_material(obj, target_userdata)
 
+        # The extension can be disabled before this next-tick callback runs.
+        # Never retain its PropertyGroup RNA wrapper across that boundary:
+        # dereferencing the removed type can crash Blender, not just raise.
+        owner_name = self.id_data.name
+        owner_pointer = self.id_data.as_pointer()
+        picker_pointer = self.as_pointer()
         def clear_picker():
-            self.color_picker = None
+            if not hasattr(bpy.types.Scene, 'nms_main'):
+                return None
+            owner = bpy.data.scenes.get(owner_name)
+            if owner is not None and owner.as_pointer() == owner_pointer:
+                current = owner.nms_main
+                if current.as_pointer() == picker_pointer:
+                    current.color_picker = None
             return None
 
         # clear color picker value after operator execution finishes so that blender doesnt fire a warning popup
@@ -643,6 +681,7 @@ class NMSMain(PropertyGroup):
 # File Buttons Panel ---
 class NMS_PT_hero_panel(Panel):
     bl_idname = "NMS_PT_hero_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "BBE"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -654,62 +693,70 @@ class NMS_PT_hero_panel(Panel):
         return True
 
     def draw_header_preset(self, context):
-        row = self.layout.row()
+        row = i18n.localized_layout(self.layout).row()
         row.alignment = 'RIGHT'
         row.label(text='V' + ADDON_VERSION)
 
+    def draw_header(self, context):
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'proxies')
+
     def draw(self, context):
-        scene = context.scene
-        nms_tool = scene.nms_main
-        layout = self.layout
-
-        pcoll = icons.get_icons_pscroll()
-        pateron_icon = pcoll["patreon"]
-        discord_icon = pcoll["discord"]
-        steam_icon = pcoll["steam"]
-        online_icon = pcoll["online"]
-
+        from . import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'proxies', draw_home_controls):
+            return
+        layout = i18n.localized_layout(self.layout)
         icons.draw_sidebar_brand(layout, context)
-
-        community_row = layout.row(align=True)
-        communuity_box = community_row.box()
-        third_column = communuity_box.column(align=True)
-        third_column.label(text="Community")
-        third_column.operator("object.nms_visit_guides", icon_value = online_icon.icon_id)
-        third_column.operator("object.nms_visit_community", icon_value = discord_icon.icon_id)
-
-        support_box = community_row.box()
-        fourth_column = support_box.column(align = True)
-        fourth_column.label(text = "Support DjMonkey")
-        fourth_column.operator("object.nms_visit_patreon", text = "Patreon", icon_value = pateron_icon.icon_id)
-        fourth_column.operator("object.nms_visit_steam_games", text = "Steam Games", icon_value = steam_icon.icon_id)
-
-        from .tools_menu.base_builder_menu_presentation import draw_builder_contents
-        layout.operator('object.nms_launch_asset_browser_window', text='Assets', **icons.ui_icon('ASSET_MANAGER'))
-        draw_builder_contents(layout, context)
-
-        workspace_row = layout.row(align=True)
-        workspace_box = workspace_row.box()
-        workspace_column = workspace_box.column(align = False)
-        workspace_label_row = workspace_column.row(align = True)
-        workspace_label_row.label(text = "Workspace")
-        workspace_label_row.popover(panel='VIEW3D_PT_bbe_toolbar_settings', text='', icon='PREFERENCES')
-
-        workspace_column_2 = workspace_column.column(align = True)
-        workspace_cleanup_row = workspace_column_2.row(align = True)
-        workspace_cleanup_row.enabled = not nms_tool.is_workspace_cleaned
-        workspace_cleanup_row.operator("object.nms_cleanup_workspace", text = "Simplify Blender Workspace", **icons.ui_icon("WORKSPACE"))
-
-        workspace_column_2.separator()
-        workspace_column_2.operator("object.nms_workspace_settings", text = "Workspace Settings", **icons.ui_icon("SETTINGS"))
+        draw_home_controls(layout, context)
 
 
+def draw_home_controls(layout, context, *, compact=False):
+    from .tools_menu import base_builder_menu_presentation as presentation
 
+    draw_home_links(layout)
+    layout.popover(panel='VIEW3D_PT_bbe_themes', text='Themes', icon='COLOR')
+    presentation.draw_proxy_controls(layout, context)
+    presentation.draw_quick_access(layout, context, compact=compact)
+    draw_home_workspace(layout, context)
+
+
+def draw_home_links(layout):
+    pcoll = icons.get_icons_pscroll()
+    pateron_icon = pcoll["patreon"]
+    discord_icon = pcoll["discord"]
+    steam_icon = pcoll["steam"]
+    online_icon = pcoll["online"]
+
+
+    community_row = layout.row(align=True)
+    communuity_box = community_row.box()
+    third_column = communuity_box.column(align=True)
+    third_column.label(text="Community")
+    third_column.operator("object.nms_visit_guides", icon_value = online_icon.icon_id)
+    third_column.operator("object.nms_visit_community", icon_value = discord_icon.icon_id)
+
+    support_box = community_row.box()
+    fourth_column = support_box.column(align = True)
+    fourth_column.label(text = "Support DjMonkey")
+    fourth_column.operator("object.nms_visit_patreon", text = "Patreon", icon_value = pateron_icon.icon_id)
+    fourth_column.operator("object.nms_visit_steam_games", text = "Steam Games", icon_value = steam_icon.icon_id)
+
+
+def draw_home_workspace(layout, context):
+    from . import simple_workspace
+    label = 'Restore Blender Workspace' if simple_workspace.is_simple(context) else 'Simplify Blender Workspace'
+    layout.operator('object.nms_cleanup_workspace', text=label, **icons.ui_icon('WORKSPACE'))
+    footer = layout.row(align=True)
+    footer.operator('object.nms_workspace_settings', text='Workspace Settings', **icons.ui_icon('SETTINGS'))
+    help_button = footer.row(align=True)
+    help_button.alignment = 'RIGHT'
+    help_button.operator('bbe.find_guide', text='', icon='QUESTION')
 
 
 # File Buttons Panel ---
 class NMS_PT_project_recovery_panel(Panel):
     bl_idname = 'NMS_PT_project_recovery_panel'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Project Recovery'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -718,14 +765,20 @@ class NMS_PT_project_recovery_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'recovery')
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'recovery')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'recovery')
 
     def draw(self, context):
-        project_recovery.draw_controls(self.layout, context, boxed=False)
+        from . import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'recovery'):
+            return
+        project_recovery.draw_controls(i18n.localized_layout(self.layout), context, boxed=False)
 
 
 class NMS_PT_file_buttons_panel(Panel):
     bl_idname = "NMS_PT_file_buttons_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Import/Export'
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -738,16 +791,21 @@ class NMS_PT_file_buttons_panel(Panel):
         return True
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'io')
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'io')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'io')
 
     def draw(self, context):
-
+        from . import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'io'):
+            return
         from .tools_menu.base_builder_menu_presentation import draw_build_files
-        draw_build_files(self.layout)
+        draw_build_files(i18n.localized_layout(self.layout))
 
 
 class NMS_PT_station_transfer_reference(Panel):
     bl_idname = "NMS_PT_station_transfer_reference"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Station Reference"
     bl_parent_id = "NMS_PT_file_buttons_panel"
     bl_space_type = "VIEW_3D"
@@ -762,12 +820,13 @@ class NMS_PT_station_transfer_reference(Panel):
                     and any(c.get(station_reference.TAG) for c in context.scene.collection.children))
 
     def draw(self, context):
-        station_reference.draw(self.layout, context)
+        station_reference.draw(i18n.localized_layout(self.layout), context)
 
 
 # Colour Panel ---
 class NMS_PT_colour_panel(Panel):
     bl_idname = "NMS_PT_colour_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Colour & Materials'
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -780,10 +839,14 @@ class NMS_PT_colour_panel(Panel):
         return True
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'color')
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'color')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'color')
 
     def draw(self, context):
-        draw_colour_palette(self.layout, context)
+        from . import sidebar_builder
+        if not sidebar_builder.draw_inline(self, context, 'color'):
+            draw_colour_palette(i18n.localized_layout(self.layout), context)
 
 
 _palette_selection = None
@@ -817,6 +880,25 @@ def sync_selected_palette(context):
         context.scene.nms_main.material_switch = f'{row[4]}_{row[2]}'
 
 
+def draw_material_finishes(layout, settings, previews):
+    category = _material.palette_category(settings)
+    palettes = _material.CATEGORY_PALETTES[category]
+    if len(palettes) < 2:
+        return
+    row = layout.row(align=True)
+    row.alignment = 'LEFT'
+    icons = _material.FINISH_ICONS.get(category, ())
+    for palette in palettes:
+        index = int(palette.partition("_")[0])
+        name = palette.partition(" - ")[2]
+        icon = previews.get(icons[index]) if previews and index < len(icons) else None
+        op = row.operator("bbe.choose_material_finish", text="" if icon else name,
+                          icon_value=icon.icon_id if icon else 0,
+                          depress=palette == settings.material_switch)
+        op.palette = palette
+    row.label(text=settings.material_switch.partition(" - ")[2])
+
+
 def draw_colour_palette(layout, context, *, horizontal=False):
     """Share the same palette controls between the sidebar and tool header."""
     nms_tool = context.scene.nms_main
@@ -834,15 +916,17 @@ def draw_colour_palette(layout, context, *, horizontal=False):
         colour_area = layout.row(align=True)
         palette = colour_area.row(align=True)
         palette.ui_units_x = 8
-        palette.prop(nms_tool, "material_switch", text="")
+        palette.prop(nms_tool, "material_category", text="")
+        draw_material_finishes(colour_area, nms_tool, pcoll)
         grid = colour_area.row(align=True)
         grid.scale_x = 1.0
     else:
         colour_area = layout.box().column(align=False)
         header = colour_area.row(align=True)
-        header.prop(nms_tool, "material_switch", text="Palette")
+        header.prop(nms_tool, "material_category", text="Palette")
         if selected is None:
             corner_help(header, 'COLOUR')
+        draw_material_finishes(colour_area, nms_tool, pcoll)
         colour_area.separator()
         grid = colour_area.grid_flow(columns=12, even_columns=True, align=True)
         grid.scale_x = 0.6
@@ -869,6 +953,7 @@ def draw_colour_palette(layout, context, *, horizontal=False):
 # Colour Panel ---
 class NMS_PT_logic_panel(Panel):
     bl_idname = "NMS_PT_logic_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Cables & Logic'
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -881,13 +966,18 @@ class NMS_PT_logic_panel(Panel):
         return True
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'cables')
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'cables')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'cables')
 
     def draw(self, context):
-        layout = self.layout
+        from . import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'cables'):
+            return
+        layout = i18n.localized_layout(self.layout)
         scene = context.scene
         nms_tool = scene.nms_main
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
 
         box = layout.box()
         col = box.column(align = True)
@@ -928,6 +1018,7 @@ class NMS_PT_logic_panel(Panel):
 # Build Panel ---
 class NMS_PT_build_panel(Panel):
     bl_idname = "NMS_PT_build_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Prefabs'
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -940,10 +1031,15 @@ class NMS_PT_build_panel(Panel):
         return True
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'parts')
+        from . import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'parts')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'parts')
 
     def draw(self, context):
-        layout = self.layout
+        from . import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'parts'):
+            return
+        layout = i18n.localized_layout(self.layout)
         scene = context.scene
         nms_tool = scene.nms_main
 
@@ -974,6 +1070,7 @@ class NMS_PT_build_panel(Panel):
         heading = catalogue.row(align=True)
         heading.label(text="Local Prefab Library")
         heading.operator("object.nms_refresh_prefabs", text="", **icons.ui_icon("FILE_REFRESH"))
+        catalogue.prop(context.preferences.addons[ADDON_ID].preferences, "bbe_prefab_previews", toggle=True)
         wm = context.window_manager
         if wm.bbe_prefabs:
             catalogue.template_list("NMS_UL_actions_list", "prefabs", wm,
@@ -989,7 +1086,10 @@ class NMS_UL_actions_list(bpy.types.UIList):
             layout.label(text=item.title)
         elif item.description:
             row = layout.row(align=True)
-            place = row.operator("object.list_build_operator", text=item.description)
+            from . import prefab_thumbnails
+            preview = prefab_thumbnails.get(item.description)
+            place = row.operator("object.list_build_operator", text=item.description,
+                                 icon_value=preview.icon_id if preview else 0)
             place.part_id = item.description
             place.prefab_only = True
             place.tooltip = "Place this prefab in the scene."
@@ -1004,11 +1104,14 @@ class PartCollection(bpy.types.PropertyGroup):
 
 def refresh_prefab_catalogue():
     """Cache folder contents outside draw callbacks and scene undo data."""
+    from . import prefab_thumbnails
     entries = []
+    paths = {}
     try:
         # Scan once, rather than rescanning the folder for every visible row.
         grouped = {}
-        for name, filename in preset.Preset.get_presets().items():
+        paths = preset.Preset.get_presets()
+        for name, filename in paths.items():
             parent = Path(filename).parent
             category = ("Uncategorized Prefabs" if parent == Path(preset.Preset.PRESET_PATH)
                         else parent.name.replace("_", " "))
@@ -1018,6 +1121,10 @@ def refresh_prefab_catalogue():
             entries.extend(("", name) for name in sorted(names, key=str.casefold))
     except OSError as exc:
         print("BBE: unable to read prefab catalogue:", exc)
+    prefab_thumbnails.set_library(paths)
+    from .utils.asset_browser_utils import build_presets_data
+    AssetBrowser.presets_data = build_presets_data(paths)
+    AssetBrowser.view_revision += 1
     for wm in bpy.data.window_managers:
         wm.bbe_prefabs.clear()
         for title, description in entries:
@@ -1047,6 +1154,7 @@ def schedule_prefab_catalogue(_=None):
 class RefreshPrefabCatalogue(bpy.types.Operator):
     """Reload the prefab catalogue from the prefab folder"""
     bl_idname = "object.nms_refresh_prefabs"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Refresh Prefab Catalogue"
 
     def execute(self, context):
@@ -1058,6 +1166,7 @@ class RefreshPrefabCatalogue(bpy.types.Operator):
 # File Operators ---
 class NewFile(bpy.types.Operator):
     bl_idname = "object.nms_new_file"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Clear Build Scene..."
     bl_description = "Clear objects and collections from this build scene, keeping the workspace and Asset Browser"
     bl_options = {"REGISTER", "INTERNAL", "UNDO", "UNDO_GROUPED"}
@@ -1074,6 +1183,7 @@ class NewFile(bpy.types.Operator):
 
 class SaveData(bpy.types.Operator):
     bl_idname = "object.nms_save_data"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Save BBE Project JSON..."
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")
     filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
@@ -1091,6 +1201,7 @@ class SaveData(bpy.types.Operator):
 
 class LoadData(bpy.types.Operator):
     bl_idname = "object.nms_load_data"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Open BBE Project JSON..."
     bl_options = {"UNDO", "REGISTER"}
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")
@@ -1109,13 +1220,14 @@ class LoadData(bpy.types.Operator):
 
 class ImportBuildFile(bpy.types.Operator):
     bl_idname = 'bbe.import_build_file'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Import Build from File...'
     bl_description = 'Open a Corvette package, base file, prefab, or JSON/TXT build in this Blender scene'
     bl_options = {'REGISTER', 'UNDO'}
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
     filter_glob: bpy.props.StringProperty(
         default='*.nmsship;*.nmsbase;*.nmsprefab;*.json;*.txt', options={'HIDDEN'})
-    parts_base_type: bpy.props.EnumProperty(
+    parts_base_type: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name='Fallback build type',
         description='Type to use when base-type metadata is missing, blank, or unsupported',
         items=[('HomePlanetBase', 'Planet Base', ''),
@@ -1126,7 +1238,7 @@ class ImportBuildFile(bpy.types.Operator):
         default='HomePlanetBase')
 
     def draw(self, context):
-        self.layout.prop(self, 'parts_base_type')
+        i18n.localized_layout(self.layout).prop(self, 'parts_base_type')
 
     def execute(self, context):
         try:
@@ -1145,6 +1257,7 @@ class ImportBuildFile(bpy.types.Operator):
 
 class ExportBaseFile(bpy.types.Operator):
     bl_idname = 'bbe.export_base_file'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Export Base File (.nmsbase)...'
     bl_description = 'Save the current planet, freighter, space, or station base as a standalone file'
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
@@ -1167,6 +1280,7 @@ class ExportBaseFile(bpy.types.Operator):
 
 class ExportShipFile(bpy.types.Operator):
     bl_idname = 'bbe.export_ship_file'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Export Corvette Package (.nmsship)...'
     bl_description = 'Save current parts as .nmsship; retain imported ship metadata, choose a saved ship or template, or use new Corvette defaults'
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
@@ -1190,26 +1304,26 @@ class ExportShipFile(bpy.types.Operator):
         source = context.scene.get('bbe_build_source_suffix')
         source_text = bpy.data.texts.get(context.scene.get('bbe_build_source_text', ''))
         if context.scene.nms_base_tool.string_base_type != 'PlayerShipBase':
-            self.layout.label(text='This export creates a Corvette package from your scene parts.', icon='INFO')
+            i18n.localized_layout(self.layout).label(text='This export creates a Corvette package from your scene parts.', icon='INFO')
         if source != '.nmsship' or source_text is None:
-            self.layout.prop(self, 'use_selected_save')
+            i18n.localized_layout(self.layout).prop(self, 'use_selected_save')
             if self.use_selected_save:
                 selected = context.scene.nms_save_data.get_current_base_identifiers()
                 if selected and selected.base_type == 'PlayerShipBase' and type(selected.user_data) is int and 0 <= selected.user_data < 12:
-                    self.layout.label(text=f'{selected.save_context} / Ship slot {selected.user_data + 1}: {selected.base_name}')
-                    self.layout.label(text='Exports current Blender parts with this saved ship’s stats and inventory.')
+                    i18n.localized_layout(self.layout).label(text=f'{selected.save_context} / Ship slot {selected.user_data + 1}: {selected.base_name}')
+                    i18n.localized_layout(self.layout).label(text='Exports current Blender parts with this saved ship’s stats and inventory.')
                 else:
-                    self.layout.label(text='Select the original Corvette in I/O first.', icon='ERROR')
+                    i18n.localized_layout(self.layout).label(text='Select the original Corvette in I/O first.', icon='ERROR')
             else:
                 if source == '.nmsship':
-                    self.layout.label(text='Imported ship metadata is missing.', icon='ERROR')
-                    self.layout.label(text='Choose a saved Corvette or a complete template.')
+                    i18n.localized_layout(self.layout).label(text='Imported ship metadata is missing.', icon='ERROR')
+                    i18n.localized_layout(self.layout).label(text='Choose a saved Corvette or a complete template.')
                 else:
-                    self.layout.label(text='Empty template uses new Corvette defaults.')
-                    self.layout.label(text='No cockpit or template parts are added.')
-                self.layout.prop(self, 'template_path')
+                    i18n.localized_layout(self.layout).label(text='Empty template uses new Corvette defaults.')
+                    i18n.localized_layout(self.layout).label(text='No cockpit or template parts are added.')
+                i18n.localized_layout(self.layout).prop(self, 'template_path')
         else:
-            self.layout.label(text='Class, inventory and appearance come from imported ship.')
+            i18n.localized_layout(self.layout).label(text='Class, inventory and appearance come from imported ship.')
 
     def execute(self, context):
         path = str(Path(self.filepath).with_suffix('.nmsship'))
@@ -1240,6 +1354,7 @@ class ExportShipFile(bpy.types.Operator):
 
 class ImportData(bpy.types.Operator):
     bl_idname = "object.nms_import_nms_data"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Import from Clipboard"
     bl_description = "Import a copied build or replace the current build parts with a copied Objects array"
     bl_options = {"UNDO", "REGISTER"}
@@ -1253,18 +1368,19 @@ class ImportData(bpy.types.Operator):
 
 class ExportData(bpy.types.Operator):
     bl_idname = "object.nms_export_nms_data"
-    bl_label = "Export to Clipboard"
+    bl_translation_context = "BBEExtendedInterface"
+    bl_label = "Copy All to Clipboard"
 
     def execute(self, context):
         scene = context.scene
         nms_tool = scene.nms_main
-        objects_only = nms_tool.check_export_objects_only
-        nms_tool.export_nms_data( objects_only )
+        nms_tool.export_nms_data(objects_only=False)
         return {"FINISHED"}
 
 
 class ExportObjectsData(bpy.types.Operator):
     bl_idname = "object.nms_export_nms_data_objects"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Copy Objects to Clipboard"
     bl_description = "Copy the current build's objects as a No Man's Sky Objects array for pasting into a save editor"
 
@@ -1278,19 +1394,21 @@ class ExportObjectsData(bpy.types.Operator):
 class SwitchWorkspace(bpy.types.Operator):
     """Switch to a simpler workspace"""
     bl_idname = "object.nms_cleanup_workspace"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Switch workspace"
 
     def execute(self, context):
-        scene = context.scene
-        nms_tool = scene.nms_main
-        nms_tool.is_workspace_cleaned = True
-        workspace.cleanup_workspace(context)
+        from . import simple_workspace
+        try: simple_workspace.toggle(context, 'BBE')
+        except (ValueError, RuntimeError) as err:
+            self.report({'ERROR'}, str(err));return {'CANCELLED'}
         return {"FINISHED"}
 
 class SaveAsPreset(bpy.types.Operator):
     """Save the current scene contents as a new Prefab"""
 
     bl_idname = "object.nms_save_as_preset"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Save As Prefab"
     preset_name: bpy.props.StringProperty(name="Prefab Name")
 
@@ -1314,6 +1432,7 @@ class LoadFancyUI(bpy.types.Operator):
     """Launch the standalone asset browser."""
 
     bl_idname = "object.nms_launch_asset_browser"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Launch Asset Browser..."
 
     def execute(self, context):
@@ -1334,10 +1453,11 @@ class LoadFancyUI(bpy.types.Operator):
 
 class PresetsMenu(bpy.types.Menu):
     bl_idname = "OBJECT_MT_nms_get_more_presets_menu"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Get More Prefabs..."
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         from .save_editor.function_help import corner_help
         corner_help(layout, 'PREFABS')
         layout.operator("object.nms_visit_prefab_community")
@@ -1348,6 +1468,7 @@ class GetMorePresets(bpy.types.Operator):
     """Load the No Man's Sky Prefabs web page to find more community prefabs."""
 
     bl_idname = "object.nms_get_more_presets"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Get More Prefabs..."
 
     def execute(self, context):
@@ -1360,6 +1481,7 @@ class VisitDiscord(bpy.types.Operator):
     """Launch the community discord URL."""
 
     bl_idname = "object.nms_visit_community"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Discord"
 
     def execute(self, context):
@@ -1372,6 +1494,7 @@ class VisitGuides(bpy.types.Operator):
     """Launch the dedicated online guides."""
 
     bl_idname = "object.nms_visit_guides"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Online Guides"
 
     def execute(self, context):
@@ -1386,6 +1509,7 @@ class VisitPatreon(bpy.types.Operator):
     """Open the Patreon page."""
 
     bl_idname = "object.nms_visit_patreon"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Patreon"
 
     def execute(self, context):
@@ -1397,6 +1521,7 @@ class VisitSteamGames(bpy.types.Operator):
     """Open DjMonkey's Steam developer page."""
 
     bl_idname = "object.nms_visit_steam_games"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Wishlist/Buy my Steam games"
 
     def execute(self, context):
@@ -1408,6 +1533,7 @@ class VisitPrefabDiscord(bpy.types.Operator):
     """Launch the community discord URL."""
 
     bl_idname = "object.nms_visit_prefab_community"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "from the Community Discord..."
 
     def execute(self, context):
@@ -1420,6 +1546,7 @@ class VisitGitHubRepo(bpy.types.Operator):
     """Launch the GitHub Repo URL."""
 
     bl_idname = "object.nms_visit_github"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "from the GitHub Repository..."
 
     def execute(self, context):
@@ -1432,6 +1559,7 @@ class OpenPresetFolder(bpy.types.Operator):
     """Open the folder containing your prefabs."""
 
     bl_idname = "object.nms_open_preset_folder"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Open Prefab Folder"
 
     def execute(self, context):
@@ -1453,6 +1581,7 @@ class ListBuildOperator(bpy.types.Operator):
     """Build the specified item."""
 
     bl_idname = "object.list_build_operator"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Simple Object Operator"
     bl_options = {"UNDO", "REGISTER"}
     part_id: StringProperty()
@@ -1494,6 +1623,7 @@ class ListEditOperator(bpy.types.Operator):
     """Edit the specified prefab."""
 
     bl_idname = "object.list_edit_operator"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Edit Prefab"
     bl_options = {"UNDO", "REGISTER"}
     part_id: StringProperty()
@@ -1521,6 +1651,7 @@ class ListDeleteOperator(bpy.types.Operator):
     """Delete the specified preset."""
 
     bl_idname = "object.list_delete_operator"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Delete"
     part_id: StringProperty()
 
@@ -1539,10 +1670,29 @@ class ListDeleteOperator(bpy.types.Operator):
 
 
 
+class ChooseMaterialFinish(bpy.types.Operator):
+    bl_idname = "bbe.choose_material_finish"
+    bl_label = "Choose Material Finish"
+    bl_options = {'INTERNAL'}
+
+    palette: EnumProperty(items=_material.BAKED_PALETTES_UI)
+
+    @classmethod
+    def description(cls, context, properties):
+        return properties.palette.partition(" - ")[2]
+
+    def execute(self, context):
+        context.scene.nms_main.material_switch = self.palette
+        from . import settings_memory
+        settings_memory.flush()
+        return {'FINISHED'}
+
+
 class ApplyColour(bpy.types.Operator):
     """Apply this colour to the selected part."""
 
     bl_idname = "object.nms_apply_colour"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = ""
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1565,6 +1715,7 @@ class ApplyDefaultColour(bpy.types.Operator):
     """Revert the colour back to default on selected part."""
 
     bl_idname = "object.nms_apply_default_colour"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Apply Default Colour"
     bl_options = {"UNDO", "REGISTER"}
     colour_index: IntProperty(default=0)
@@ -1582,6 +1733,7 @@ class Point(bpy.types.Operator):
     """Click a cable to insert a junction, or click empty space to start a new path"""
 
     bl_idname = "object.nms_point"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "New Point"
 
     @classmethod
@@ -1598,9 +1750,10 @@ class Connect(bpy.types.Operator):
     """Choose Chain or Fan, then click a power socket or empty space to supply the selection"""
 
     bl_idname = "object.nms_connect"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Connect"
     bl_options = {"UNDO", "REGISTER"}
-    routing: EnumProperty(name="Routing", items=(
+    routing: EnumProperty(translation_context="BBEExtendedInterface", name="Routing", items=(
         ('CHAIN', 'Chain (Series)', 'Connect consecutive devices'),
         ('FAN', 'Fan (Parallel)', 'Connect each device directly to the common start'),
     ), default='FAN', options={'SKIP_SAVE'})
@@ -1613,7 +1766,7 @@ class Connect(bpy.types.Operator):
             return self.execute(context)
 
         def draw_choices(menu, _context):
-            row = menu.layout.row(align=True)
+            row = i18n.localized_layout(menu.layout).row(align=True)
             row.operator_context = 'EXEC_DEFAULT'
             for mode, label in (('CHAIN', 'Chain (Series)'), ('FAN', 'Fan (Parallel)')):
                 row.operator("object.nms_connect", text=label).routing = mode
@@ -1666,9 +1819,10 @@ class Divide(bpy.types.Operator):
     """Insert junctions along the selected cable and click a destination for each branch"""
 
     bl_idname = "object.nms_divide"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Divide"
     bl_options = {"UNDO"}
-    layout_mode: EnumProperty(name="Branch starts", items=(
+    layout_mode: EnumProperty(translation_context="BBEExtendedInterface", name="Branch starts", items=(
         ('SPACED', 'Evenly spaced', 'Insert a separate junction for each branch'),
         ('MIDPOINT', 'Shared midpoint', 'Start all branches at one junction halfway along the cable'),
     ), default='SPACED', options={'SKIP_SAVE'})
@@ -1686,8 +1840,8 @@ class Divide(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self, width=280, confirm_text="Divide")
 
     def draw(self, context):
-        self.layout.prop(self, "starts")
-        self.layout.row(align=True).prop(self, "layout_mode", expand=True)
+        i18n.localized_layout(self.layout).prop(self, "starts")
+        i18n.localized_layout(self.layout).row(align=True).prop(self, "layout_mode", expand=True)
 
     def execute(self, context):
         from . import cable_connections, cable_targets
@@ -1713,6 +1867,7 @@ class Split(bpy.types.Operator):
     """Remove direct cables of the chosen type between selected devices or junctions"""
 
     bl_idname = "object.nms_split"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Disconnect"
     bl_options = {"UNDO"}
 
@@ -1732,6 +1887,7 @@ class SelectConnected(bpy.types.Operator):
     """Select all objects that are connected to the selected cable."""
 
     bl_idname = "object.nms_select_connected"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select Connected"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1753,6 +1909,7 @@ class SelectFloating(bpy.types.Operator):
     """Select free-floating cable points."""
 
     bl_idname = "object.nms_select_floating"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select Floating"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1784,6 +1941,7 @@ class LogicButton(bpy.types.Operator):
     """Add a Logic Button to the scene."""
 
     bl_idname = "object.nms_logic_button"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "BTN"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1806,6 +1964,7 @@ class LogicWallSwitch(bpy.types.Operator):
     """Add a Logic Switch to the scene."""
 
     bl_idname = "object.nms_logic_wall_switch"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "SWITCH"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1826,6 +1985,7 @@ class LogicProxSwitch(bpy.types.Operator):
     """Add a Logic Proximity Sensor to the scene."""
 
     bl_idname = "object.nms_logic_prox_switch"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "PROX"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1846,6 +2006,7 @@ class LogicInvSwitch(bpy.types.Operator):
     """Add a Logic Inverter to the scene."""
 
     bl_idname = "object.nms_logic_inv_switch"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "INV"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1866,6 +2027,7 @@ class LogicAutoSwitch(bpy.types.Operator):
     """Add a Logic Auto to the scene."""
 
     bl_idname = "object.nms_logic_auto_switch"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "AUTO"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1886,6 +2048,7 @@ class LogicFloorSwitch(bpy.types.Operator):
     """Add a Logic Floor Switch to the scene."""
 
     bl_idname = "object.nms_logic_floor_switch"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "FLOOR"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1906,6 +2069,7 @@ class LogicBeatSwitch(bpy.types.Operator):
     """Add a Logic ByteBeat switch to the scene."""
 
     bl_idname = "object.nms_logic_beat_switch"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "BEAT"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -1926,13 +2090,22 @@ class SplitPreset(bpy.types.Operator):
     """Split the selected prefab into individual parts"""
 
     bl_idname = "object.nms_split_preset"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Split Prefab to Parts"
+    bl_options = {"UNDO"}
 
     def execute(self, context):
         from . import preset as _preset_mod
 
         # Find the selected preset, or any preset in the scene
         selected = [o for o in context.selected_objects if "PresetID" in o]
+        shape_selected=any(o.get(shapes.ROOT) for o in context.selected_objects) or shapes.selected_root(context)
+        if shape_selected:
+            pieces=shapes.ungroup_shapes(context)
+            if not selected:
+                if pieces:blend_utils.select(pieces)
+                self.report({'INFO'}, f'Split shape into {len(pieces)} parts')
+                return {'FINISHED'}
         if not selected:
             selected = [o for o in bpy.data.objects if "PresetID" in o]
 
@@ -1958,10 +2131,11 @@ class GroupObjects(bpy.types.Operator):
     """Group parts together into"""
 
     bl_idname = "object.nms_group_objects"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Group Objects together"
     bl_options = {'REGISTER', 'UNDO'}
 
-    origin_type: bpy.props.EnumProperty(
+    origin_type: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Select Origin",
         description="Choose how to group the objects",
         items=[
@@ -2013,7 +2187,7 @@ class GroupObjects(bpy.types.Operator):
         return {"FINISHED"}
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         layout.label(text = "Select Origin of Merged Object", **icons.ui_icon("OUTLINER_OB_POINTCLOUD"))
         type_row = layout.row(align=True)
         type_row.prop(self, "origin_type", expand = True)
@@ -2023,11 +2197,13 @@ class UngroupObjects(bpy.types.Operator):
     """Ungroup Parts"""
 
     bl_idname = "object.nms_ungroup_objects"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Ungroup Objects"
+    bl_options = {"UNDO"}
 
     def execute(self, context):
-        selected_objects = bpy.context.selected_objects
-        restored_obejcts_collection = []
+        restored_obejcts_collection = shapes.ungroup_shapes(context)
+        selected_objects = list(context.selected_objects)
         for item in selected_objects:
             if "GroupID" in item:
                 restored_obejcts = group.Group.ungroup_objects(BUILDER,item)
@@ -2042,32 +2218,48 @@ class WorkspaceSettings(bpy.types.Operator):
     """Some settings related to workspace"""
 
     bl_idname = "object.nms_workspace_settings"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Workspace Settings"
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        if context.area and context.area.type == 'VIEW_3D' and not bpy.app.background:
+            result = bpy.ops.bbe.custom_menu('INVOKE_DEFAULT', menu='WORKSPACE')
+            return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
+        return context.window_manager.invoke_props_dialog(self, width=460)
 
     def draw(self, context):
         prefs = context.preferences.addons[ADDON_ID].preferences
-        layout = self.layout
-        column = layout.column(align = True)
-        column.label(text = "Part Count")
-        column.prop(prefs,"nms_check_show_part_count")
-        part_cout_pos_row = column.row(align = True)
-        part_cout_pos_row.enabled = prefs.nms_check_show_part_count
-        part_cout_pos_row.label(text = "Position :", icon = "BLANK1")
-        part_cout_pos_row.prop(prefs,"nms_part_count_position", expand = True)
+        layout = i18n.localized_layout(self.layout)
+        layout.prop(prefs,'bbe_workspace_tab',expand=True)
+        layout.separator()
+        if prefs.bbe_workspace_tab != 'DISPLAY':
+            from .tools_menu.base_builder_menu import draw_toolbar_settings
+            draw_toolbar_settings(layout,context,prefs.bbe_workspace_tab)
+            return
+        from . import viewport_cutaway
+        general = layout.column()
+        general.prop(prefs, 'bbe_language', text='Language')
+        timer = general.row(align=True)
+        timer.prop(prefs, 'build_timer_enabled', text='Build Timer', toggle=True, icon='TIME')
+        idle = timer.row(align=True)
+        idle.enabled = prefs.build_timer_enabled
+        idle.prop(prefs, 'build_idle_minutes', text='Idle (min)')
 
-        column.separator()
-        column.separator()
-        column.label(text = "Active_object properties")
-        column.prop(prefs,"nms_check_show_active_object_properties")
-        prop_row = column.row(align = True)
-        prop_row.enabled = prefs.nms_check_show_active_object_properties
-        prop_row.label(text = "Position :", icon = "BLANK1")
-        prop_row.prop(prefs,"nms_active_object_properties_position", expand = True)
+        display = layout.box()
+        display.prop(prefs, "bbe_prefab_previews", toggle=True)
+        viewport_cutaway.draw_menu(display, context)
+        for label, visible, position in (
+            ('Part Count', 'nms_check_show_part_count', 'nms_part_count_position'),
+            ('Active Object Properties', 'nms_check_show_active_object_properties', 'nms_active_object_properties_position'),
+        ):
+            row = display.row(align=True)
+            row.prop(prefs, visible, text=label, toggle=True)
+            options = row.row(align=True)
+            options.enabled = getattr(prefs, visible)
+            for edge in ('Top', 'Bottom'):
+                options.prop_enum(prefs, position, edge, text=edge)
 
-        column.separator()
+        wasd_navigation.draw_controls(layout.box(), context)
 
     def execute(self, context):
         return {"FINISHED"}
@@ -2274,6 +2466,7 @@ classes = (
     LogicAutoSwitch,
     LogicFloorSwitch,
     LogicBeatSwitch,
+    ChooseMaterialFinish,
     ApplyColour,
     ApplyDefaultColour,
     SaveAsPreset,
@@ -2293,6 +2486,7 @@ classes = (
     ImportBuildFile,
     ExportBaseFile,
     ExportShipFile,
+    UploadToCharon,
     ExportData,
     ExportObjectsData,
     ImportData,
@@ -2315,6 +2509,7 @@ classes = (
     NMS_PT_station_transfer_reference,
     NMS_PT_save_editor_panel,
     BBE_OT_backup_settings,
+    BBE_OT_choose_backup_folder,
     BBE_OT_refresh_save_counts,
     BBE_OT_save_refresh_notice,
     NMS_PT_transformation_panel,
@@ -2334,7 +2529,8 @@ classes = (
 )
 
 from . import community_prefabs
-classes = classes + community_prefabs.classes
+from . import shapes
+classes = classes + shapes.classes + community_prefabs.classes
 classes = classes + build_metadata_ui.classes + asset_browser_presentation.classes + base_builder_menu.classes
 
 classes = classes  + save_editor_operators.classes + station_reference.classes + build_tool_operators.classes + batch_tool_operators.classes + prooperties_operators.classes + asset_browser_operators.classes + base_builder_menu_operators.classes
@@ -2345,6 +2541,8 @@ _core_registered = False
 
 
 def register():
+    from . import i18n
+    i18n.register()
     compatibility.register()
     if compatibility.conflicting_charon():
         compatibility.begin_preflight()
@@ -2356,7 +2554,8 @@ def register():
 def register_core():
     global _core_registered
 
-    from . import release_updates
+    from . import sidebar_state, release_updates
+    sidebar_state.register()
     release_updates.register('bbe', ADDON_VERSION, 'No Mans Sky Base Builder')
 
     # Ensure User data folder structure exists
@@ -2380,10 +2579,15 @@ def register_core():
 
     preview_collections["main"] = pcoll
     icons.register_icons()
+    from . import base_boundary
+    base_boundary.register()
 
     # Register Plugin
+    base_builder_menu.bind_sidebar_visibility(classes)
     for _class in classes:
         bpy.utils.register_class(_class)
+    bpy.types.Scene.bbe_shape = PointerProperty(type=shapes.BBE_PG_shape)
+    bpy.types.Object.bbe_shape = PointerProperty(type=shapes.BBE_PG_shape)
     bpy.types.Scene.nms_main = PointerProperty(type=NMSMain)
     bpy.types.Scene.nms_base_tool = PointerProperty(type = NMSBaseProperties)
     build_metadata_ui.register_handlers()
@@ -2396,6 +2600,7 @@ def register_core():
     bpy.types.Scene.nms_save_data = bpy.props.PointerProperty(type=SaveManager)
     bpy.types.Scene.nms_build_tool = bpy.props.PointerProperty(type=BuildTool)
     part_counts.register()
+    build_timer.register()
     bpy.types.Scene.nms_properties = bpy.props.PointerProperty(type=Properties)
     bpy.types.Scene.nms_batch_tool = bpy.props.PointerProperty(type=BatchTool)
     bpy.types.Scene.nms_asset_browser = bpy.props.PointerProperty(type=AssetBrowser)
@@ -2415,6 +2620,8 @@ def register_core():
     hab_windows.register()
     undo_guard.register()
     project_recovery.register()
+    from . import viewport_cutaway
+    viewport_cutaway.register()
     wasd_navigation.register()
     from .save_editor import corvette_optimizer
     from .save_editor import function_help
@@ -2436,9 +2643,13 @@ def register_core():
     cable_targets.register()
     from . import curve_tools
     curve_tools.register()
+    from . import shape_studio
+    shape_studio.register()
     from . import part_controls
     part_controls.register()
     function_help.register()
+    from . import simple_workspace
+    simple_workspace.register()
     corvette_optimizer.register()
     from .save_editor import ship_management
     ship_management.register()
@@ -2459,15 +2670,21 @@ def register_core():
     if udpates_handler not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(udpates_handler)
 
-    bpy.app.timers.register(viewport_overlay.register_draw, first_interval=0.01)
+    viewport_overlay.register_draw()
+    from . import settings_memory
+    settings_memory.register()
     _core_registered = True
 
 def unregister():
+    from . import i18n
+    i18n.unregister()
     build_metadata_ui.unregister_handlers()
     global _core_registered
     compatibility.unregister()
     if not _core_registered:
         return
+    from . import settings_memory
+    settings_memory.unregister()
     _core_registered = False
     if bpy.app.timers.is_registered(_refresh_prefab_catalogue_deferred):
         bpy.app.timers.unregister(_refresh_prefab_catalogue_deferred)
@@ -2476,6 +2693,8 @@ def unregister():
     community_prefabs.unregister()
     del bpy.types.WindowManager.bbe_prefabs
     del bpy.types.WindowManager.bbe_prefab_index
+    from . import viewport_cutaway
+    viewport_cutaway.unregister()
     wasd_navigation.unregister()
     project_recovery.unregister()
     undo_guard.unregister()
@@ -2496,6 +2715,8 @@ def unregister():
     corvette_optimizer.unregister()
     from .save_editor import function_help
     function_help.unregister()
+    from . import simple_workspace
+    simple_workspace.unregister()
     from . import bubble_preview
     from . import decal_controls
     from . import pilot_reference
@@ -2509,6 +2730,8 @@ def unregister():
     from . import curve_tools
     from . import part_controls
     part_controls.unregister()
+    from . import shape_studio
+    shape_studio.unregister()
     curve_tools.unregister()
     cable_targets.unregister()
     bubble_preview.unregister()
@@ -2526,6 +2749,8 @@ def unregister():
     for pcoll in preview_collections.values():
         bpy.utils.previews.remove(pcoll)
     preview_collections.clear()
+    from . import prefab_thumbnails
+    prefab_thumbnails.close()
     icons.unregister_icons()
 
     # Blender's own toolbar was patched by the workspace cleanup, so hand it
@@ -2539,12 +2764,21 @@ def unregister():
     bbe_chat.unregister()
 
 
+    shapes._requests.clear()
+    del bpy.types.Scene.bbe_shape
+    del bpy.types.Object.bbe_shape
     for _class in reversed(classes):
         bpy.utils.unregister_class(_class)
+    base_builder_menu.restore_sidebar_visibility()
+    from . import sidebar_state
+    sidebar_state.unregister()
+    from . import base_boundary
+    base_boundary.unregister()
 
     del bpy.types.Scene.nms_main
     del bpy.types.Scene.nms_base_tool
     del bpy.types.Scene.nms_save_data
+    build_timer.unregister()
     part_counts.unregister()
     del bpy.types.Scene.nms_build_tool
     del bpy.types.Scene.nms_properties

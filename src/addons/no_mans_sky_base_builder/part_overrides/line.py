@@ -76,14 +76,14 @@ class Line(part.Part):
         world_loc = world_pos.decompose()[0]
         if not start:
             start = Line.create_point(
-                self.builder, name="_".join([self.object.name, "START"])
+                self.builder, name="_".join([self.object.name, "START"]), kind=self.object_id
             )
             # Snap the start location to the power line.
             start.location = world_loc
 
         if not end:
             end = Line.create_point(
-                builder=self.builder, name="_".join([self.object.name, "END"])
+                builder=self.builder, name="_".join([self.object.name, "END"]), kind=self.object_id
             )
             # Snap the end location to the end of power line.
             at_vec = mathutils.Vector(
@@ -125,10 +125,10 @@ class Line(part.Part):
 
         # Middle control.
         middle_control_a = self.create_point(
-            self.builder, "_".join([self.name, "MID_A"])
+            self.builder, "_".join([self.name, "MID_A"]), kind=self.object_id
         )
         middle_control_b = self.create_point(
-            self.builder, "_".join([self.name, "MID_B"])
+            self.builder, "_".join([self.name, "MID_B"]), kind=self.object_id
         )
         
         # Snap the middle locations mathematically using LERP
@@ -159,7 +159,7 @@ class Line(part.Part):
         prev_end_control = blend_utils.get_item_by_name(prev_end_control_name)
 
         # Middle control.
-        middle_control = self.create_point(self.builder, "_".join([self.name, "MID"]))
+        middle_control = self.create_point(self.builder, "_".join([self.name, "MID"]), kind=self.object_id)
         
         # Snap the middle location mathematically using LERP
         middle_control.location = prev_start_control.location.lerp(prev_end_control.location, 0.5)
@@ -205,8 +205,12 @@ class Line(part.Part):
 
     # Static Methods ---
     @staticmethod
-    def create_point(builder, name=None):
-        """Create a new electric wire point."""
+    def create_point(builder, name=None, kind=None):
+        """Use the same typed endpoint for imported and hand-placed cables."""
+        from .. import cable_connections
+        if kind in cable_connections.KINDS:
+            return cable_connections.make_control(builder, name, kind)
+
         default_name = "ARBITRARY_POINT"
         name = name or default_name
         # path to the blend
@@ -219,6 +223,9 @@ class Line(part.Part):
         if existing_object:
             point = existing_object.duplicate()
             point = point.object
+            for key in ('snapped_to', 'bbe_socket_key', 'power_line', 'bbe_junction'):
+                if key in point:
+                    del point[key]
             point.rotation_euler[0] = 0
             point.rotation_euler[1] = 0
             point.rotation_euler[2] = 0

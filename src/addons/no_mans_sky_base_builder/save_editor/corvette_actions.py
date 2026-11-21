@@ -1,4 +1,5 @@
 """Reviewed keep-build repairs and one-step exports to occupied or empty slots."""
+from .. import i18n
 from pathlib import Path
 from uuid import uuid4
 import textwrap
@@ -21,6 +22,8 @@ def destination_scope(links):
 
 
 def remember_ship_source(scene, links, context_name, index, name):
+    from .. import build_timer
+    build_timer.bind(scene, build_timer.ship_key(links, context_name, index))
     # Advisory provenance only. Never use a project's stored source to choose
     # a local export destination or authorize a write.
     scene['bbe_ship_export_origin'] = json.dumps(dict(scope=destination_scope(links),
@@ -40,10 +43,10 @@ def overwrite_warning(op):
     different_name = bool(op._name and op._name != target_name)
     if origin and not (changed or changed_selection or different_name):
         return []
-    heading = ('DIFFERENT SHIP / DESTINATION — CHECK BEFORE OVERWRITING'
+    heading = ('DIFFERENT SHIP / DESTINATION â€” CHECK BEFORE OVERWRITING'
                if changed or changed_selection else
-               'VERIFY OVERWRITE TARGET — SCENE SOURCE UNKNOWN' if not origin else
-               'SHIP NAME WILL CHANGE — CHECK BEFORE OVERWRITING')
+               'VERIFY OVERWRITE TARGET â€” SCENE SOURCE UNKNOWN' if not origin else
+               'SHIP NAME WILL CHANGE â€” CHECK BEFORE OVERWRITING')
     lines = [heading,
              f'Replacing: {op.context_name} / Slot {op._index + 1}: {target_name}',
              f'With scene: {op._name or "Unnamed build"}']
@@ -77,18 +80,17 @@ def check_snapshot(s, context):
 
 def scene_parts(context, optimized, progress):
     context.view_layer.update()
-    objects = context.scene.nms_main.serialise(objects_only=True, progress=progress, progress_range=(.02, .65))
-    repair.validate_parts(objects)
     name = context.scene.nms_base_tool.string_base.strip()
     config = None
     if optimized:
         from . import corvette_optimizer
-        from .. import BUILDER
         config = corvette_optimizer.load_settings()
+        objects, counts = corvette_optimizer.optimized_scene(context, config, progress, (.02, .65))
         progress.update(.70, 'Ordering and checking parts')
-        objects, counts = corvette_optimizer.core.optimize(objects, config, name_for_part=BUILDER.get_nice_name)
     else:
+        objects = context.scene.nms_main.serialise(objects_only=True, for_save=True, progress=progress, progress_range=(.02, .65))
         counts = dict(before=len(objects), after=len(objects), moved=0, removed=0)
+    repair.validate_parts(objects)
     return objects, name, counts, repair.fingerprint([objects, name, config, build_metadata.save_owner(context.scene.nms_base_tool)])
 
 
@@ -129,6 +131,9 @@ def commit(s, context, report):
 def _commit(s, context, report, progress):
     progress.update(.01, 'Checking reviewed destination')
     check_snapshot(s, context)
+    if s.get('signature') and ship_files.hashes(s['hashes']) != s['hashes']:
+        context.scene.nms_save_data.refresh_before_export()
+        raise ValueError('The save changed after review. Reopen Export to Save to review the current destination.')
     if s.get('signature'):
         if scene_parts(context, s['optimized'], progress)[-1] != s['signature']:
             raise ValueError('Scene or optimizer settings changed. Review the export again.')
@@ -139,6 +144,8 @@ def _commit(s, context, report, progress):
     repair.validate_reviewed_draft(s['root'], draft, [plan])
     ship_files.commit(draft, s['links'], s['hashes'], progress=progress_ui.Range(progress, .85, .97))
     if s.get('signature'):
+        from .. import build_timer
+        build_timer.mark_saved(context.scene, build_timer.ship_key(s['links'], plan['context'], plan['index']))
         remember_ship_source(s['scene'], s['links'], plan['context'], plan['index'],
                              core.get(plan['payload']['ship'], 'Name'))
     progress.update(.98, 'Refreshing Corvette list')
@@ -176,6 +183,7 @@ def submit(s, context, report):
 
 class BBE_OT_corvette_commit(bpy.types.Operator):
     bl_idname = 'bbe.corvette_commit'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Save Reviewed Corvette'
     token: bpy.props.StringProperty(options={'HIDDEN'})
 
@@ -192,7 +200,8 @@ class BBE_OT_corvette_commit(bpy.types.Operator):
 
 class BBE_OT_corvette_repair_keep(bpy.types.Operator):
     bl_idname = 'bbe.corvette_repair_keep'
-    bl_label = 'Repair Corvette — Keep My Build'
+    bl_translation_context = "BBEExtendedInterface"
+    bl_label = 'Repair Corvette â€” Keep My Build'
     bl_description = ('Repair the selected game-save build while keeping its parts and readable ship data. '
                       'I/O saves after confirmation; Ship Management stages until Save Changes. No cockpit is added')
     context_name: bpy.props.StringProperty(options={'HIDDEN'})
@@ -242,7 +251,7 @@ class BBE_OT_corvette_repair_keep(bpy.types.Operator):
         return True
 
     def draw(self, context):
-        l = self.layout
+        l = i18n.localized_layout(self.layout)
         help_button(l, 'REPAIR')
         ship = core.ships(self._s['root'], self.context_name)[self.index]
         l.label(text=f"Destination: {self.context_name} / Slot {self.index + 1}: {core.get(ship, 'Name') or 'Unnamed'}")
@@ -307,10 +316,11 @@ def minimal_slot_items(self, context):
 
 class BBE_OT_io_add_minimal_corvette(bpy.types.Operator):
     bl_idname = 'bbe.io_add_minimal_corvette'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Add Minimal Corvette'
     bl_description = 'Create an S-class starter Corvette in an empty ship slot and select it in I/O'
     dialog_key: bpy.props.StringProperty(options={'HIDDEN'})
-    slot: bpy.props.EnumProperty(name='Empty ship slot', items=minimal_slot_items)
+    slot: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Empty ship slot', items=minimal_slot_items)
     ship_name: bpy.props.StringProperty(name='Ship name', default='New Corvette', maxlen=80)
 
     @classmethod
@@ -361,9 +371,9 @@ class BBE_OT_io_add_minimal_corvette(bpy.types.Operator):
             return {'CANCELLED'}
 
     def draw(self, context):
-        self.layout.prop(self, 'slot')
-        self.layout.prop(self, 'ship_name')
-        self.layout.label(text='Creates an S-class starter ship in the save.')
+        i18n.localized_layout(self.layout).prop(self, 'slot')
+        i18n.localized_layout(self.layout).prop(self, 'ship_name')
+        i18n.localized_layout(self.layout).label(text='Creates an S-class starter ship in the save.')
 
     def cancel(self, context):
         _dialogs.pop(self.dialog_key, None)
@@ -394,16 +404,17 @@ class BBE_OT_io_add_minimal_corvette(bpy.types.Operator):
 
 class BBE_OT_corvette_export(bpy.types.Operator):
     bl_idname = 'bbe.corvette_export'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Export Corvette to Save'
     bl_description = ('Review exporting current scene parts over a selected ship or to a new empty slot. '
                       'Writes the game save after confirmation with backups; Blender Undo does not undo save-file writes')
     dialog_key: bpy.props.StringProperty(options={'HIDDEN'})
-    destination: bpy.props.EnumProperty(name='Destination', items=[
+    destination: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Destination', items=[
         ('CHOOSE', 'Choose destination', 'Choose an existing ship or explicitly create a new ship'),
         ('SELECTED', 'Overwrite selected ship', 'Replace its build with scene parts; keep readable inventory, technology, hyperslots and stats. Non-Corvette ships are converted'),
         ('NEW', 'New empty ship slot', 'Create a Corvette in an unused slot with minimal default inventory/stats and exactly the scene objects; no template parts are added')])
-    context_name: bpy.props.EnumProperty(name='Save context', items=context_items)
-    slot: bpy.props.EnumProperty(name='Ship slot', items=slot_items)
+    context_name: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Save context', items=context_items)
+    slot: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Ship slot', items=slot_items)
     optimized: bpy.props.BoolProperty(default=False, options={'HIDDEN'})
     confirm: bpy.props.BoolProperty(name='Confirm this destination and export', default=False)
     confirm_resets: bpy.props.BoolProperty(name='Allow the data resets listed above', default=False)
@@ -411,6 +422,7 @@ class BBE_OT_corvette_export(bpy.types.Operator):
 
     def invoke(self, context, event):
         try:
+            context.scene.nms_save_data.refresh_before_export()
             self._s = snapshot(context)
             root = self._s['root']
             self._contexts = [(c, 'Expedition' if c == 'Season' else 'Main', '') for c in core.contexts(root)]
@@ -483,7 +495,7 @@ class BBE_OT_corvette_export(bpy.types.Operator):
         return True
 
     def draw(self, context):
-        l = self.layout
+        l = i18n.localized_layout(self.layout)
         help_button(l, 'EXPORT')
         if self.destination == 'CHOOSE':
             l.label(text='No ship is selected.', icon='QUESTION')
@@ -503,7 +515,7 @@ class BBE_OT_corvette_export(bpy.types.Operator):
         new = row.row(align=True); new.enabled = self._slots[self.context_name, 'NEW'][0][0] != 'NONE'
         new.prop_enum(self, 'destination', 'NEW')
         l.prop(self, 'slot')
-        l.label(text=f"Scene parts: {self._counts['before']} → {self._counts['after']}")
+        l.label(text=f"Scene parts: {self._counts['before']} â†’ {self._counts['after']}")
         if self.optimized:
             l.label(text=f"Reordered: {self._counts['moved']} / Identical duplicates removed: {self._counts['removed']}")
         if self._error:
@@ -524,7 +536,7 @@ class BBE_OT_corvette_export(bpy.types.Operator):
         if self._resets:
             l.prop(self, 'confirm_resets')
         warning(l, self._objects)
-        l.label(text='Only the scene’s parts are exported. No template parts are added.')
+        l.label(text='Only the sceneâ€™s parts are exported. No template parts are added.')
         l.label(text='Other ships and the freighter are preserved; verified backups precede writes.')
         row = l.row(); row.alert = bool(changed)
         row.prop(self, 'confirm')

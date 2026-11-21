@@ -17,6 +17,11 @@ class POWER_CONTROL(part.Part):
         self.__object_id = bpy_object["SnapID"]
         self.__builder_object = builder_object
 
+    @classmethod
+    def read_record(cls, obj):
+        # Legacy tagged controls take their record ID from the socket.
+        return cls(bpy_object=obj).serialise()
+
     @property
     def builder(self):
         return self.__builder_object

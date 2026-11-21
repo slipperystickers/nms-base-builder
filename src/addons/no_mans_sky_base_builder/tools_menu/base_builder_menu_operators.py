@@ -246,6 +246,7 @@ class NMS_OT_switch_proxies_to_low(bpy.types.Operator):
     """Switch every high res part and group in the scene to the old fbx proxy."""
 
     bl_idname = "object.nms_switch_proxies_to_low"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Use Low-Res Proxies"
     bl_description = "Switch every high-res part and group in the scene to the old fbx proxy from the models folder"
     bl_options = {"REGISTER", "UNDO"}
@@ -263,6 +264,7 @@ class NMS_OT_switch_proxies_to_high(bpy.types.Operator):
     """Switch every old fbx proxy part and group in the scene to models-high-res."""
 
     bl_idname = "object.nms_switch_proxies_to_high"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Use High-Res Proxies"
     bl_description = "Switch every low-res proxy part and group in the scene to its models-high-res part, where one exists"
     bl_options = {"REGISTER", "UNDO"}

@@ -1,3 +1,4 @@
+from .. import i18n
 from ..furby_errors import report_error
 import bpy
 
@@ -9,6 +10,7 @@ _pending_save_imports = {}
 # Operator for button to select save folder directory
 class SelectSaveFolder(bpy.types.Operator):
     bl_idname = "object.nms_select_save_folder"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Select Folder"
     
     bl_description = "Manually select location of save folder of NMS"
@@ -48,6 +50,7 @@ class SelectSaveFolder(bpy.types.Operator):
 # Button to import base selected from list of bases in save editor section
 class ImportBaseFromSave(bpy.types.Operator):
     bl_idname = "object.nms_import_base_from_save"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Import data from selected file"
     bl_description = "Import base from save file while also pinning it on top"
 
@@ -132,6 +135,7 @@ class ImportBaseFromSave(bpy.types.Operator):
 # Button to export base selected from list of bases in save editor section
 class ExportBaseToSave(bpy.types.Operator):
     bl_idname = "object.nms_export_base_to_save"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Export data to save file"
     bl_description = "Export base to save_file"
 
@@ -151,8 +155,8 @@ class ExportBaseToSave(bpy.types.Operator):
         return self.execute(context)
 
     def draw(self, context):
-        build_metadata.draw_save_warning(self.layout, context.scene.nms_base_tool)
-        self.layout.label(text='Updates the selected base with your scene parts and name.')
+        build_metadata.draw_save_warning(i18n.localized_layout(self.layout), context.scene.nms_base_tool)
+        i18n.localized_layout(self.layout).label(text='Updates the selected base with your scene parts and name.')
 
     def execute(self, context):
         if (hasattr(self, '_metadata_signature') and self._metadata_signature !=
@@ -161,14 +165,18 @@ class ExportBaseToSave(bpy.types.Operator):
             return {'CANCELLED'}
         scene = context.scene
         save_data = scene.nms_save_data
-        result = save_data.export_base_to_save_file(context)
-        if result is not None:
-            self.report({'INFO'}, result)
+        try:
+            result = save_data.export_base_to_save_file(context)
+        except Exception as exc:
+            report_error(self, {'ERROR'}, f'Export failed: {exc}')
+            return {'CANCELLED'}
+        self.report({'INFO'}, result)
         return {"FINISHED"}
     
 # Button to pin base to top of the editor
 class PinBase(bpy.types.Operator):
     bl_idname = "object.nms_pin_base"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Pin"
     bl_description = "Pin this base at top of Save Editor for easy access to updating functionality and persistence"
     
@@ -191,6 +199,7 @@ class PinBase(bpy.types.Operator):
 class UnpinBase(bpy.types.Operator):
     
     bl_idname = "object.nms_unpin_base"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Unpin"
     bl_description = "Unpin base from top of save editor"
     
@@ -203,6 +212,7 @@ class UnpinBase(bpy.types.Operator):
 # button to imoprt base data from a pinned base
 class ImportPinnedBase(bpy.types.Operator):
     bl_idname = "object.import_pinned_base"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Import"
     
     bl_description = (
@@ -220,6 +230,7 @@ class ImportPinnedBase(bpy.types.Operator):
 class ExoprtPinnedBase(bpy.types.Operator):
     
     bl_idname = "object.export_pinned_base"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Export"
     bl_description = (
         "Update changes to save_file onto location that is pinned.\n"
@@ -236,8 +247,8 @@ class ExoprtPinnedBase(bpy.types.Operator):
         return self.execute(context)
 
     def draw(self, context):
-        build_metadata.draw_save_warning(self.layout, context.scene.nms_base_tool)
-        self.layout.label(text='Updates the pinned base with your scene parts and name.')
+        build_metadata.draw_save_warning(i18n.localized_layout(self.layout), context.scene.nms_base_tool)
+        i18n.localized_layout(self.layout).label(text='Updates the pinned base with your scene parts and name.')
 
     def execute(self, context):
         if (hasattr(self, '_metadata_signature') and self._metadata_signature !=
@@ -246,18 +257,19 @@ class ExoprtPinnedBase(bpy.types.Operator):
             return {'CANCELLED'}
         scene = context.scene
         save_data = scene.nms_save_data
-        result = save_data.export_pinned_base(context)
-        if result is not None:
-            self.report({'INFO'}, result)
-        else: 
-            report_error(self,{'ERROR'}, "Update Failed, repinning the base may resolve this issue ")
-            print("result is none")
+        try:
+            result = save_data.export_pinned_base(context)
+        except Exception as exc:
+            report_error(self, {'ERROR'}, f'Export failed: {exc}')
+            return {'CANCELLED'}
+        self.report({'INFO'}, result)
         return {"FINISHED"}
     
 # a button to manually backup save files
 class MakeBackupPinned(bpy.types.Operator):
     
     bl_idname = "object.make_pinned_savefile_backup"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Backup"
     bl_description = (
         "Back up the save files linked to the pinned base in the shared Backup Folder"
@@ -274,6 +286,7 @@ class MakeBackupPinned(bpy.types.Operator):
 class MakeBackup(bpy.types.Operator):
     
     bl_idname = "object.make_savefile_backup"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Backup"
     bl_description = (
         "Back up the selected save slot in the shared Backup Folder"
@@ -289,6 +302,7 @@ class MakeBackup(bpy.types.Operator):
 class OpenBackupFolder(bpy.types.Operator):
     
     bl_idname = "object.open_backup_folder"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Open Save Slot Backups"
     bl_description = (
         "Open the selected save slot's subfolder inside the shared Backup Folder"

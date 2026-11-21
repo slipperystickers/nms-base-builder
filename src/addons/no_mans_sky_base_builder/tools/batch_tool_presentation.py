@@ -1,3 +1,4 @@
+from .. import i18n
 import bpy
 from bpy.types import Panel
 
@@ -7,6 +8,7 @@ from .. import icons
 # Base Property Panel ---
 class NMS_PT_batch_tools_panel(Panel):
     bl_idname = "NMS_PT_batch_tools_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Batch Tools'
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -19,10 +21,15 @@ class NMS_PT_batch_tools_panel(Panel):
         return True
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'batch')
+        from .. import sidebar_builder
+        sidebar_builder.begin_header(self, context, 'batch')
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'batch')
 
     def draw(self, context):
-        layout = self.layout
+        from .. import sidebar_builder
+        if sidebar_builder.draw_inline(self, context, 'batch'):
+            return
+        layout = i18n.localized_layout(self.layout)
         scene = context.scene
         batch_tool = scene.nms_batch_tool
         

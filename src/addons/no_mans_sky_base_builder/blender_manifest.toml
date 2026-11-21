@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "no_mans_sky_base_builder"
-version = "18.2.48"
+version = "18.2.118"
 name = "Base Builder Extended"
 tagline = "A tool to assist with base building in No Mans Sky"
 maintainer = "DjMonkey <@djmonkeyuk>"
@@ -37,7 +37,7 @@ license = [
 # # Optional: advanced build settings.
 # # https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
 [permissions]
-network = "Releases, HD downloads, diagnostics and opt-in chat"
+network = "Updates, HD assets, diagnostics, opt-in chat and Charon uploads"
 files = "Read game assets and save bases, prefabs and backups"
 
 [build]
@@ -46,6 +46,8 @@ files = "Read game assets and save bases, prefabs and backups"
 paths_exclude_pattern = [
    "/models-high-res/",
    "/resources/hd_additions/",
+   "/resources/practice/",
+   "/practice_course.py",
    "/asset_browser/utils.py",
    "__pycache__/",
    "*.blend1",

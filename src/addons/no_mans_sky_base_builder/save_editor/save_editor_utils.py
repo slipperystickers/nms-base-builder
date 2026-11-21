@@ -1,3 +1,4 @@
+from .. import i18n
 import os
 import bpy
 import platform
@@ -23,6 +24,9 @@ class BaseType:
     SPACESTATION_BASE = "PlayerSpaceStationBase"
     STATION = SPACESTATION_BASE
     SPACE_BASE = "PlayerSpaceBase"
+
+    # These destination types identify a base by its location within a save context.
+    LOCATED_BASES = (BASE, SPACE_BASE, STATION, EXTERNAL_BASE)
     
 class BaseData:
     
@@ -60,12 +64,13 @@ class BaseData:
         self.galactic_address = str(base[SaveTranslation.galactic_address])
         self.base_type = in_base_type
         self.parts_count = parts_count
+        self.base_position = base.get(SaveTranslation.position)
         
         
 # called to display messages/notificatoin
 def ShowMessageBox(message="", title="Message Box", icon="INFO"):
     def draw(self, context):
-        self.layout.label(text=message)
+        i18n.localized_layout(self.layout).label(text=message)
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
     
 # return save folder path for different OS versions
@@ -369,12 +374,18 @@ def import_paticular_base_from_save(base_identifier, save_slot, progress=None, w
     return (searched_base, package, source_error) if with_ship_source else searched_base
     
 #save a base to save file
-def save_base_to_save_file(objects_data, base_identifier, save_slot, base_name=None, progress=None, owner_override=None):
+def save_base_to_save_file(objects_data, base_identifier, save_slot, base_name=None, progress=None, owner_override=None, selected_source=None):
     from .save_file import SaveFile
     from . import ship_files
     save_slot = list(dict.fromkeys(Path(p).resolve() for p in save_slot if p))
     expected = ship_files.export_hashes(save_slot)
+    latest = get_lastes_save_file_location(save_slot)
+    if selected_source is not None and (
+            str(latest) != selected_source.get('source_path')
+            or expected[str(latest)] != selected_source.get('source_hash')):
+        raise ValueError('The game saved again during export. Click Export to Save to retry.')
     pending = {}
+    skipped = []
     total = max(1, len(save_slot))
     for index, slot in enumerate(save_slot):
         if progress is not None:
@@ -386,12 +397,19 @@ def save_base_to_save_file(objects_data, base_identifier, save_slot, base_name=N
         # look for base in save file to see it it exist or not
         in_base = save_file.search_base_with_identifier(base_identifier)
         if in_base is None:
-            return
+            # The picker reads the latest save point. The other may predate this base.
+            if base_identifier.base_type in BaseType.LOCATED_BASES and slot != latest:
+                skipped.append(slot.name)
+                continue
+            raise ValueError(f'{base_identifier.base_name} was not found in {slot.name}. Refresh the save list and select the base again.')
         if base_identifier.base_type == BaseType.CORVETTE:
             from . import ship_repair, ship_core
             ship_repair.require_objects_destination(save_file.json_data,
                 save_file.context or ship_core.get(save_file.json_data, 'ActiveContext'), in_base)
         
+        if slot == latest:
+            destination_position = in_base.get(SaveTranslation.position)
+
         # here update objects list with list provided
         in_base[SaveTranslation.objects] = save_translation.translate_to_obf_data(objects_data)
         
@@ -414,9 +432,15 @@ def save_base_to_save_file(objects_data, base_identifier, save_slot, base_name=N
             progress.update(.15 + .40 * (index + 1) / total,
                             f'Prepared save point {index + 1} / {total}')
     ship_files.commit_roots(pending, expected, progress=progress)
+    # Older pinned destinations acquire their actual position after a successful write.
+    base_identifier.base_position = destination_position
     if progress is not None:
         progress.update(.94, 'Save export finished')
-    return "Base/Corvette saved sucessfully"
+    destination = ", ".join(path.name for path in pending)
+    result = f'Saved {len(objects_data)} parts to {destination}.'
+    if skipped:
+        result += f' {", ".join(skipped)} has no matching base and was left unchanged.'
+    return result
 
 # The selected save slot's folder within the shared backup root.
 def get_backups_folder(save_links):

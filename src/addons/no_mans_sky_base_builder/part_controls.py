@@ -1,10 +1,11 @@
 """Reversible proxy display controls and contextual two-part snapping."""
+from . import i18n
 import bpy
 import gpu
 from bpy.app.handlers import persistent
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Matrix, Vector
-from . import cable_connections, door_circuit, snap_markers
+from . import cable_connections, door_circuit, repeat_along, snap_markers, hab_stairs
 
 ROOF='BBE Interior Cutaway'
 BEAM='BBE Magnetic Beam'
@@ -234,31 +235,95 @@ def merge_display_parts(objects):
                 bpy.data.meshes.remove(mesh)
 
 
+class BBE_OT_select_cable_end(bpy.types.Operator):
+    bl_idname = 'bbe.select_cable_end'
+    bl_label = 'Select Cable Endpoint'
+    bl_description = 'Select the movable endpoint or its attached device for Blender transforms'
+    bl_options = {'UNDO', 'INTERNAL'}
+    owner: bpy.props.StringProperty(options={'SKIP_SAVE'})
+    end: bpy.props.IntProperty(min=-1, max=1)
+
+    def execute(self, context):
+        cable = context.scene.objects.get(self.owner)
+        if context.mode != 'OBJECT' or not cable or cable.get('ObjectID') not in cable_connections.EDITABLE_LINES:
+            return {'CANCELLED'}
+        ends = cable_connections.endpoints(cable)
+        if not all(ends):
+            return {'CANCELLED'}
+        if self.end == -1:
+            if any(cable_connections.attached_device(end) is not None for end in ends):
+                return {'CANCELLED'}
+            objects = ends
+        else:
+            end = ends[self.end]
+            objects = (cable_connections.attached_device(end) or end,)
+        if any(obj.hide_select or not obj.visible_get(view_layer=context.view_layer) for obj in objects):
+            self.report({'WARNING'}, 'The endpoint or its device is hidden or locked for selection.')
+            return {'CANCELLED'}
+        for obj in context.selected_objects:
+            obj.select_set(False)
+        for obj in objects:
+            obj.select_set(True)
+        context.view_layer.objects.active = objects[0]
+        return {'FINISHED'}
+
+
 class BBE_OT_part_display(bpy.types.Operator):
     bl_idname='bbe.part_display';bl_label='Part Display';bl_options={'REGISTER','UNDO'}
     bl_description='Open the interior for decorating, or toggle the magnetic beam; game exports retain the complete part'
     owner: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
-    def invoke(self,context,event):
+    def invoke(self, context, event):
         self.object = context.scene.objects.get(self.owner) if self.owner else context.active_object
-        if self.object is None:
+        if not self.object or not (enclosed(self.object) or self.object.get('ObjectID') in BEAM_IDS):
             return {'CANCELLED'}
-        return context.window_manager.invoke_popup(self,width=290)
+        return context.window_manager.invoke_popup(self, width=290)
+
     def draw(self,context):
         obj=self.object
         from .save_editor.function_help import corner_help
-        heading = self.layout.row(align=True)
+        heading = i18n.localized_layout(self.layout).row(align=True)
         heading.label(text=obj.name, icon='OBJECT_DATA')
         corner_help(heading, 'PART_DISPLAY')
         if enclosed(obj):
-            self.layout.prop(obj,'bbe_hide_ceiling',text='Hide Ceiling / Roof')
+            i18n.localized_layout(self.layout).prop(obj,'bbe_hide_ceiling',text='Hide Ceiling / Roof')
             if obj.bbe_hide_ceiling:
-                self.layout.prop(obj,'bbe_ceiling_height',text='Opening Height',slider=True)
-                self.layout.label(text='Lower for sloped roofs and upper walls.')
-            self.layout.label(text='Viewport only; full part stays in exports.',icon='INFO')
+                i18n.localized_layout(self.layout).prop(obj,'bbe_ceiling_height',text='Opening Height',slider=True)
+                i18n.localized_layout(self.layout).label(text='Lower for sloped roofs and upper walls.')
+            i18n.localized_layout(self.layout).label(text='Viewport only; full part stays in exports.',icon='INFO')
         if obj.get('ObjectID') in BEAM_IDS:
-            self.layout.prop(obj,'bbe_show_magnetic_beam',text='Show Magnetic Beam')
-            self.layout.label(text='Display only; game part stays intact.',icon='INFO')
+            i18n.localized_layout(self.layout).prop(obj,'bbe_show_magnetic_beam',text='Show Magnetic Beam')
+            i18n.localized_layout(self.layout).label(text='Display only; game part stays intact.',icon='INFO')
     def execute(self,context):return {'FINISHED'}
+
+
+def message_module(obj):
+    return obj is not None and obj.get('ObjectID','').lstrip('^') == 'MESSAGEMODULE'
+
+
+class BBE_OT_edit_message(bpy.types.Operator):
+    bl_idname='bbe.edit_message'
+    bl_label='Edit Message'
+    bl_description='Edit this Message Module text; saved in its Message custom property and build export'
+    bl_options={'REGISTER','UNDO'}
+    owner:bpy.props.StringProperty(options={'HIDDEN','SKIP_SAVE'})
+    message:bpy.props.StringProperty(name='Message',options={'SKIP_SAVE'})
+    @classmethod
+    def poll(cls,context):
+        return context.mode=='OBJECT' and message_module(context.active_object) and context.active_object.select_get()
+    def invoke(self,context,event):
+        obj=context.scene.objects.get(self.owner) if self.owner else context.active_object
+        if not message_module(obj):return {'CANCELLED'}
+        self.owner=obj.name
+        self.message=str(obj.get('Message',''))
+        return context.window_manager.invoke_props_dialog(self,width=440,confirm_text='Save Message')
+    def draw(self,context):
+        i18n.localized_layout(self.layout).prop(self,'message',text='')
+    def execute(self,context):
+        obj=context.scene.objects.get(self.owner) if self.owner else context.active_object
+        if not message_module(obj):return {'CANCELLED'}
+        obj['Message']=self.message
+        obj.update_tag()
+        return {'FINISHED'}
 
 
 class BBE_GT_part_button(bpy.types.Gizmo):
@@ -286,9 +351,11 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
     @classmethod
     def poll(cls,context):
         from . import curve_surface,cable_targets
-        if context.mode!='OBJECT' or curve_surface._sessions or cable_targets.session(context):return False
+        hab_stairs.picking(context)
+        if context.mode!='OBJECT' or context.area.as_pointer() in repeat_along._sessions or curve_surface._sessions or cable_targets.session(context):return False
         obj=context.active_object
-        return obj is not None and obj.select_get() and (enclosed(obj) or obj.get('ObjectID') in BEAM_IDS or snap_markers.selected_pair(context) is not None
+        return obj is not None and obj.select_get() and (repeat_along.eligible(obj) or message_module(obj) or enclosed(obj) or obj.get('ObjectID') in BEAM_IDS or snap_markers.selected_pair(context) is not None
+            or bool(cable_connections.local_sockets(obj, cable_connections.SUPPLY))
             or bool(cable_connections.local_sockets(obj, cable_connections.BYTEBEAT))
             or bool(cable_connections.local_sockets(obj, cable_connections.POWER)))
     def setup(self,context):
@@ -297,19 +364,66 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
         self.wiring=self.gizmos.new('BBE_GT_part_button');self.wiring.use_tooltip=True
         self.prox=self.gizmos.new('BBE_GT_part_button');self.prox.use_tooltip=True
         self.beat=self.gizmos.new('BBE_GT_part_button');self.beat.use_tooltip=True
+        self.supply=self.gizmos.new('BBE_GT_part_button');self.supply.use_tooltip=True
+        self.repeat=self.gizmos.new('BBE_GT_part_button');self.repeat.use_tooltip=True
+        self.repeat.target_set_operator('bbe.repeat_along')
+        self.stairs = self.gizmos.new('BBE_GT_part_button')
+        self.stairs.use_tooltip = True
+        self.stairs.target_set_operator('bbe.add_hab_stairs')
+        self.landings = []
     def draw_prepare(self,context):
         obj=context.active_object;scale=context.preferences.system.ui_scale
         point=location_3d_to_region_2d(context.region,context.region_data,obj.matrix_world.translation)
-        self.snap.hide=self.display.hide=self.wiring.hide=self.beat.hide=self.prox.hide=True
+        self.repeat.hide=self.snap.hide=self.display.hide=self.wiring.hide=self.beat.hide=self.prox.hide=self.supply.hide=True
+        self.stairs.hide = True
+        for target in self.landings:
+            target.hide = True
         if point is None:return
         x=max(10,min(context.region.width-120*scale,point.x+30*scale));y=max(12,min(context.region.height-100*scale,point.y+25*scale))
-        if snap_markers.selected_pair(context) and snap_markers.objects(context) is None:
+        if repeat_along.eligible(obj) and all(repeat_along.eligible(o) for o in context.selected_objects):
+            self.repeat.hide=False;self.repeat.label='Repeat Along';self.repeat.width=104*scale;self.repeat.height=25*scale
+            self.repeat.matrix_basis=Matrix.Translation((x,y,0));y+=30*scale
+        stairs = hab_stairs.shared_landings(context)
+        choosing = hab_stairs.picking(context)
+        if stairs or choosing:
+            self.stairs.hide = False
+            self.stairs.label = 'Cancel stair placement' if choosing else 'Add Stairs'
+            self.stairs.width = (140 if choosing else 104)*scale
+            self.stairs.height = 25*scale
+            self.stairs.matrix_basis = Matrix.Translation((x,y,0))
+            y += 30*scale
+        if choosing:
+            self.repeat.hide = True
+            while len(self.landings) < len(stairs):
+                target = self.gizmos.new('BBE_GT_snap_target')
+                target.explicit_pick = True
+                target.use_tooltip = True
+                self.landings.append(target)
+            for target, landing in zip(self.landings, stairs):
+                pos = location_3d_to_region_2d(context.region, context.region_data, landing.point)
+                if pos is not None:
+                    target.hide = False
+                    target.radius = 12*scale
+                    target.matrix_basis = Matrix.Translation((*pos,0))
+                    target.target_set_operator('bbe.add_hab_stairs').slot = landing.ceiling
+            return
+        if getattr(context.scene, 'bbe_show_connectors', True) and snap_markers.selected_pair(context) and snap_markers.objects(context) is None:
             self.snap.hide=False;self.snap.label='Snap';self.snap.width=70*scale;self.snap.height=25*scale
             self.snap.matrix_basis=Matrix.Translation((x,y,0));self.snap.target_set_operator('bbe.quick_snap');y+=30*scale
-        if enclosed(obj) or obj.get('ObjectID') in BEAM_IDS:
-            self.display.hide=False;self.display.label='Interior' if enclosed(obj) else 'Beam Options'
+        if message_module(obj) or enclosed(obj) or obj.get('ObjectID') in BEAM_IDS:
+            self.display.hide=False;self.display.label='Edit Message' if message_module(obj) else 'Interior' if enclosed(obj) else 'Beam Options'
             self.display.width=105*scale;self.display.height=25*scale
-            self.display.matrix_basis=Matrix.Translation((x,y,0));self.display.target_set_operator('bbe.part_display').owner=obj.name
+            self.display.matrix_basis=Matrix.Translation((x,y,0));self.display.target_set_operator('bbe.edit_message' if message_module(obj) else 'bbe.part_display').owner=obj.name
+            y += 30 * scale
+        if not getattr(context.scene, 'bbe_show_connectors', True):
+            return
+        if cable_connections.local_sockets(obj, cable_connections.SUPPLY):
+            self.supply.hide = False
+            self.supply.label = '+Attach Supply'
+            self.supply.width, self.supply.height = 115 * scale, 25 * scale
+            self.supply.matrix_basis = Matrix.Translation((x, y, 0))
+            op = self.supply.target_set_operator('bbe.start_cable_connection')
+            op.kind, op.source_name = cable_connections.SUPPLY, obj.name
             y += 30 * scale
         if cable_connections.local_sockets(obj, cable_connections.POWER):
             self.wiring.hide = False
@@ -359,18 +473,34 @@ def loaded(*args):
         if enclosed(obj) and obj.bbe_hide_ceiling:update_roof(obj)
 
 
-CLASSES=(door_circuit.BBE_OT_door_proximity,BBE_OT_part_display,BBE_GT_part_button,BBE_GGT_part_controls)
+CLASSES=(BBE_OT_select_cable_end,repeat_along.BBE_OT_repeat_along,hab_stairs.BBE_OT_add_hab_stairs,BBE_OT_edit_message, door_circuit.BBE_OT_door_proximity,BBE_OT_part_display,BBE_GT_part_button,BBE_GGT_part_controls)
 def register():
+    from .supply_preview import sync_roll
+    bpy.types.Object.bbe_supply_roll=bpy.props.FloatProperty(name='Pipe roll',subtype='ANGLE',
+        update=sync_roll,description='Rotate both tubes around the span while keeping both endpoints connected')
     bpy.types.Object.bbe_hide_ceiling=bpy.props.BoolProperty(name='Hide Ceiling',default=False,update=update_roof)
     bpy.types.Object.bbe_ceiling_height=bpy.props.FloatProperty(name='Opening Height',default=.65,min=.15,max=.95,subtype='FACTOR',update=update_roof)
     bpy.types.Object.bbe_show_magnetic_beam=bpy.props.BoolProperty(name='Show Magnetic Beam',default=False,update=update_beam)
     for cls in CLASSES:bpy.utils.register_class(cls)
+    from . import cable_edit
+    cable_edit.register()
+    for handlers in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre, bpy.app.handlers.load_pre):
+        handlers.append(hab_stairs.clear)
+    bpy.app.handlers.load_pre.append(repeat_along.stop)
     bpy.app.handlers.depsgraph_update_post.append(changed);bpy.app.handlers.load_post.append(loaded)
     bpy.app.timers.register(loaded,first_interval=.1)
 
 def unregister():
+    from . import cable_edit
+    cable_edit.unregister()
+    hab_stairs.clear()
+    for handlers in (bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre, bpy.app.handlers.load_pre):
+        if hab_stairs.clear in handlers:
+            handlers.remove(hab_stairs.clear)
+    repeat_along.stop()
+    if repeat_along.stop in bpy.app.handlers.load_pre:bpy.app.handlers.load_pre.remove(repeat_along.stop)
     if bpy.app.timers.is_registered(loaded):bpy.app.timers.unregister(loaded)
     if changed in bpy.app.handlers.depsgraph_update_post:bpy.app.handlers.depsgraph_update_post.remove(changed)
     if loaded in bpy.app.handlers.load_post:bpy.app.handlers.load_post.remove(loaded)
     for cls in reversed(CLASSES):bpy.utils.unregister_class(cls)
-    for prop in ('bbe_hide_ceiling','bbe_ceiling_height','bbe_show_magnetic_beam'):delattr(bpy.types.Object,prop)
+    for prop in ('bbe_supply_roll','bbe_hide_ceiling','bbe_ceiling_height','bbe_show_magnetic_beam'):delattr(bpy.types.Object,prop)

@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass
 from collections import defaultdict
 import bpy
+from . import i18n
 import gpu
 from bpy.app.handlers import persistent
 from gpu_extras.batch import batch_for_shader
@@ -125,7 +126,7 @@ class Surface:
         walk(a,b); walk(b,a)
         return chain
 
-    def edge_chain_at(self, face, location, xy, region, region_data, scale):
+    def edge_chain_at(self, face, location, xy, region, region_data, scale, max_turn=35):
         features=list(self.boundary(self.patch_faces(face)))
         best=None;distance=36*max(.75,scale)
         for edge in features:
@@ -138,7 +139,7 @@ class Surface:
             if d<distance:distance=d;best=edge
         if best is None:return frozenset()
         return frozenset(segment(self.vertices[a],self.vertices[b])
-                         for a,b in self.edge_chain(best,allowed=set(features)))
+                         for a,b in self.edge_chain(best,max_turn=max_turn,allowed=set(features)))
 
     def guide(self, faces, angle=0., hint=None):
         """A straight directional guide projected onto the selected surface."""
@@ -370,7 +371,7 @@ class DenseSurface:
                 if not result or (world-result[-1]).length>1e-5:result.append(world)
         return result,Vector(center),Vector(normal)
 
-    def edge_chain_at(self, face, location, xy, region, region_data, scale):
+    def edge_chain_at(self, face, location, xy, region, region_data, scale, max_turn=35):
         np = self.np
         label=int(self.patch_labels[face])
         boundary=self.boundary_ids(self.patch_faces(face))
@@ -390,13 +391,13 @@ class DenseSurface:
             if d<best_distance:best_distance=d;best=int(candidate)
         if best is None:return frozenset()
         cached=getattr(self,'last_edge_preview',None)
-        if cached and cached[0]==label and best in cached[1]:return cached[2]
-        chain=self.boundary_chain(label,best)
+        if cached and cached[0]==(label,max_turn) and best in cached[1]:return cached[2]
+        chain=self.boundary_chain(label,best,max_turn=max_turn)
         edges=frozenset(segment(self.coords[a],self.coords[b]) for a,b in vertices[list(chain)])
-        self.last_edge_preview=(label,chain,edges)
+        self.last_edge_preview=((label,max_turn),chain,edges)
         return edges
 
-    def boundary_chain(self, label, start):
+    def boundary_chain(self, label, start, max_turn=35):
         vertices=self.edge_vertices[self.boundary_ids(self.patches[label])]
         if label not in self.boundary_graph:
             graph=defaultdict(list)
@@ -433,7 +434,8 @@ class DenseSurface:
                     choices.append((turn,candidate,next_vertex))
                 if not choices:break
                 turn,candidate,next_vertex=min(choices)
-                if turn>math.radians(55):
+                if turn>math.radians(max_turn):
+                    if max_turn < 35: break
                     # Dense triangulation can insert a tiny right-angle jog
                     # into an otherwise continuous rim. Look ahead for the
                     # original heading; a real corner does not return to it.
@@ -667,10 +669,11 @@ class Stroke:
 
 class BBE_OT_surface_leave_choice(bpy.types.Operator):
     bl_idname='bbe.surface_leave_choice'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label='Resolve Temporary Curves'
     bl_description='Apply this choice to your temporary surface curves'
     bl_options={'INTERNAL'}
-    choice: bpy.props.EnumProperty(items=[('KEEP','Keep Editing','Return to your temporary curves'),
+    choice: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=[('KEEP','Keep Editing','Return to your temporary curves'),
         ('CREATE','Create Curves','Create editable curve objects now'),
         ('DISCARD','Discard Lines','Remove these temporary curves')],default='KEEP')
 
@@ -685,6 +688,7 @@ class BBE_OT_surface_leave_choice(bpy.types.Operator):
 
 class BBE_OT_surface_leave(bpy.types.Operator):
     bl_idname='bbe.surface_leave'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label='Keep your temporary curves?'
     bl_description='Create the curves, continue editing, or explicitly discard the preview'
 
@@ -700,9 +704,9 @@ class BBE_OT_surface_leave(bpy.types.Operator):
         return {'FINISHED'}
 
     def draw(self,context):
-        self.layout.ui_units_x=24
-        self.layout.label(text='Your lines have not been created yet.',icon='INFO')
-        row=self.layout.row(align=True)
+        i18n.localized_layout(self.layout).ui_units_x=24
+        i18n.localized_layout(self.layout).label(text='Your lines have not been created yet.',icon='INFO')
+        row=i18n.localized_layout(self.layout).row(align=True)
         row.operator_context='EXEC_DEFAULT'
         for choice,label in (('KEEP','Keep Editing'),('CREATE','Create Curves'),('DISCARD','Discard Lines')):
             row.operator('bbe.surface_leave_choice',text=label).choice=choice
@@ -712,6 +716,9 @@ class BBE_OT_surface_leave(bpy.types.Operator):
 
 class BBE_OT_curve_surface(bpy.types.Operator):
     bl_idname = 'bbe.curve_from_surface'
+    purpose:bpy.props.EnumProperty(items=[('CURVES','Curves',''),('DUPLICATE','Duplicate','')],default='CURVES',options={'HIDDEN'})
+    repeat_sources:bpy.props.StringProperty(options={'HIDDEN'})
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Curve from Edges / Faces'
     bl_description = 'Select edge chains or broad faces for centered surface curves, or draw a direction; preview before creating'
     bl_options = {'REGISTER', 'UNDO'}
@@ -724,7 +731,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         if context.region.type != 'WINDOW':
             region = next(r for r in context.area.regions if r.type == 'WINDOW')
             with context.temp_override(region=region):
-                result = bpy.ops.bbe.curve_from_surface('INVOKE_DEFAULT')
+                result = bpy.ops.bbe.curve_from_surface('INVOKE_DEFAULT',purpose=self.purpose,repeat_sources=self.repeat_sources)
             return {'CANCELLED'} if result == {'RUNNING_MODAL'} else result
         if _sessions:
             self.report({'INFO'}, 'Finish or cancel the current surface trace first.')
@@ -757,10 +764,11 @@ class BBE_OT_curve_surface(bpy.types.Operator):
     def picks(self): return self.history.items
 
     def change_mode(self, mode):
+        if self.purpose=='DUPLICATE':mode='EDGE'
         self.cancel_job(); self.commit_stroke(); self.mode = mode; self.hover = None
         self.hover_request = None; self.pending_click = None; self.hover_visible = False
         self.set_cursor('CROSSHAIR')
-        self.area.header_text_set('SURFACE CURVE: D draw | E edges | F faces | R rotate 90 | drag ring to rotate | Ctrl Z undo | Enter create')
+        self.area.header_text_set(i18n.interface('EDGE REPEAT: click edges to add/remove | Ctrl Z undo | Enter duplicate | Esc cancel' if self.purpose=='DUPLICATE' else 'SURFACE CURVE: D draw | E edges | F faces | R rotate 90 | drag ring to rotate | Ctrl Z undo | Enter create'))
         self.workspace.status_text_set({'DRAW':'Hold left mouse and draw on the model. Orbit to reach the underside. Blank gaps split strokes.',
             'EDGE':'Click near a visible boundary or crease to select its continuous chain.',
             'FACE':'Click a face for a broad surface patch and its longest guide. Drag the rotation ring to adjust.'}[mode])
@@ -883,7 +891,11 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         origin = view.region_2d_to_origin_3d(self.region, region_data, xy)
         direction = view.region_2d_to_vector_3d(self.region, region_data, xy)
         depsgraph = context.evaluated_depsgraph_get()
-        hit, location, normal, index, obj, matrix = self.scene.ray_cast(depsgraph, origin, direction)
+        from .viewport_cutaway import limits, ray_segment
+        ray = ray_segment(limits(self.scene), origin, direction)
+        if ray is None:return None
+        origin, reach = ray
+        hit, location, normal, index, obj, matrix = self.scene.ray_cast(depsgraph, origin, direction, distance=reach)
         if not hit:return None
         if obj.type != 'MESH' or obj.hide_select or obj.get('bbe_asset_browser_pin'):
             # Curves already laid on the surface must not occlude the next
@@ -896,6 +908,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                 found,co,n,fi=evaluated.ray_cast(inverse@origin,(inverse.to_3x3()@direction).normalized())
                 if not found:continue
                 world=evaluated.matrix_world@co;distance=(world-origin).length_squared
+                if distance > reach*reach:continue
                 if closest is None or distance<closest[0]:closest=(distance,world,fi,candidate,evaluated.matrix_world.copy())
             if closest is None:return None
             _,location,index,obj,matrix=closest
@@ -975,7 +988,8 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         surface = yield from self.surface_for(hit)
         yield from surface.patch_steps(index)
         edges=surface.edge_chain_at(index,location,xy,self.region,self.area.spaces.active.region_3d,
-                                    bpy.context.preferences.system.ui_scale)
+                                    bpy.context.preferences.system.ui_scale,
+                                    max_turn=edge_turn(bpy.context))
         if not edges:
             if not preview:self.report({'INFO'},'Click closer to a visible boundary or crease edge.')
             self.hover=None;self.update_lines();return
@@ -1094,6 +1108,10 @@ class BBE_OT_curve_surface(bpy.types.Operator):
     def buttons(self):
         scale=max(.75,bpy.context.preferences.system.ui_scale)
         x=64*scale;top=max(254*scale,self.region.height-250*scale)
+        if self.purpose=='DUPLICATE':
+            return scale,x,top,[('EDGE','Select one continuous edge path',12,-64,290,30),
+                ('UNDO','Undo',12,-205,90,26),('REDO','Redo',112,-205,90,26),('STOP','Stop scan',212,-205,90,26),
+                ('FINISH','Duplicate Along Path',12,-242,190,30),('CANCEL','Cancel',212,-242,90,30)]
         return scale,x,top,[('EDGE','Edges',12,-64,140,30),('FACE','Faces',162,-64,140,30),
             ('DRAW','Draw on Surface',12,-101,290,30),
             ('ROTATE','Rotate 90°',12,-137,290,26),
@@ -1108,19 +1126,19 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         shader=gpu.shader.from_builtin('UNIFORM_COLOR')
         with w.canvas(context):
             w.rounded(shader,x,top-290*scale,314*scale,290*scale,12*scale,w.INK)
-            w.text('CURVE FROM EDGES / FACES',x+14*scale,top-23*scale,13*scale)
+            w.text(i18n.interface('DUPLICATE ALONG EDGE PATH' if self.purpose=='DUPLICATE' else 'CURVE FROM EDGES / FACES'),x+14*scale,top-23*scale,13*scale)
             for action,label,bx,by,width,height in buttons:
                 enabled = (action!='STOP' or self.job is not None) and (action!='ROTATE' or self.active_pick in self.picks)
                 fill=w.PURPLE if action==self.mode or action=='FINISH' else w.BUTTON
                 w.rounded(shader,x+bx*scale,top+by*scale,width*scale,height*scale,6*scale,fill)
-                w.text(label,x+(bx+width/2)*scale,top+(by+9)*scale,11*scale,w.TEXT if enabled else w.MUTED,align='CENTER')
-            status=(f'Rotation: {self.rotation_input}°' if self.rotating and self.rotation_input
-                    else self.progress or f'{len(self.picks)} selections / strokes')
+                w.text(i18n.interface(label),x+(bx+width/2)*scale,top+(by+9)*scale,11*scale,w.TEXT if enabled else w.MUTED,align='CENTER')
+            status=(i18n.interface('Rotation: {degrees}°').format(degrees=self.rotation_input) if self.rotating and self.rotation_input
+                    else self.progress or i18n.interface('{count} selections / strokes').format(count=len(self.picks)))
             w.text(status,x+14*scale,top-157*scale,10*scale,w.MUTED)
-            w.text('Drag diamond; type degrees while holding.' if self.active_pick in self.picks
+            w.text(i18n.interface('Drag diamond; type degrees while holding.' if self.active_pick in self.picks
                    else 'Stroke marks direction.' if self.mode=='DRAW'
-                   else 'Click near a boundary or broad surface.',x+14*scale,top-174*scale,10*scale,w.MUTED)
-            w.text('Ctrl Z: undo   Ctrl Y: redo   Enter: create',x+14*scale,top-267*scale,10*scale,w.MUTED)
+                   else 'Click near a boundary or broad surface.'),x+14*scale,top-174*scale,10*scale,w.MUTED)
+            w.text(i18n.interface('Ctrl Z: undo   Ctrl Y: redo   Enter: create'),x+14*scale,top-267*scale,10*scale,w.MUTED)
             if self.hover_visible and self.hover_request is not None:
                 mx,my=self.hover_request[1]
                 color=(.4,1.,.65,1.) if self.hover else (.15,.85,1.,1.)
@@ -1128,7 +1146,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                     and (self.cache[p.source].same_patch(p.face_index,self.hover.face_index) if p.kind=='FACE'
                          else p.edges==self.hover.edges) for p in self.picks)
                 w.disc(shader,mx,my,3*scale,color)
-                w.text('Click to remove' if selected else 'Click to select' if self.hover else 'Preparing preview…',
+                w.text(i18n.interface('Click to remove' if selected else 'Click to select' if self.hover else 'Preparing preview…'),
                        mx+15*scale,my+16*scale,11*scale,color)
 
     def draw_lines(self):
@@ -1179,7 +1197,20 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         paths=selection_paths(self.picks)
         if not paths:
             self.report({'INFO'},'Draw on the model or select edges / faces, then choose Create Curves.');return {'RUNNING_MODAL'}
+        if self.purpose=='DUPLICATE':
+            import json
+            names=json.loads(self.repeat_sources)
+            if len(paths)!=1:
+                self.report({'INFO'},'Select one continuous edge path. Remove the other selections first.');return {'RUNNING_MODAL'}
+            if not names or any(context.scene.objects.get(name) is None for name in names):
+                self.report({'ERROR'},'The source parts are no longer available. Cancel and select them again.');return {'RUNNING_MODAL'}
         self.cleanup();guides=create_guides(context,paths)
+        if self.purpose=='DUPLICATE':
+            from . import duplication_tools
+            try:duplication_tools.finish_edge(context,guides[0],names)
+            except (ValueError,RuntimeError) as exc:
+                self.report({'ERROR'},str(exc));return {'CANCELLED'}
+            return {'FINISHED'}
         self.report({'INFO'},f'Created {len(guides)} editable curve(s). Source objects unchanged.')
         return {'FINISHED'}
 
@@ -1202,6 +1233,12 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                 self.leave_pending=False
                 return self.request_leave(context)
             return {'RUNNING_MODAL'}
+        if getattr(self,'settings_pending',False):
+            if event.type=='LEFTMOUSE' and event.value=='RELEASE':
+                self.settings_pending=False
+                bpy.ops.bbe.curve_trace_settings('INVOKE_DEFAULT')
+            return {'RUNNING_MODAL'}
+        if getattr(self,'settings_prompt',False):return {'PASS_THROUGH'}
         if getattr(self,'leave_prompt',False):return {'PASS_THROUGH'}
         action=getattr(self,'leave_action',None)
         if action:
@@ -1277,6 +1314,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                             if action=='FINISH':return self.finish(context)
                             if action=='CANCEL':return self.request_leave(context,event)
                             if action=='ROTATE':self.rotate_active(math.pi/2)
+                            if action=='TOLERANCE':self.settings_pending=True
                             if action in {'UNDO','REDO'}:self.undo(action=='REDO')
                             elif action=='STOP':self.cancel_job()
                             elif action in {'DRAW','EDGE','FACE'}:self.change_mode(action)
@@ -1305,8 +1343,14 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                             self.stroke=Stroke();self.last_xy=xy;self.draw_sample(context,xy)
                             self.set_cursor('PAINT_BRUSH')
                         elif event.type=='MOUSEMOVE' and self.stroke:
-                            if self.last_xy is None or (xy-self.last_xy).length>=16:
-                                self.draw_sample(context,xy);self.last_xy=xy
+                            if self.last_xy is None:
+                                self.draw_sample(context,xy)
+                            else:
+                                # Sample between events so fast motion cannot bridge holes
+                                # or jump to another surface without detecting the gap.
+                                for sample in stroke_samples(self.last_xy,xy,spacing=6.,limit=12):
+                                    self.draw_sample(context,sample)
+                            self.last_xy=xy
                         if self.stroke:self.update_lines()
                     elif event.type=='LEFTMOUSE' or time.perf_counter()-self.last_hover_time>.035:
                         self.last_hover_time=time.perf_counter();candidate,hit=self.local_pick(context,xy)
@@ -1360,7 +1404,44 @@ def invalidate_surface_snapshot(scene, depsgraph):
             break
 
 
+
+def edge_turn(context):
+    from .curve_studio import preferences
+    return getattr(preferences(context), 'curve_edge_max_turn', 35.)
+
+
+class BBE_OT_curve_trace_settings(bpy.types.Operator):
+    bl_idname='bbe.curve_trace_settings'
+    bl_label='Edge Tracing'
+    bl_description='Limit how far an edge chain can turn through each vertex; lower values follow straighter sections'
+    max_turn:bpy.props.FloatProperty(name='Maximum turn',default=35,min=0,max=90,precision=0)
+    def invoke(self,context,event):
+        self.max_turn=edge_turn(context)
+        self.session=next((op for op in _sessions if op.window==context.window),None)
+        if self.session: self.session.settings_prompt=True
+        return context.window_manager.invoke_props_dialog(self,width=280)
+    def draw(self,context):
+        self.layout.prop(self,'max_turn',text='Maximum turn (degrees)')
+        self.layout.label(text='Lower values stop at gentler bends.')
+    def close(self):
+        if self.session and self.session in _sessions:
+            self.session.settings_prompt=False
+            self.session.hover=None;self.session.hover_request=None;self.session.hover_due=0.
+            self.session.update_lines();self.session.area.tag_redraw()
+    def cancel(self,context): self.close()
+    def execute(self,context):
+        from .curve_studio import preferences
+        prefs=preferences(context)
+        if prefs is not None:
+            prefs.curve_edge_max_turn=self.max_turn
+            try: bpy.ops.wm.save_userpref()
+            except RuntimeError: pass
+        self.close()
+        return {'FINISHED'}
+
+
 def register():
+    bpy.utils.register_class(BBE_OT_curve_trace_settings)
     bpy.utils.register_class(BBE_OT_surface_leave_choice)
     bpy.utils.register_class(BBE_OT_surface_leave)
     bpy.utils.register_class(BBE_OT_curve_surface)
@@ -1376,3 +1457,4 @@ def unregister():
     bpy.utils.unregister_class(BBE_OT_curve_surface)
     bpy.utils.unregister_class(BBE_OT_surface_leave)
     bpy.utils.unregister_class(BBE_OT_surface_leave_choice)
+    bpy.utils.unregister_class(BBE_OT_curve_trace_settings)

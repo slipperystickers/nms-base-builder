@@ -41,7 +41,7 @@ class NMSBaseProperties(PropertyGroup):
         maxlen=1024,
     )
 
-    string_base_type: bpy.props.EnumProperty(
+    string_base_type: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="The base type",
         description="Planet or Freighter.",
         items = [

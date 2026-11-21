@@ -1,5 +1,6 @@
 
 import bpy
+from .. import i18n
 from ..utils import asset_browser_utils
 from ..utils.mirror_utils import ShowMessageBox
 
@@ -51,7 +52,7 @@ class AssetBrowser(bpy.types.PropertyGroup):
         update = lambda self, context: self.on_search_entered()
     )
 
-    asset_browser_caterogies: bpy.props.EnumProperty(
+    asset_browser_caterogies: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Categories",
         description="Catagories",
         items = lambda self, context: self.get_categories(),
@@ -59,7 +60,7 @@ class AssetBrowser(bpy.types.PropertyGroup):
         default = 0
     )
 
-    asset_browser_sub_caterogies: bpy.props.EnumProperty(
+    asset_browser_sub_caterogies: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Subcategory",
         description="Subcategory",
         # asked for directly rather than read off a class attribute that update
@@ -68,7 +69,7 @@ class AssetBrowser(bpy.types.PropertyGroup):
         update=lambda self, context: self.on_sub_category_selected(),
     )
 
-    enum_asset_browser_mode: bpy.props.EnumProperty(
+    enum_asset_browser_mode: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="View Mode",
         description="Asset Browser View Mode",
         items = [
@@ -78,7 +79,7 @@ class AssetBrowser(bpy.types.PropertyGroup):
         default = "Grid"
     )
 
-    enum_asset_browser_what_to_display: bpy.props.EnumProperty(
+    enum_asset_browser_what_to_display: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name="Dislay What",
         description="Choose what type of data to display",
         items = [
@@ -145,12 +146,26 @@ class AssetBrowser(bpy.types.PropertyGroup):
         """
         categories_data = self.get_categories_data()
         favourite_categories = self.get_favourite_categories()
+        AssetBrowser.pinned_categories = frozenset(favourite_categories)
         ordered_categories = asset_browser_utils.order_categories(
             categories_data.keys(), favourite_categories
         )
-        AssetBrowser.enum_categories[:] = asset_browser_utils.build_enum_entries(
-            ordered_categories
-        )
+        # Dynamic enums are stored as integers in .blend files. Seed the IDs
+        # from the previous release's display order before sorting any rows.
+        ids = asset_browser_utils.load_stored_list('category_enum_ids')
+        if not ids:
+            old = asset_browser_utils.load_stored_list('category_order')
+            old.extend(name for name in categories_data if name not in old)
+            ids = sorted(dict.fromkeys(name for name in old if name in categories_data),
+                         key=lambda name: name not in favourite_categories)
+            asset_browser_utils.save_stored_list('category_enum_ids', ids)
+        missing = [name for name in ordered_categories if name not in ids]
+        if missing:
+            ids.extend(missing)
+            asset_browser_utils.save_stored_list('category_enum_ids', ids)
+        AssetBrowser.enum_categories[:] = [
+            (name, name, name, ids.index(name)) for name in ordered_categories
+        ]
 
 
     def get_grid_size_prop_string(self):
@@ -266,7 +281,7 @@ class AssetBrowser(bpy.types.PropertyGroup):
 
     def filter_objects_with_string(self,search_filter):
         return asset_browser_utils.filter_objects(
-            self.get_categories_data(), search_filter
+            self.get_categories_data(), search_filter, i18n.part_names()
         )
 
     def get_search_results(self):

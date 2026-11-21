@@ -72,24 +72,14 @@ def role_family(obj):
     return None
 
 
-def optimize(objects, config, name_for_part=None):
-    config = validate(config)
-    if not isinstance(objects, list) or any(not isinstance(o, dict) for o in objects):
-        raise ValueError('Expected a list of saved objects')
+def priority_order(objects, config, name_for_part=None):
     rank = {pid: (group_index, part_index)
             for group_index, group in enumerate(config['groups'])
             for part_index, pid in enumerate(group['parts'])}
     buckets = {}
     remainder = []
     paragon = []
-    seen = set()
-    removed = []
     for index, obj in enumerate(objects):
-        key = fingerprint(obj)
-        if config['delete_identical'] and key in seen:
-            removed.append(index)
-            continue
-        seen.add(key)
         part_id = str(obj.get('ObjectID', '')).lstrip('^').upper()
         priority = rank.get(part_id)
         if part_id == 'U_PARAGON':
@@ -111,6 +101,35 @@ def optimize(objects, config, name_for_part=None):
         positions = [pos for pos, i in enumerate(order) if role_family(objects[i]) == family]
         for pos, original in zip(positions, originals):
             order[pos] = original
+    return order
+
+
+def export_order(objects, config, name_for_part=None, manual_first=()):
+    automatic = priority_order(objects, config, name_for_part)
+    placed = set(manual_first)
+    return [*manual_first, *(i for i in automatic if i not in placed)]
+
+
+def optimize(objects, config, name_for_part=None, manual_first=()):
+    config = validate(config)
+    if not isinstance(objects, list) or any(not isinstance(o, dict) for o in objects):
+        raise ValueError('Expected a list of saved objects')
+    removed = []
+    if config['delete_identical']:
+        seen = set()
+        # For identical records the first manually ranked instance wins.
+        for i in dict.fromkeys((*manual_first, *range(len(objects)))):
+            key = fingerprint(objects[i])
+            if key in seen:
+                removed.append(i)
+            seen.add(key)
+    excluded = set(removed)
+    indices = [i for i in range(len(objects)) if i not in excluded]
+    # Deduplicate before assigning cockpit and landing-bay roles.
+    compact = {original: i for i, original in enumerate(indices)}
+    order = export_order([objects[i] for i in indices], config, name_for_part,
+                         [compact[i] for i in manual_first if i in compact])
+    order = [indices[i] for i in order]
     return copy.deepcopy([objects[i] for i in order]), {
         'before': len(objects), 'after': len(order), 'removed': len(removed),
         'removed_indices': removed, 'moved': sum(i != original for i, original in enumerate(order)),

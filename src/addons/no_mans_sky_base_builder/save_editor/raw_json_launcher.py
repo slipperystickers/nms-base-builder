@@ -11,6 +11,7 @@ from ..furby_errors import report_error
 
 class BBE_OT_raw_save_json(bpy.types.Operator):
     bl_idname = 'bbe.raw_save_json'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Advanced Raw Save JSON'
     bl_description = 'Browse and edit the selected Steam save as raw JSON; advanced users only'
 

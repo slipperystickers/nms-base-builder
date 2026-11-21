@@ -1,6 +1,7 @@
+from .. import i18n
 import bpy
 import json
-from .. import icons
+from .. import icons, i18n
 from ..utils import asset_browser_utils
 from ..utils.asset_browser_utils import (get_grid_settings, get_preferences,
                                          resolve_sub_categories)
@@ -17,7 +18,8 @@ def _preview_icon(asset_icon_value):
 
 
 def _place_button(layout, object_id, is_preset, icon_value=None, *, text="", emboss=False):
-    kwargs = {"text": text, "emboss": emboss}
+    title = i18n.part_names().get(object_id, text) if text and not is_preset else text
+    kwargs = {"text": title, "emboss": emboss, "translate": False}
     if icon_value is not None:
         kwargs["icon_value"] = _preview_icon(icon_value)
     button = layout.operator(OP_OBJECT_SELECTED, **kwargs)
@@ -51,7 +53,13 @@ def draw_sub_category(pcoll , container, label, elements_list, number_of_columns
     subcategory_row = None
 
     for index,(obj_id,part_data) in enumerate(elements_list.items()):
-        asset_icon_id = pcoll[obj_id].icon_id if obj_id in pcoll else None
+        if part_data.get("is_preset"):
+            from .. import prefab_thumbnails
+            preview = prefab_thumbnails.get(obj_id, part_data["link"])
+            asset_icon_id = (preview.icon_id if preview else
+                             bpy.types.UILayout.bl_rna.functions['label'].parameters['icon'].enum_items['ASSET_MANAGER'].value)
+        else:
+            asset_icon_id = pcoll[obj_id].icon_id if obj_id in pcoll else None
         if index%number_of_columns == 0:
             subcategory_row = sub_category_column.row(align = True)
         
@@ -513,6 +521,7 @@ def draw_asset_browser_right_options(context,asset_browser_box, scene, grid_type
         )
 
 class NMS_PT_asset_browser_panel(bpy.types.Panel):
+    bl_translation_context = "BBEExtendedInterface"
     bl_label       = "Asset Browser"
     bl_idname      = "MY_PT_asset_browser_panel"
     bl_space_type = "VIEW_3D"
@@ -527,7 +536,7 @@ class NMS_PT_asset_browser_panel(bpy.types.Panel):
     def draw(self, context):
         from .asset_browser_sidebar import panel_visibility
         panel_visibility(context, True)
-        layout = self.layout     
+        layout = i18n.localized_layout(self.layout)     
         scene = context.scene
         browser = scene.nms_asset_browser
         row = layout.row(align=True)
@@ -548,7 +557,7 @@ class NMS_PT_asset_browser_panel(bpy.types.Panel):
             row.operator(operator, text=label, icon=icon, depress=mode == value)
 
         layout.prop(browser, 'asset_browser_caterogies', text='Category')
-        layout.prop(browser, 'asset_browser_sub_caterogies', text='Group')
+        layout.prop(browser, 'asset_browser_sub_caterogies', text='Subcategory')
         layout.label(text='Click an image to place; right-click for options')
         # The thumbnails are drawn over this native row. Keeping the panel's
         # content as tall as the visible picker lets Blender's own resize zone
@@ -560,6 +569,7 @@ class NMS_PT_asset_browser_panel(bpy.types.Panel):
 
 
 class NMS_PT_asset_browser_properties_panel(bpy.types.Panel):
+    bl_translation_context = "BBEExtendedInterface"
     bl_label       = "Asset Browser"
     bl_idname      = "MY_PT_asset_browser_properties_panel"
     bl_space_type  = 'PROPERTIES'
@@ -568,21 +578,21 @@ class NMS_PT_asset_browser_properties_panel(bpy.types.Panel):
     bl_order       = 0 
     
     def draw(self, context):
-        layout = self.layout     
+        layout = i18n.localized_layout(self.layout)     
         scene = context.scene
         draw_asset_browser_right_options(context, layout, scene)
         
         
 class NMS_PT_asset_browser_new_window_panel_left(bpy.types.Panel):
+    bl_translation_context = "BBEExtendedInterface"
     bl_label       = "Asset Browser"
     bl_idname      = "MY_PT_asset_browser_new_window_panel_left"
-    bl_space_type  = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context     = 'constraint'
-    bl_order       = 0 
-    
+    bl_space_type = 'INFO'
+    bl_region_type = 'HEADER'
+    bl_ui_units_x = 16
+
     def draw(self, context):
-        layout = self.layout     
+        layout = i18n.localized_layout(self.layout)     
         scene = context.scene
         draw_asset_browser_left_options(context, layout, scene)
         

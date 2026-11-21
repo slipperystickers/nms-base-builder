@@ -59,6 +59,38 @@ BAKED_PALETTES_UI = [
     (f"{value}_{key}", key, key) for key, value in BAKED_PALETTES.items()
 ]
 
+# The material indices and icon filenames come from the Materials section of
+# BASEBUILDINGOBJECTSTABLE. Keep material_switch as the saved palette identity.
+FINISH_ICONS = {
+    "Legacy": ("material.default", "material.rust", "material.stone", "material.wood"),
+    "Stone": ("stone.default", "stone.c"),
+    "Fiberglass": ("fibreglass.default", "fibreglass.c"),
+    "Timber": ("timber.default", "timber.c"),
+    "Salvaged": ("builders.default", "builders.c"),
+    "Corvette": ("material.biggsa", "material.biggsb", "material.biggsc", "material.biggsd"),
+}
+CATEGORY_PALETTES = {}
+for identifier, label, _ in BAKED_PALETTES_UI:
+    category = label.partition(" - ")[0]
+    CATEGORY_PALETTES.setdefault(category, []).append(identifier)
+
+CATEGORY_ITEMS = [(category, category, category) for category in CATEGORY_PALETTES]
+
+
+def palette_category(settings):
+    return settings.material_switch.partition("_")[2].partition(" - ")[0]
+
+
+def get_palette_category(settings):
+    return next(i for i, item in enumerate(CATEGORY_ITEMS) if item[0] == palette_category(settings))
+
+
+def set_palette_category(settings, index):
+    category = CATEGORY_ITEMS[index][0]
+    if category != palette_category(settings):
+        settings.material_switch = CATEGORY_PALETTES[category][0]
+
+
 BAKED_INDEX_COLOURS = {}
 
 

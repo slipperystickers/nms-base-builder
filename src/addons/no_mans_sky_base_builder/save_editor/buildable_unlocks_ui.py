@@ -1,4 +1,5 @@
 """Searchable item unlocks and currency editor; writes only through Apply."""
+from .. import i18n
 from pathlib import Path
 import re
 import bpy
@@ -162,10 +163,10 @@ class BBE_PG_buildable_unlock_state(bpy.types.PropertyGroup):
     currencies: bpy.props.CollectionProperty(type=BBE_PG_buildable_currency)
     active: bpy.props.IntProperty()
     search: bpy.props.StringProperty(name='Search name or ID', options={'TEXTEDIT_UPDATE'}, update=_filter_changed)
-    group: bpy.props.EnumProperty(name='Item group', items=lambda self, context: _GROUPS, update=_group_changed)
-    category: bpy.props.EnumProperty(name='Category', items=_categories, update=_filter_changed)
-    origin: bpy.props.EnumProperty(name='Reward origin', items=lambda self, context: _ORIGINS, update=_filter_changed)
-    save_context: bpy.props.EnumProperty(name='Context', items=_contexts, update=_context_changed)
+    group: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Item group', items=lambda self, context: _GROUPS, update=_group_changed)
+    category: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Category', items=_categories, update=_filter_changed)
+    origin: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Reward origin', items=lambda self, context: _ORIGINS, update=_filter_changed)
+    save_context: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Context', items=_contexts, update=_context_changed)
 
 
 class BBE_UL_buildable_unlocks(bpy.types.UIList):
@@ -189,6 +190,7 @@ class BBE_UL_buildable_unlocks(bpy.types.UIList):
 
 class BBE_OT_buildable_unlock_select(bpy.types.Operator):
     bl_idname = 'bbe.buildable_unlock_select'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Select Unlock Items'
     select: bpy.props.BoolProperty(default=True)
     visible_only: bpy.props.BoolProperty(default=False)
@@ -224,6 +226,7 @@ def _on_load(_):
 
 class BBE_OT_buildable_unlocks(bpy.types.Operator):
     bl_idname = 'bbe.buildable_unlocks'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Account Item Unlock and Currency Modify'
     bl_description = 'Review item and account unlocks by name or ID, and edit Units, Nanites, and Quicksilver'
     game_closed: bpy.props.BoolProperty(name='No Man’s Sky is closed', default=False,
@@ -272,7 +275,7 @@ class BBE_OT_buildable_unlocks(bpy.types.Operator):
             return {'CANCELLED'}
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         if SESSION is None:
             layout.label(text='The unlock review has closed')
             return

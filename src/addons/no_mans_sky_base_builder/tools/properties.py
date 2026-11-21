@@ -10,14 +10,14 @@ BUILDER = builder.get_builder()
 
 
 def get_uniform_scale(self):
-    if self.active_object is not None:
-        return self.active_object.scale.x
-    return None
+    obj = self.active_object or bpy.context.active_object
+    return obj.scale.x if obj is not None else 1.0
 
 
 def set_uniform_scale(self, value):
-    if self.active_object is not None:
-        self.active_object.scale = (value, value, value)
+    obj = self.active_object or bpy.context.active_object
+    if obj is not None:
+        obj.scale = (value, value, value)
 
 class Properties(bpy.types.PropertyGroup):
 

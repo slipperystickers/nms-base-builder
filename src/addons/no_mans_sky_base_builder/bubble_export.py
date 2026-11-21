@@ -361,16 +361,20 @@ def plan_objects(objects, hints):
     return result, issues, {i: (compiled[i], after[i]) for i in nodes}
 
 
-def compile_objects(objects, hints):
+def compile_objects(objects, hints, *, for_save=False):
     """Export planned native frames even when predicted shapes need checking.
 
-    The user may test a layout in game through any export path. A topology
-    prediction must not block clipboard, file, or save serialization.
+    Save writes require resolved chains. Clipboard and standalone files retain
+    the draft so builders can share it or finish editing later.
     """
     if not hints:
         return objects
     records, issues, _ = plan_objects(objects, hints)
     if issues:
+        if for_save:
+            raise ValueError('Finish your bubble tube chain before exporting to your save. '
+                             + next(iter(issues.values()))
+                             + ' Connect or remove the unfinished opening, then try again.')
         import logging
         logging.getLogger(__name__).warning(
             'Exporting with %d bubble tube warning(s): %s',

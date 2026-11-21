@@ -1,3 +1,4 @@
+from .. import i18n
 import bpy
 from bpy.types import Panel
 from .. import icons
@@ -6,6 +7,7 @@ from .. import icons
 # Snap Panel ---
 class NMS_PT_tools_panel(Panel):
     bl_idname = "NMS_PT_snap_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Builder Tools'
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -18,10 +20,25 @@ class NMS_PT_tools_panel(Panel):
         return True
 
     def draw_header(self, context):
-        icons.draw_panel_icon(self.layout, 'builder')
+        from .. import sidebar_builder
+        sidebar_builder.begin_header(self, context)
+        icons.draw_panel_icon(i18n.localized_layout(self.layout), 'builder')
+
+    def draw_header_preset(self, context):
+        from .. import part_counts
+        region = context.region
+        left = region.view2d.region_to_view(0, 0)[0]
+        width = (region.view2d.region_to_view(region.width, 0)[0] - left) / context.preferences.system.ui_scale
+        count = str(part_counts.displayed(context.scene))
+        self.layout.label(text=(i18n.interface('Part count')+' '+count) if width >= 245 else '# '+count)
 
     def draw(self, context):
-        layout = self.layout
+        from .. import sidebar_builder
+        if not sidebar_builder.draw_inline(self, context):
+            NMS_PT_tools_panel.draw_controls(self, context)
+
+    def draw_controls(self, context):
+        layout = i18n.localized_layout(self.layout)
         from ..save_editor.corvette_optimizer import draw_cockpit_controls
         scene = context.scene
         nms_tool = scene.nms_main
@@ -32,27 +49,10 @@ class NMS_PT_tools_panel(Panel):
         #split = layout.split(factor=0.5)
         #tools_column, snap_column = (split.column(align = True), split.column(align = True))
         build_tools_col = layout.column(align = True)
-        part_box = build_tools_col.box()
         tools_row = build_tools_col.row(align = True)
         snap_column = tools_row.column(align = True)
         tools_column = tools_row.column(align = True)#tools_column
         snap_column.scale_x = 1.5
-        
-        # Create Part Count Box.
-        part_row = part_box.row(align = False)
-        part_row.scale_y = 1.2
-        part_count_section = part_row.row(align = True)
-        part_count_section.scale_x = 0.5
-        splitter = part_count_section.split(factor=0.7)
-        splitter.label(text="Part Count:" )# , icon = "GEOMETRY_NODES"
-        from .. import part_counts
-        part_count = part_counts.displayed(scene)
-        splitter.label(text="{}".format(part_count))
-        from ..save_editor.function_help import corner_help
-        corner_help(part_row, 'BUILDER')
-        draw_cockpit_controls(part_box)
-        
-        
         
         # Create Snapping box.
         snap_box = tools_column.box()
@@ -81,13 +81,20 @@ class NMS_PT_tools_panel(Panel):
         
         snap_source_prev = source_row.operator( "object.nms_snap", **icons.ui_icon("TRIA_LEFT"), text="Prev")
         snap_source_next = source_row.operator("object.nms_snap", **icons.ui_icon("TRIA_RIGHT"), text="Next")
+        repeats=snap_column.box().column(align=True);repeats.label(text='Duplication');repeats.operator_context='INVOKE_DEFAULT'
+        repeats.operator('object.nms_duplicate',text='Duplicate',icon='DUPLICATE')
+        repeats.operator('bbe.duplicate_edge_path',icon='CURVE_BEZCURVE')
+        repeats.operator('bbe.duplicate_axis',icon='MOD_ARRAY')
         tools_box = snap_column.box()
         tools_col = tools_box.column(align = True)
-        tools_col.label(text="Common Tools")
+        title=tools_col.row(align=True);title.label(text='Common Tools')
+        from ..save_editor.function_help import corner_help
+        corner_help(title,'BUILDER')
+        draw_cockpit_controls(tools_col)
         tools_col.operator('bbe.repair_bubble_tubes', icon='FILE_REFRESH')
         #tools_col.separator()
         tools_dup_row = tools_col.column(align = False)
-        tools_dup_row.operator("object.nms_duplicate", **icons.ui_icon("DUPLICATE"))
+        align=tools_col.row();align.operator_context='INVOKE_DEFAULT';align.operator('bbe.align_geometry',text='Align',icon='SNAP_ON')
         tools_dup_row.operator("object.nms_delete", **icons.ui_icon("TRASH"))
         tools_col.separator()
         #tools_col.label(text="Curve")

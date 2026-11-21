@@ -1,3 +1,4 @@
+from .. import i18n
 import bpy
 import os
 from bpy.types import Panel
@@ -10,6 +11,7 @@ nice_name_dictionary = dictionary.get_nice_names_diictionary()
 # Base Property Panel ---
 class NMS_PT_base_prop_panel(Panel):
     bl_idname = "NMS_PT_base_prop_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "📋 Properties"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -21,7 +23,7 @@ class NMS_PT_base_prop_panel(Panel):
         return True
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         scene = context.scene
         nms_tool = scene.nms_main
 
@@ -77,6 +79,7 @@ class NMS_PT_base_prop_panel(Panel):
 
 class NMS_PT_advannced_base_prop_panel(Panel):
     bl_idname = "NMS_PT_advanced_base_prop_panel"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Advanced Properties"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -88,7 +91,7 @@ class NMS_PT_advannced_base_prop_panel(Panel):
         return True
 
     def draw(self, context):
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         scene = context.scene
         nms_tool = scene.nms_main
 
@@ -98,7 +101,7 @@ class NMS_PT_advannced_base_prop_panel(Panel):
 
 
 
-def draw_compact_transforms(layout, context):
+def draw_compact_transforms(layout, context, show_reset=True):
     properties = context.scene.nms_properties
     active_object = context.active_object
     if active_object is None or not active_object.select_get():
@@ -136,12 +139,14 @@ def draw_compact_transforms(layout, context):
     copy_transformations_row = pos_rot_scale_col.row(align = True)
     copy_transformations_row.operator("object.nms_copy_transformations", **icons.ui_icon("COPYDOWN"),text = "Copy")
     copy_transformations_row.operator("object.nms_paste_transformations", **icons.ui_icon("PASTEDOWN"),text = "Paste")
-    copy_transformations_row.operator("object.nms_reset_transformations", **icons.ui_icon("DECORATE_OVERRIDE"),text = "Reset")
+    if show_reset:
+        copy_transformations_row.operator("object.nms_reset_transformations", **icons.ui_icon("DECORATE_OVERRIDE"),text = "Reset")
 
 
 
 class NMS_PT_transformation_panel(Panel):
     bl_idname = 'NMS_PT_transformation_panel'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Curve Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -154,8 +159,12 @@ class NMS_PT_transformation_panel(Panel):
         return context.mode == 'OBJECT'
 
     def draw_header(self, context):
-        self.layout.label(text='', icon='CURVE_BEZCURVE')
+        from .. import sidebar_builder, menu_surface
+        sidebar_builder.begin_header(self, context, 'transform')
+        self.layout.label(text='', icon_value=menu_surface.outline_icon('spline', tint=(.75,.65,1)))
 
     def draw(self, context):
         from ..curve_tools import draw_controls
-        draw_controls(self.layout, context)
+        from .. import sidebar_builder
+        if not sidebar_builder.draw_inline(self, context, 'transform'):
+            draw_controls(i18n.localized_layout(self.layout), context)

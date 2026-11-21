@@ -1,4 +1,5 @@
 """Explicit Apply/Cancel editor for advanced build ownership metadata."""
+from . import i18n
 import copy
 from .build_metadata import OWNER_FIELDS, encode, edited_owner, field_text, approve_save_owner, clear_save_approvals, ownership_sources
 from pathlib import Path
@@ -102,6 +103,7 @@ def toggle_copy(self, context):
 
 class BBE_OT_build_metadata(bpy.types.Operator):
     bl_idname = 'bbe.build_metadata'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Advanced Build Metadata'
     bl_description = 'Edit this build\'s Owner record and metadata; changes apply to this Blender project first'
     bl_options = {'UNDO'}
@@ -113,7 +115,7 @@ class BBE_OT_build_metadata(bpy.types.Operator):
     copy_owner: bpy.props.BoolProperty(name='Copy ownership from another saved ship', default=False,
         description='Read a Corvette from the save selected in I/O; review its ownership below before applying',
         update=toggle_copy)
-    owner_donor: bpy.props.EnumProperty(name='Source ship', items=donor_items, update=select_donor)
+    owner_donor: bpy.props.EnumProperty(translation_context="BBEExtendedInterface", name='Source ship', items=donor_items, update=select_donor)
     last_editor_id: bpy.props.StringProperty(name='Last editor ID')
     last_editor_name: bpy.props.StringProperty(name='Last editor name')
     owner_to_save: bpy.props.BoolProperty(name='Include this Owner when exporting to a game save', default=False,
@@ -139,11 +141,15 @@ class BBE_OT_build_metadata(bpy.types.Operator):
         self.last_editor_id = field_text(self._original.get('LastEditedById'))
         self.last_editor_name = field_text(self._original.get('LastEditedByUsername'))
         self.owner_to_save = props.metadata_owner_to_save
-        return context.window_manager.invoke_props_dialog(self, width=570, confirm_text='Apply to Build')
+        from .build_editors import MetadataEditor, open_editor
+        return open_editor(self, context, event, MetadataEditor, 570, 'Apply to Build')
+
+    def modal(self, context, event):
+        return self._editor.modal(context, event)
 
     def draw(self, context):
         state = live_dialog(self)
-        layout = self.layout
+        layout = i18n.localized_layout(self.layout)
         layout.label(text='Edit this build\'s Owner record. Ship slot links stay unchanged.', icon='INFO')
         layout.label(text='Full build files and clipboard exports retain these fields.')
         layout.prop(self, 'copy_owner')
@@ -198,6 +204,10 @@ class BBE_OT_build_metadata(bpy.types.Operator):
         return {'FINISHED'}
 
     def cancel(self, context):
+        editor = getattr(self, '_editor', None)
+        if editor and not editor.closed:
+            editor.finish()
+            return
         _dialogs.pop(dialog_key(self), None)
 
 

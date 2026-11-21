@@ -112,6 +112,7 @@ def add_controls(door, socket, builder, created):
 
 class BBE_OT_door_proximity(bpy.types.Operator):
     bl_idname = 'bbe.add_door_proximity'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Add Prox Control'
     bl_description = 'Wire a proximity switch and inverter to this door and the nearest supply-connected socket'
     bl_options = {'UNDO'}

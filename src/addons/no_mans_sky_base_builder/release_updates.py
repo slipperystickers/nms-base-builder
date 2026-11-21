@@ -1,4 +1,5 @@
 """Shared Blender UI; loaded as a private module by each add-on."""
+from . import i18n
 import json
 import os
 import platform
@@ -47,7 +48,7 @@ def _show_auto_update_prompt(context):
     if bpy.app.background:
         return False
     def draw(menu, context):
-        layout=menu.layout
+        layout=i18n.localized_layout(menu.layout)
         layout.label(text="This enables internet access for Blender")
         layout.label(text="and automatic download and installation of updates.")
         layout.label(text="Other add-ons can use Blender's internet access too.")
@@ -150,8 +151,8 @@ def register(product, installed, category):
         def invoke(self,context,event):
             return context.window_manager.invoke_props_dialog(self,width=500)
         def draw(self,context):
-            self.layout.prop(self,'description')
-            self.layout.label(text='Saves a local file for you to review. Nothing is sent.')
+            i18n.localized_layout(self.layout).prop(self,'description')
+            i18n.localized_layout(self.layout).label(text='Saves a local file for you to review. Nothing is sent.')
         def execute(self,context):
             import datetime
             folder=Path.home()/'Downloads/Furby Support Reports';folder.mkdir(parents=True,exist_ok=True)
@@ -161,13 +162,6 @@ def register(product, installed, category):
                 platform=platform.system(),python=platform.python_version(),createdUtc=now.isoformat(),
                 description=self.description),indent=2),encoding='utf-8')
             self.report({'INFO'},'Support report saved to Downloads/Furby Support Reports')
-            return {'FINISHED'}
-    class Email(bpy.types.Operator):
-        bl_idname=prefix+'.email_support';bl_label='Private support conversation'
-        def execute(self,context):
-            from urllib.parse import urlencode
-            query=urlencode(dict(kind='conversation',app=product,version=installed,environment=platform.system()+' / Blender '+bpy.app.version_string))
-            bpy.ops.wm.url_open(url='https://furiousfurby.com/support/?'+query)
             return {'FINISHED'}
     class Online(bpy.types.Operator):
         bl_idname=prefix+'.online_support';bl_label='Report an issue online'
@@ -203,7 +197,7 @@ def register(product, installed, category):
                 raise
         def draw(self,context):
             import textwrap
-            payload=json.loads(self.payload_json or '{}');l=self.layout
+            payload=json.loads(self.payload_json or '{}');l=i18n.localized_layout(self.layout)
             for line in textwrap.wrap(payload.get('title','An app error occurred'),75):l.label(text=line)
             l.label(text='Sends error details, app/Blender versions and proxy-pack availability.')
             l.label(text='Filed as Blender Diagnostics. No login, account, or replies.')
@@ -232,34 +226,44 @@ def register(product, installed, category):
                 self.report({'ERROR'},str(exc));return {'CANCELLED'}
             self.report({'INFO'},_diagnostics.message+' Status is in Updates & Support.')
             return {'FINISHED'}
+    def draw_support_controls(layout, context, *, native=False):
+        layout.label(text='Installed: '+installed)
+        import textwrap
+        for line in (textwrap.wrap(_client.message,40) if native else [_client.message]):layout.label(text=line)
+        row=layout.row();row.enabled=not _client.busy
+        row.operator(Check.bl_idname,text='Check now',**icons.ui_icon('FILE_REFRESH'))
+        row=layout.row();row.enabled=not _client.busy and bool((_client.result or {}).get('available'))
+        row.operator(Download.bl_idname,**icons.ui_icon('IMPORT'))
+        layout.operator(Auto.bl_idname,text='Download and install automatically',**icons.ui_icon('CHECKBOX_HLT' if _client.settings.get('auto_check') else 'CHECKBOX_DEHLT'))
+        layout.operator(Folder.bl_idname,**icons.ui_icon('FILE_FOLDER'))
+        layout.label(text='Verified downloads install automatically when Blender is idle.')
+        layout.separator();layout.operator(Report.bl_idname,**icons.ui_icon('TEXT'))
+        layout.operator(Online.bl_idname,**icons.ui_icon('URL'))
+        layout.separator();layout.label(text='Blender Diagnostics')
+        row=layout.row();row.enabled=bool(_reporter.latest) and not _diagnostics.busy and not _error_prompt_open
+        row.operator(ErrorPrompt.bl_idname,text='Review / Send Last Error')
+        if _diagnostics.message:
+            for line in (textwrap.wrap(_diagnostics.message,40) if native else [_diagnostics.message]):layout.label(text=line)
+
     class Panel(bpy.types.Panel):
         bl_idname=prefix.upper()+'_PT_updates';bl_label='Updates & Support'
         bl_space_type='VIEW_3D';bl_region_type='UI';bl_category=category;bl_options={'DEFAULT_CLOSED'}
         def draw_header(self,context):
             from . import icons
-            icons.draw_panel_icon(self.layout, 'support')
+            if product == 'bbe':
+                from . import sidebar_builder
+                sidebar_builder.begin_header(self, context, 'support')
+            icons.draw_panel_icon(i18n.localized_layout(self.layout), 'support')
         def draw(self,context):
-            layout=self.layout
-            layout.label(text='Installed: '+installed)
-            import textwrap
-            for line in textwrap.wrap(_client.message,40):layout.label(text=line)
-            row=layout.row();row.enabled=not _client.busy
-            row.operator(Check.bl_idname,text='Check now',**icons.ui_icon('FILE_REFRESH'))
-            row=layout.row();row.enabled=not _client.busy and bool((_client.result or {}).get('available'))
-            row.operator(Download.bl_idname,**icons.ui_icon('IMPORT'))
-            layout.operator(Auto.bl_idname,text='Download and install automatically',**icons.ui_icon('CHECKBOX_HLT' if _client.settings.get('auto_check') else 'CHECKBOX_DEHLT'))
-            layout.operator(Folder.bl_idname,**icons.ui_icon('FILE_FOLDER'))
-            layout.label(text='Verified downloads install automatically when Blender is idle.')
-            layout.separator();layout.operator(Report.bl_idname,**icons.ui_icon('TEXT'))
-            layout.operator(Online.bl_idname,**icons.ui_icon('URL'))
-            layout.operator(Email.bl_idname,**icons.ui_icon('URL'))
-            layout.label(text='Support@furiousfurby.com')
-            layout.separator();layout.label(text='Blender Diagnostics')
-            row=layout.row();row.enabled=bool(_reporter.latest) and not _diagnostics.busy and not _error_prompt_open
-            row.operator(ErrorPrompt.bl_idname,text='Review / Send Last Error')
-            if _diagnostics.message:
-                for line in textwrap.wrap(_diagnostics.message,40):layout.label(text=line)
-    for kind,cls in [('OT_check',Check),('OT_download',Download),('OT_auto',Auto),('OT_auto_choice',AutoChoice),('OT_folder',Folder),('OT_report',Report),('OT_online',Online),('OT_email',Email),('OT_error_review',ErrorReview),('OT_error_prompt',ErrorPrompt),('PT_updates',Panel)]:
+            if product == 'bbe':
+                from . import sidebar_builder
+                if sidebar_builder.draw_inline(self, context, 'support', draw_support_controls):
+                    return
+            draw_support_controls(i18n.localized_layout(self.layout), context, native=True)
+    if product=='bbe':
+        from .tools_menu import base_builder_menu
+        base_builder_menu.bind_sidebar_visibility((Panel,))
+    for kind,cls in [('OT_check',Check),('OT_download',Download),('OT_auto',Auto),('OT_auto_choice',AutoChoice),('OT_folder',Folder),('OT_report',Report),('OT_online',Online),('OT_error_review',ErrorReview),('OT_error_prompt',ErrorPrompt),('PT_updates',Panel)]:
         cls.__name__=prefix.upper()+'_'+kind
         bpy.utils.register_class(cls);_classes.append(cls)
     _restore_errors=guard_blender(_reporter,__package__)

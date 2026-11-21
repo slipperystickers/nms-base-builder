@@ -3,6 +3,7 @@
 Only Blender's main thread runs the timer and save operator. Recovery copies
 live under the shared backup folder, never beside or over a project file.
 """
+from . import i18n
 from .furby_errors import report_error
 import hashlib
 import json
@@ -299,24 +300,26 @@ def _backups():
 
 class BBE_MT_recovery(bpy.types.Menu):
     bl_idname = 'BBE_MT_recovery'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Open Recovery Copy'
 
     def draw(self, context):
         from .save_editor.function_help import corner_help
-        corner_help(self.layout, 'RECOVERY')
+        corner_help(i18n.localized_layout(self.layout), 'RECOVERY')
         entries = _backups()
         if not entries:
-            self.layout.label(text='No recovery copies yet', **icons.ui_icon('INFO'))
+            i18n.localized_layout(self.layout).label(text='No recovery copies yet', **icons.ui_icon('INFO'))
         for path, label, current in entries:
             date = time.strftime('%b %d, %I:%M %p', time.localtime(path.stat().st_mtime))
             text = f'{label} - {date}'
-            op = self.layout.operator('bbe.open_recovery', text=text,
+            op = i18n.localized_layout(self.layout).operator('bbe.open_recovery', text=text,
                                       **icons.ui_icon('RECOVER_LAST' if current else 'FILE_BLEND'))
             op.filepath = str(path)
 
 
 class BBE_OT_open_recovery(bpy.types.Operator):
     bl_idname = 'bbe.open_recovery'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Open Recovery Copy'
     bl_description = 'Open this recovery copy; save the current project first if needed'
 
@@ -337,6 +340,7 @@ class BBE_OT_open_recovery(bpy.types.Operator):
 
 class BBE_OT_recovery_now(bpy.types.Operator):
     bl_idname = 'bbe.recovery_now'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Create Recovery Copy Now'
 
     def execute(self, context):
@@ -355,6 +359,7 @@ class BBE_OT_recovery_now(bpy.types.Operator):
 
 class BBE_OT_open_backup_root(bpy.types.Operator):
     bl_idname = 'bbe.open_backup_root'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Open Backup Folder'
     bl_description = 'Open the shared folder for project recovery and game-save backups'
 

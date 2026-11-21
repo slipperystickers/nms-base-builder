@@ -1,19 +1,21 @@
+from .. import i18n
 from ..furby_errors import report_error
 import bpy
 from ..utils import blend_utils, curve, dictionary
 from ..utils.mirror_utils import ShowMessageBox
-from ..builder import Builder
+from ..builder import get_builder
 
 
 import ctypes
 from ctypes import wintypes
 
-BUILDER = Builder()
+BUILDER = get_builder()
 
 from mathutils import Vector
 
 class BBE_OT_toggle_auto_snap(bpy.types.Operator):
     bl_idname = 'bbe.toggle_auto_snap'
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Auto-Snap'
     bl_description = 'Toggle automatic snap placement for parts added from the Asset Browser'
 
@@ -29,6 +31,7 @@ class MirrorAcrossX(bpy.types.Operator):
     """Mirror the object along the X axis."""
 
     bl_idname = "object.nms_universal_mirror_x"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Mirror Across X"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -43,6 +46,7 @@ class MirrorAcrossY(bpy.types.Operator):
     """Mirror the object along the Y axis."""
 
     bl_idname = "object.nms_universal_mirror_y"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Mirror Across Y"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -56,6 +60,7 @@ class MirrorAcrossZ(bpy.types.Operator):
     """Mirror the object along the Z axis."""
 
     bl_idname = "object.nms_universal_mirror_z"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Mirror Across Z"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -70,13 +75,18 @@ class PeformAdvancedMirrorButton(bpy.types.Operator):
     """Perform Mirroring according to options selected."""
 
     bl_idname = "object.nms_advanced_mirror"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Perform Mirror"
     bl_options = {"UNDO", "REGISTER"}
 
     def execute(self, context):
         scene = context.scene
         build_tool = scene.nms_build_tool
-        build_tool.advanced_mirror()
+        try:
+            build_tool.advanced_mirror()
+        except ValueError as error:
+            self.report({'WARNING'},str(error))
+            return {'CANCELLED'}
         return {"FINISHED"}
     
 
@@ -84,6 +94,7 @@ class Mirror(bpy.types.Operator):
     """Mirror the object local to itself."""
 
     bl_idname = "object.nms_mirror"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Mirror"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -97,6 +108,7 @@ class Flip(bpy.types.Operator):
     """Flip the object along the Y axis (Only available on certain Corvette pieces)"""
 
     bl_idname = "object.nms_flip"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Flip"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -111,6 +123,7 @@ class Turn(bpy.types.Operator):
     """Turn the object along the Z axis (Only available on certain Corvette pieces)"""
 
     bl_idname = "object.nms_turn"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Turn"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -125,6 +138,7 @@ class SelectDuplicates(bpy.types.Operator):
     """Select duplicate objects, leaving one object duplicated unselected, so that deletion is safe"""
 
     bl_idname = "object.nms_select_duplicates"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Cleanup Scene"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -137,6 +151,7 @@ class SelectDuplicates(bpy.types.Operator):
 # Tool Operators ---
 class ToggleRoom(bpy.types.Operator):
     bl_idname = "object.nms_toggle_room_visibility"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Toggle Room Visibility: Normal"
     bl_options = {
         "UNDO",
@@ -155,6 +170,7 @@ class Duplicate(bpy.types.Operator):
     """Duplicate the selected part."""
 
     bl_idname = "object.nms_duplicate"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Duplicate"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -172,6 +188,7 @@ class Delete(bpy.types.Operator):
     """Remove the selected part from the scene."""
 
     bl_idname = "object.nms_delete"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Delete"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -188,6 +205,7 @@ class DuplicateAlongCurve(bpy.types.Operator):
     """Repeat the selected parts together along one guide curve."""
 
     bl_idname = "object.nms_duplicate_along_curve"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Duplicate Along Curve"
     bl_options = {"UNDO", "REGISTER"}
     
@@ -238,6 +256,7 @@ class CreateCurve(bpy.types.Operator):
     """Add a default Bezier curve to location of 3d cursor in scene"""
 
     bl_idname = "object.nms_create_curve"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Create Curve"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -257,6 +276,7 @@ class Snap(bpy.types.Operator):
     """Snap the selected object to another selected object."""
 
     bl_idname = "object.nms_snap"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Snap"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -284,6 +304,7 @@ class CurveBreakApart(bpy.types.Operator):
     """Break apart objects linked to curve."""
 
     bl_idname = "object.nms_curve_break_apart"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Break Curve"
     bl_options = {"UNDO", "REGISTER"}
     bl_description = "Break apart objects from curve and make them independent"
@@ -313,6 +334,7 @@ class CurveDelete(bpy.types.Operator):
     """Delete selected curve and objects linked to it"""
 
     bl_idname = "object.nms_curve_delete"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Delete Curve"
     bl_options = {"UNDO", "REGISTER"}
 
@@ -332,6 +354,7 @@ class SelectObjectParentCurve(bpy.types.Operator):
     """Select parent curve of object selected"""
 
     bl_idname = "object.nms_selecte_object_parent_curve"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Break Curve"
     bl_options = {"UNDO", "REGISTER"}
     bl_description = "Select parent curve of object selected"
@@ -346,6 +369,7 @@ class SelectChildrenOfCurve(bpy.types.Operator):
     """Select duplicated objects linked to a curve"""
 
     bl_idname = "object.nms_select_children_of_curve"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Break Curve"
     bl_options = {"UNDO", "REGISTER"}
     bl_description = "Select duplicated objects linked to a curve"
@@ -359,6 +383,7 @@ class SelectChildrenOfCurve(bpy.types.Operator):
 
 class ShowCurveToolInfo(bpy.types.Operator):
     bl_idname = "object.nms_show_curve_info_popup"
+    bl_translation_context = "BBEExtendedInterface"
     bl_label = "Info"
     bl_description = "Show tips on how to use curve tool"
 
@@ -374,7 +399,7 @@ class ShowCurveToolInfo(bpy.types.Operator):
         
         def draw(self, context):
             for line in message.split("\n"):
-                self.layout.label(text=line)
+                i18n.localized_layout(self.layout).label(text=line)
 
         bpy.context.window_manager.popup_menu(
             draw,

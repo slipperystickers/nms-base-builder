@@ -1,0 +1,2432 @@
+{
+  "schema": 1,
+  "sources": {
+    "nms_basepartproducts.MXML": "9373b1238d7a63f416f6ff75908d550f209541797e51063636b59b9e0da146fa",
+    "nms_reality_gcproceduraltechnologytable.MXML": "1d65a73b2da65ce4f913ef326b2d8b4285ed61590fa72861ca48be859bbba744"
+  },
+  "parts": {
+    "B_COK_A": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_B": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C1": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C2": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C3": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C4": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C5": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C6": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C7": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C8": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_C9": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_D": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_COK_E": {
+      "technology": "CV_FIT1",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.075,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.01,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_HAB_A": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB_B": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB_C": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB_D": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB_E": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB_F": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB1_A": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB1_B": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB1_C": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB1_D": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB1_E": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HAB1_F": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_HOP_A": {
+      "technology": "CV_INV2",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 3.0,
+          "maximum": 3.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_LND_A": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_LND_B": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_LND_C": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_LND_D": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_LAN_B": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_WNG_A": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_A_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_B": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_WNG_B_R": {
+      "technology": "CV_LAUN2",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": true
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.02,
+          "maximum": 1.05,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_WNG_C": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_C_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_D": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_D_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_F": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_F_R": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_H": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_H_R": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_L": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_L_R": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_N": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_N_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_P": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_P_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_P_T": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_P_B": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_S": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_S_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_W": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_W_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_W_T": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_W_B": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_X": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_X_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_X_T": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_X_B": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_Y": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_Y_R": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_Y_T": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_WNG_Y_B": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TUR_A": {
+      "technology": "CV_SGUN3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 16.0,
+          "maximum": 24.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Rate",
+          "minimum": 1.016,
+          "maximum": 1.021,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_HeatTime",
+          "minimum": 1.02,
+          "maximum": 1.03,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_TUR_B": {
+      "technology": "CV_SSHOT3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 5.0,
+          "maximum": 6.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Rate",
+          "minimum": 1.06,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_HeatTime",
+          "minimum": 1.06,
+          "maximum": 1.1,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_TUR_C": {
+      "technology": "CV_SLASR3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Lasers_HeatTime",
+          "minimum": 1.55,
+          "maximum": 1.75,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Lasers_Damage",
+          "minimum": 50.0,
+          "maximum": 60.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_TUR_D": {
+      "technology": "CV_SBLOB3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 8.0,
+          "maximum": 12.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Rate",
+          "minimum": 1.05,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_HeatTime",
+          "minimum": 1.25,
+          "maximum": 1.3,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_TUR_E": {
+      "technology": "CV_SMINI3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 8.0,
+          "maximum": 12.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Rate",
+          "minimum": 1.05,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_HeatTime",
+          "minimum": 1.05,
+          "maximum": 1.07,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_TUR_F": {
+      "technology": "CV_SMINI3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 8.0,
+          "maximum": 12.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Rate",
+          "minimum": 1.05,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_HeatTime",
+          "minimum": 1.05,
+          "maximum": 1.07,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_TUR_G": {
+      "technology": "CV_SMINI3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 8.0,
+          "maximum": 12.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Rate",
+          "minimum": 1.05,
+          "maximum": 1.1,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_HeatTime",
+          "minimum": 1.05,
+          "maximum": 1.07,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_SHL_A": {
+      "technology": "CV_S_SHL2",
+      "stats": [
+        {
+          "stat": "Ship_Armour_Shield_Strength",
+          "minimum": 0.05,
+          "maximum": 0.1,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_SHL_B": {
+      "technology": "CV_S_SHL2",
+      "stats": [
+        {
+          "stat": "Ship_Armour_Shield_Strength",
+          "minimum": 0.05,
+          "maximum": 0.1,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_SHL_C": {
+      "technology": "CV_S_SHL2",
+      "stats": [
+        {
+          "stat": "Ship_Armour_Shield_Strength",
+          "minimum": 0.05,
+          "maximum": 0.1,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_SHL_D": {
+      "technology": "CV_S_SHL2",
+      "stats": [
+        {
+          "stat": "Ship_Armour_Shield_Strength",
+          "minimum": 0.05,
+          "maximum": 0.1,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_SHL_E": {
+      "technology": "CV_S_SHL2",
+      "stats": [
+        {
+          "stat": "Ship_Armour_Shield_Strength",
+          "minimum": 0.05,
+          "maximum": 0.1,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_TRU_A": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_B": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_C": {
+      "technology": "CV_PULSE3",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_D": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_E": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_F": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_G": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_H": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_I": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_TRU_J": {
+      "technology": "CV_PULSE2",
+      "stats": [
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.85,
+          "maximum": 0.9,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.15,
+          "always": false
+        },
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.01,
+          "maximum": 1.12,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 4,
+      "count_max": 4
+    },
+    "B_GEN_0": {
+      "technology": "CV_HYP3",
+      "stats": [
+        {
+          "stat": "Ship_Hyperdrive_JumpDistance",
+          "minimum": 165.0,
+          "maximum": 220.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Hyperdrive_JumpsPerCell",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_GEN_1": {
+      "technology": "CV_FIT3",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_GEN_2": {
+      "technology": "CV_SCI3",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Launcher_AutoCharge",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_GEN_3": {
+      "technology": "CV_TRA3",
+      "stats": [
+        {
+          "stat": "Ship_Armour_Shield_Strength",
+          "minimum": 0.1,
+          "maximum": 0.2,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_GEN_4": {
+      "technology": "CV_SCI3",
+      "stats": [
+        {
+          "stat": "Ship_Launcher_TakeOffCost",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        },
+        {
+          "stat": "Ship_Launcher_AutoCharge",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_PulseDrive_MiniJumpFuelSpending",
+          "minimum": 0.8,
+          "maximum": 0.85,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_GEN_6": {
+      "technology": "CV_FIT3",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_GEN_6_1": {
+      "technology": "CV_FIT3",
+      "stats": [
+        {
+          "stat": "Ship_BoostManeuverability",
+          "minimum": 1.05,
+          "maximum": 1.16,
+          "always": false
+        },
+        {
+          "stat": "Ship_Boost",
+          "minimum": 1.1,
+          "maximum": 1.2,
+          "always": false
+        },
+        {
+          "stat": "Ship_Maneuverability",
+          "minimum": 1.005,
+          "maximum": 1.005,
+          "always": true
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_DECO_D": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_DECO_E": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_DECO_F": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_DECO_G": {
+      "technology": "CV_INV1",
+      "stats": [
+        {
+          "stat": "Ship_Cargo_Slots",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 2,
+      "count_max": 2
+    },
+    "B_DECO_I": {
+      "technology": "CV_SROC3",
+      "stats": [
+        {
+          "stat": "Ship_Weapons_Guns_Damage",
+          "minimum": 400.0,
+          "maximum": 500.0,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_CoolTime",
+          "minimum": 0.75,
+          "maximum": 0.8,
+          "always": false
+        },
+        {
+          "stat": "Ship_Weapons_Guns_Range",
+          "minimum": 1.05,
+          "maximum": 1.1,
+          "always": false
+        }
+      ],
+      "count_min": 3,
+      "count_max": 3
+    },
+    "B_MAG_1X2": {
+      "technology": "CV_TRACT1",
+      "stats": [
+        {
+          "stat": "Ship_TractorBeam",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    },
+    "B_MAG_1X1": {
+      "technology": "CV_TRACT1",
+      "stats": [
+        {
+          "stat": "Ship_TractorBeam",
+          "minimum": 1.0,
+          "maximum": 1.0,
+          "always": false
+        }
+      ],
+      "count_min": 1,
+      "count_max": 1
+    }
+  }
+}
