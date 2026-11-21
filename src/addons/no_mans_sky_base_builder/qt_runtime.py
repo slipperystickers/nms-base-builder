@@ -8,7 +8,11 @@ import tempfile
 import zipfile
 
 
+# The separate save editor also reads compressed saves through lz4. Its Python
+# interpreter does not inherit Blender's managed site-packages.
 WHEELS = {
+    "lz4-4.4.5-cp313-cp313-win_amd64.whl":
+        "da68497f78953017deb20edff0dba95641cc86e7423dfadf7c0264e1ac60dc22",
     "pyside6_essentials-6.11.1-1-cp310-abi3-win_amd64.whl":
         "ce7a97c6fab425c8a345721e2efa063856c14cab5f9b256c02f4b7039833aa8e",
     "shiboken6-6.11.1-cp310-abi3-win_amd64.whl":

@@ -23,7 +23,10 @@ sys.path.insert(0,str(wheels.parent))
 import qt_runtime
 site=qt_runtime.activate(wheels)
 from PySide6 import QtWidgets,QtCore,QtNetwork,QtGui
-import shiboken6
+import shiboken6,lz4.block
+sys.path.insert(0,str(wheels.parent/'save_editor'))
+import raw_json_core
+assert lz4.block.decompress(lz4.block.compress(b'save-editor'))==b'save-editor'
 assert pathlib.Path(QtWidgets.__file__).resolve().parent.parent.samefile(site)
 assert pathlib.Path(shiboken6.__file__).resolve().parent.parent.samefile(site)
 app=QtWidgets.QApplication([])
