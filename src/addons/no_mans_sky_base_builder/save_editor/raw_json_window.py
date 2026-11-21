@@ -16,7 +16,9 @@ def main():
     parser.add_argument('--backup-root', required=True)
     parser.add_argument('--parent-pid', type=int, default=0)
     args = parser.parse_args()
-    sys.path.insert(0, args.qt_site)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import qt_runtime
+    qt_runtime.activate(args.qt_site)
     from PySide6 import QtCore, QtGui, QtWidgets
     import raw_json_core as core
 

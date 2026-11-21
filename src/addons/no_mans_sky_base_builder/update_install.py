@@ -51,12 +51,59 @@ def check_extension_session():
                            'BBE has not been disabled or replaced.') from exc
 
 
+class RepositoryBusy(RuntimeError):
+    pass
+
+
+def check_repository(repo_module):
+    """Exercise the same lock as the native installer before it unregisters BBE."""
+    import bpy
+    from bl_pkg import cookie_from_session
+    from bl_pkg.bl_extension_utils import RepoLock
+
+    check_extension_session()
+    repo = next((item for item in bpy.context.preferences.extensions.repos
+                 if item.module == repo_module and item.enabled), None)
+    if repo is None:
+        raise RuntimeError('The Blender extension repository is unavailable.')
+    lock = RepoLock(repo_directories=[repo.directory], cookie=cookie_from_session())
+    errors = lock.acquire()
+    try:
+        if errors[repo.directory]:
+            raise RepositoryBusy(f'Waiting for the {repo.name} extension repository. '
+                                 f'{errors[repo.directory]}. Close other Blender sessions after saving. '
+                                 'BBE will retry the downloaded update.')
+    finally:
+        release_error = lock.release()[repo.directory]
+        if release_error:
+            raise RuntimeError(f'Could not release the {repo.name} extension lock: {release_error}')
+
+
+def install_extension(path, package):
+    import addon_utils
+    import bpy
+
+    repo = package.split('.')[1]
+    check_repository(repo)
+    enabled_by_default, running = addon_utils.check(package)
+    try:
+        result = bpy.ops.extensions.package_install_files(
+            'EXEC_DEFAULT', filepath=path, repo=repo, enable_on_install=True)
+        if result != {'FINISHED'}:
+            raise RuntimeError('Blender could not install the update')
+    finally:
+        # A competing instance can acquire the lock after the preflight. Blender
+        # 5.1 unregisters the extension before discovering that it cannot proceed.
+        if running and not addon_utils.check(package)[1]:
+            if addon_utils.enable(package, default_set=enabled_by_default) is None:
+                raise RuntimeError('Blender could not re-enable BBE. Save your work and restart Blender.')
+    return result
+
+
 def install(path, package):
     import bpy
     if package.startswith('bl_ext.'):
-        check_extension_session()
-        repo=package.split('.')[1]
-        result=bpy.ops.extensions.package_install_files('EXEC_DEFAULT',filepath=path,repo=repo,enable_on_install=True)
+        result = install_extension(path, package)
     else:
         import addon_utils,sys
         addon_utils.disable(package,default_set=False)
@@ -93,7 +140,7 @@ def install(path, package):
             installed = root / relative
             if not installed.is_file() or installed.read_bytes() != archive.read(entry):
                 raise RuntimeError('Blender did not replace all update files; restart Blender and retry the update')
-    bpy.ops.wm.save_userpref()
+    # Updating an already enabled add-on requires no global preference write.
 
 _pending = None
 _parked = []
@@ -187,6 +234,20 @@ def advance(client, package):
         if reason:
             client.message = 'Update downloaded. ' + reason
             return
+        if package.startswith('bl_ext.'):
+            import time
+            if time.monotonic() < getattr(client, '_repo_retry_at', 0):
+                return
+            try:
+                check_repository(package.split('.')[1])
+            except RepositoryBusy as exc:
+                client._repo_retry_at = time.monotonic() + 15
+                client.message = str(exc)
+                return
+            except Exception as exc:
+                client._install_attempt = token
+                client.message = 'Update was not installed: ' + str(exc)
+                return
         client._install_attempt = token
         try:
             path = validate_archive(client.downloaded, client.result, client.product, bpy.app.version)
@@ -208,6 +269,11 @@ def advance(client, package):
             try:
                 install(path, package)
                 _installation_message(client, package, 'Updated to ' + client.result['version'] + '.')
+            except RepositoryBusy as exc:
+                import time
+                client._install_attempt = None
+                client._repo_retry_at = time.monotonic() + 15
+                _installation_message(client, package, str(exc))
             except Exception as exc:
                 _installation_message(client, package, 'Update installation failed: ' + str(exc))
             finally:

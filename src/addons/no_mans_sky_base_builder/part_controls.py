@@ -345,6 +345,48 @@ class BBE_GT_part_button(bpy.types.Gizmo):
     def cursor_get(self):return 'HAND'
 
 
+def position_part_buttons(context, point, buttons):
+    """Reserve screen space for the native transform gizmo and the whole button stack."""
+    from .bubble_controls import overlap, panel_position
+    scale=context.preferences.system.ui_scale
+    region=context.region
+    pad=8*scale
+    left,bottom,right,top=pad,pad,region.width-pad,region.height-pad
+    for side in context.area.regions:
+        if side.type not in {'UI','TOOLS','HEADER','TOOL_HEADER','ASSET_SHELF','ASSET_SHELF_HEADER'}:continue
+        if side.width<=1 or side.height<=1:continue
+        if side.alignment=='RIGHT':right=min(right,side.x-region.x-pad)
+        if side.alignment=='LEFT':left=max(left,side.x+side.width-region.x+pad)
+        if side.alignment=='TOP':top=min(top,side.y-region.y-pad)
+        if side.alignment=='BOTTOM':bottom=max(bottom,side.y+side.height-region.y+pad)
+    width=max(b.width for b in buttons)
+    height=sum(b.height for b in buttons)+5*scale*(len(buttons)-1)
+    pivot=context.scene.tool_settings.transform_pivot_point
+    positions=[point]
+    selected=context.selected_objects
+    if pivot=='CURSOR':
+        center=context.scene.cursor.location
+    elif len(selected)>1 and pivot in {'MEDIAN_POINT','BOUNDING_BOX_CENTER','INDIVIDUAL_ORIGINS'}:
+        origins=[o.matrix_world.translation for o in selected]
+        if pivot=='BOUNDING_BOX_CENTER':
+            center=Vector([(min(v[i] for v in origins)+max(v[i] for v in origins))/2 for i in range(3)])
+        else:center=sum(origins,Vector())/len(origins)
+    else:center=None
+    if center is not None:
+        center=location_3d_to_region_2d(region,context.region_data,center)
+        if center is not None:positions.append(center)
+    radius=(max(48,context.preferences.view.gizmo_size)*1.3 if context.space_data.show_gizmo else 20)*scale
+    obstacles=[(c.x-radius,c.y-radius,c.x+radius,c.y+radius) for c in positions]
+    x=point.x+radius+pad
+    y=max(bottom,min(top-height,point.y+12*scale))
+    rect=(x,y,x+width,y+height)
+    if x<left or x+width>right or any(overlap(rect,o) for o in obstacles):
+        x,y=panel_position(obstacles[-1],obstacles,(left,bottom,right,top),(width,height),gap=pad)
+    for button in buttons:
+        button.matrix_basis=Matrix.Translation((x,y,0))
+        y+=button.height+5*scale
+
+
 class BBE_GGT_part_controls(bpy.types.GizmoGroup):
     bl_idname='BBE_GGT_part_controls';bl_label='Selected Part Controls'
     bl_space_type='VIEW_3D';bl_region_type='WINDOW';bl_options={'PERSISTENT'}
@@ -352,6 +394,8 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
     def poll(cls,context):
         from . import curve_surface,cable_targets
         hab_stairs.picking(context)
+        from . import alignment_tools
+        if alignment_tools._sessions:return False
         if context.mode!='OBJECT' or context.area.as_pointer() in repeat_along._sessions or curve_surface._sessions or cable_targets.session(context):return False
         obj=context.active_object
         return obj is not None and obj.select_get() and (repeat_along.eligible(obj) or message_module(obj) or enclosed(obj) or obj.get('ObjectID') in BEAM_IDS or snap_markers.selected_pair(context) is not None
@@ -379,10 +423,13 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
         for target in self.landings:
             target.hide = True
         if point is None:return
-        x=max(10,min(context.region.width-120*scale,point.x+30*scale));y=max(12,min(context.region.height-100*scale,point.y+25*scale))
+        self.configure(context,obj,scale)
+        buttons=[b for b in (self.repeat,self.stairs,self.snap,self.display,self.supply,self.wiring,self.prox,self.beat) if not b.hide]
+        if buttons:position_part_buttons(context,point,buttons)
+
+    def configure(self,context,obj,scale):
         if repeat_along.eligible(obj) and all(repeat_along.eligible(o) for o in context.selected_objects):
             self.repeat.hide=False;self.repeat.label='Repeat Along';self.repeat.width=104*scale;self.repeat.height=25*scale
-            self.repeat.matrix_basis=Matrix.Translation((x,y,0));y+=30*scale
         stairs = hab_stairs.shared_landings(context)
         choosing = hab_stairs.picking(context)
         if stairs or choosing:
@@ -390,8 +437,6 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
             self.stairs.label = 'Cancel stair placement' if choosing else 'Add Stairs'
             self.stairs.width = (140 if choosing else 104)*scale
             self.stairs.height = 25*scale
-            self.stairs.matrix_basis = Matrix.Translation((x,y,0))
-            y += 30*scale
         if choosing:
             self.repeat.hide = True
             while len(self.landings) < len(stairs):
@@ -409,46 +454,38 @@ class BBE_GGT_part_controls(bpy.types.GizmoGroup):
             return
         if getattr(context.scene, 'bbe_show_connectors', True) and snap_markers.selected_pair(context) and snap_markers.objects(context) is None:
             self.snap.hide=False;self.snap.label='Snap';self.snap.width=70*scale;self.snap.height=25*scale
-            self.snap.matrix_basis=Matrix.Translation((x,y,0));self.snap.target_set_operator('bbe.quick_snap');y+=30*scale
+            self.snap.target_set_operator('bbe.quick_snap')
         if message_module(obj) or enclosed(obj) or obj.get('ObjectID') in BEAM_IDS:
             self.display.hide=False;self.display.label='Edit Message' if message_module(obj) else 'Interior' if enclosed(obj) else 'Beam Options'
             self.display.width=105*scale;self.display.height=25*scale
-            self.display.matrix_basis=Matrix.Translation((x,y,0));self.display.target_set_operator('bbe.edit_message' if message_module(obj) else 'bbe.part_display').owner=obj.name
-            y += 30 * scale
+            self.display.target_set_operator('bbe.edit_message' if message_module(obj) else 'bbe.part_display').owner=obj.name
         if not getattr(context.scene, 'bbe_show_connectors', True):
             return
         if cable_connections.local_sockets(obj, cable_connections.SUPPLY):
             self.supply.hide = False
             self.supply.label = '+Attach Supply'
             self.supply.width, self.supply.height = 115 * scale, 25 * scale
-            self.supply.matrix_basis = Matrix.Translation((x, y, 0))
             op = self.supply.target_set_operator('bbe.start_cable_connection')
             op.kind, op.source_name = cable_connections.SUPPLY, obj.name
-            y += 30 * scale
         if cable_connections.local_sockets(obj, cable_connections.POWER):
             self.wiring.hide = False
             self.wiring.label = '+Attach Wiring'
             self.wiring.width = 110 * scale
             self.wiring.height = 25 * scale
-            self.wiring.matrix_basis = Matrix.Translation((x, y, 0))
             op = self.wiring.target_set_operator('bbe.start_cable_connection')
             op.kind = cable_connections.POWER
             op.source_name = obj.name
-            y += 30 * scale
         if obj.get('ObjectID') in door_circuit.DOORS:
             self.prox.hide = False
             self.prox.label = '+Prox Control'
             self.prox.width = 110 * scale
             self.prox.height = 25 * scale
-            self.prox.matrix_basis = Matrix.Translation((x, y, 0))
             self.prox.target_set_operator('bbe.add_door_proximity').owner = obj.name
-            y += 30 * scale
         if cable_connections.local_sockets(obj, cable_connections.BYTEBEAT):
             self.beat.hide = False
             self.beat.label = '+Attach ByteBeat'
             self.beat.width = 115 * scale
             self.beat.height = 25 * scale
-            self.beat.matrix_basis = Matrix.Translation((x,y,0))
             op = self.beat.target_set_operator('bbe.start_cable_connection')
             op.kind = cable_connections.BYTEBEAT
             op.source_name = obj.name

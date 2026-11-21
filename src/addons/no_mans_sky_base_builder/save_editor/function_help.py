@@ -152,11 +152,11 @@ TOPICS.update({
         ('Switch layouts', 'Open the BBE menu in the sidebar and click Simplify Blender Workspace. The building tab stays visible and Properties focuses on Object when available. Detached editors stay in place. Click Restore Blender Workspace to bring back your tabs and settings.'),
     )),
     'DUPLICATE': ('Duplicate along an axis or edge path', (
-        ('Along Axis', 'Select the part or group to repeat. In Builder, choose Duplicate Along Axis, choose X, Y or Z and adjust the quantity and spacing.'),
-        ('Along Edge Path', 'Select the parts to repeat, choose Duplicate Along Edge Path in Builder and trace the edges. Adjust the copies and spacing in the studio. Copies beyond the last edge continue in its final direction.'),
+        ('Along Axis', 'Select the part or group to repeat. In Builder, choose Duplicate Along Axis, choose Global or Part Local, then click X, Y or Z. Part Local follows the orientation of the active selected part. Adjust Copies, Spacing or Distance in the axis panel.'),
+        ('Along Edge Path', 'Select the parts to repeat, choose Duplicate Along Edge Path in Builder and click a straight or rounded section. Click adjoining sections to extend the path. Click a selected end to remove it. Clicking a middle section trims the highlighted side back to that point. Before creating copies, drag the Keep edge range handles or click Keep longest straight section to remove rounded corners. Click Continue to Copies when the highlighted section looks right. Pick an edge on the part itself to continue it edge to edge. The first copy starts one part-width along the path. Use Spacing to leave a gap or overlap the parts. You can adjust the range again in the repeat controls. Increasing the run afterward continues along its final tangent.'),
     )),
     'ALIGN': ('Align points, edges or faces', (
-        ('Align two features', 'Open Builder and choose Align. Choose Point, Edge or Face. Pick the feature on the object that should move, then the matching feature on the stationary object. Check the preview, adjust rotation if needed, and apply.'),
+        ('Align two features', 'Open Builder and choose Align. Edges opens first. Pick the feature on the piece to move, then its destination. The actual piece moves into contact. Rotate about the face normal or edge with the 90° buttons, drag the angle, or click it to type degrees. For points, choose a world axis. Flip piece turns a face over. Place keeps the result. Cancel restores the starting pose.'),
     )),
     'SELECTED_PART': ('Selected part controls', (
         ('Edit Message', 'Select a Message Module and click Edit Message beside it. Confirm the text to update the Message custom property.'),

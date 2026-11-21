@@ -6,7 +6,7 @@ import uuid
 import random
 
 import bpy
-from mathutils import Matrix, Quaternion
+from mathutils import Matrix, Quaternion, Vector
 
 from .. import builder, builder_v2, part
 from . import (blend_utils, collection_utils, curve_utils, material,
@@ -246,6 +246,7 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
     reduction = curve_obj.bbe_curve.taper / (100 * max(1, len(children) - 1))
     axes=(list(curve_utils.curve_world_tangents(curve_obj,[o.get('curve_factor',0) for o in children]))
           if Curve.PROP_SOURCE_TRANSFORM in curve_obj and abs(curve_obj.bbe_curve.twist)>1e-8 else [None]*len(children))
+    anchor=Vector(curve_obj['bbe_edge_anchor']) if 'bbe_edge_anchor' in curve_obj else None
     for index, obj in enumerate(children):
         if obj.get("curve_parent") == curve_name:
             taper = 1 - index * reduction
@@ -255,6 +256,10 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
             curve_utils.update_obj_transformations(
                 obj, curve_obj, val_data, total_length, curve_context
             )
+            if anchor is not None:
+                offset=-(obj.matrix_basis.to_3x3() @ anchor)
+                if (obj.delta_location-offset).length_squared>1e-14:
+                    obj.delta_location=offset
             
 
 def remember_source_transform(curve_obj, source_obj):
@@ -546,6 +551,8 @@ def apply_curve_transforms_and_detach(curve):
                 for c in constraints_to_remove:
                     obj.constraints.remove(c)
                     
+            if 'bbe_edge_anchor' in curve:
+                obj.delta_location=(0,0,0)
             # Re-apply the matrix so the object doesn't physically move when the constraint drops
             obj.matrix_world = baked_matrix
             detached_count += 1
@@ -560,6 +567,7 @@ def apply_curve_transforms_and_detach(curve):
     
     curve_props_to_delete = [
         distribution.KEY,
+        'bbe_edge_anchor', 'bbe_edge_skip_source',
         Curve.PROP_CURVE_ID,
         Curve.PROP_HAS_LINKED_OBJECTS,
         Curve.PROP_DUP_OBJECT_ID,

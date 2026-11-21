@@ -257,6 +257,7 @@ def length(obj):
 
 def spacing(obj):
     if distribution.KEY in obj:return distribution.pitch(obj)
+    if 'bbe_edge_anchor' in obj:return float(obj['bbe_curve_spacing'])
     n=int(obj.get('objects_count',1))
     if n<2:return 0
     interval=n if obj.data.splines[0].use_cyclic_u else n-1
@@ -392,9 +393,13 @@ class BBE_OT_studio_action(bpy.types.Operator):
         elif a in {'MOVE','ROTATE','SCALE'}:
             set_native_tool(context,obj,a)
         elif a=='FILL':
-            distribution.fill(obj,length(obj),int(obj.get('objects_count',1)),obj.bbe_curve)
-            if 'bbe_curve_spacing' in obj:del obj['bbe_curve_spacing']
-            refresh(obj)
+            if 'bbe_edge_anchor' in obj:
+                from . import duplication_tools
+                duplication_tools.fill_edge(obj)
+            else:
+                distribution.fill(obj,length(obj),int(obj.get('objects_count',1)),obj.bbe_curve)
+                if 'bbe_curve_spacing' in obj:del obj['bbe_curve_spacing']
+                refresh(obj)
         elif a=='FACE':
             children=curve.get_all_curve_children(obj) or []
             context.view_layer.update()

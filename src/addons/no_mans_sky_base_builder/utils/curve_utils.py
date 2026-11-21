@@ -640,6 +640,22 @@ def calculate_curve_factors(curve, existing_objs):
     if object_count == 0:
         return
 
+    if 'bbe_edge_anchor' in curve:
+        length = build_curve_eval_data(curve, 32)[1] * abs(curve.matrix_world.to_scale().x)
+        pitch = distribution.pitch(curve) if distribution.KEY in curve else float(curve['bbe_curve_spacing'])
+        distances = (distribution.distances(curve, object_count, curve.bbe_curve)
+                     if distribution.KEY in curve else [pitch * i for i in range(object_count)])
+        lead = pitch if curve.get('bbe_edge_skip_source') else 0.
+        cyclic = curve.data.splines[0].use_cyclic_u
+        # Leave room for the original piece at the seam of a closed path.
+        run = lead + distances[-1] + (pitch if cyclic else 0.)
+        denominator = max(1e-10, length, run if cyclic else 0.)
+        for obj, distance in zip(existing_objs, distances):
+            factor = min(1., (lead + distance) / denominator)
+            if obj.get('curve_factor') != factor:
+                obj['curve_factor'] = factor
+        return
+
     if distribution.KEY in curve:
         length=build_curve_eval_data(curve,32)[1]*abs(curve.matrix_world.to_scale().x)
         for obj,distance in zip(existing_objs,distribution.distances(curve,object_count,curve.bbe_curve)):

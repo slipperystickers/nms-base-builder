@@ -1,5 +1,6 @@
 """Regular BBE bindings for first-party duplication and alignment tools."""
 import bpy
+from mathutils import Quaternion
 from . import curve_tools,curve_studio
 from .utils import curve
 PREFIX='bbe'
@@ -27,6 +28,8 @@ def make_array(context,guide,sources,count):
         for source,clone in copies.items():
             clone.parent=copies.get(source.parent);clone.matrix_world=source.matrix_world.copy()
         curve_studio.choose(context,[*(copies[o] for o in sources),guide]);context.view_layer.objects.active=guide
+        # The grouping operation uses a world-aligned frame for multiple seeds.
+        seed_rotation = sources[0].matrix_world.to_quaternion().normalized() if len(sources)==1 else Quaternion()
         result=context.scene.nms_build_tool.duplicate_along_curve(count,1)
         if result=={'CANCELLED'} or not guide.get('has_linked_objects'):raise ValueError('Could not duplicate the selected BBE parts')
     finally:
@@ -34,7 +37,37 @@ def make_array(context,guide,sources,count):
         keep={guide,*followers,*(child for obj in followers for child in obj.children_recursive)}
         transient=[o for o in bpy.data.objects if o not in originals and o not in keep and (o in copies.values() or 'GroupID' in o)]
         if transient:bpy.data.batch_remove(transient)
+    pose=first_pose(guide)
+    if pose and abs(pose[1].dot(seed_rotation))<1.-1e-7:
+        restore_first_pose(guide,(pose[0],seed_rotation))
     curve_studio.select_children(context,guide)
+
+def first_pose(guide):
+    followers = children(guide)
+    if not followers or curve.Curve.PROP_START_ALIGNMENT not in guide:
+        return None
+    tracked = [(c.offset_factor, obj) for obj in followers for c in obj.constraints
+               if c.type == 'FOLLOW_PATH' and c.target == guide]
+    if not tracked:
+        return None
+    first = min(tracked, key=lambda entry: entry[0])[1]
+    bpy.context.view_layer.update()
+    return first, first.matrix_world.to_quaternion().normalized()
+
+
+def restore_first_pose(guide, pose):
+    if pose is None:
+        return
+    first, desired = pose
+    bpy.context.view_layer.update()
+    local = first.rotation_euler.to_quaternion()
+    frame = first.matrix_world.to_quaternion().normalized() @ local.inverted()
+    correction = frame.inverted() @ desired @ local.inverted()
+    key = curve.Curve.PROP_START_ALIGNMENT
+    guide[key] = list(correction @ Quaternion(guide[key]))
+    for child in children(guide):
+        child.rotation_euler = (correction @ child.rotation_euler.to_quaternion()).to_euler('XYZ', child.rotation_euler)
+
 
 def rebuild(guide,count,size):
     from .utils import curve_utils

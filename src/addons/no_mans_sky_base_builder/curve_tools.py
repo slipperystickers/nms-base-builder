@@ -703,7 +703,9 @@ class BBE_OT_curve_number(bpy.types.Operator):
         self.count=max(1,round(self.value))
         return context.window_manager.invoke_props_dialog(self,width=280)
     def draw(self,context):
-        i18n.localized_layout(self.layout).prop(self,'count' if self.field in {'objects_count','control_count'} else 'value',text={'objects_count':'Copies','radius_multiplier':'Object size','spacing':'Spacing (m)','twist':'Twist along curve (degrees)','radius_taper':'Radius taper (%)','end_radius':'End radius'}.get(self.field,self.field.replace('_',' ').title()))
+        obj=active_curve(context)
+        spin='Spin around axis (degrees)' if obj and obj.get('bbe_repeat_kind')=='AXIS' else 'Spin along path (degrees)' if obj and obj.get('bbe_repeat_kind')=='EDGE' else 'Twist along curve (degrees)'
+        i18n.localized_layout(self.layout).prop(self,'count' if self.field in {'objects_count','control_count'} else 'value',text={'objects_count':'Copies','radius_multiplier':'Object size','spacing':'Spacing (m)','twist':spin,'radius_taper':'Radius taper (%)','end_radius':'End radius'}.get(self.field,self.field.replace('_',' ').title()))
     def execute(self,context):
         obj=active_curve(context)
         if not obj:return {'CANCELLED'}
@@ -852,7 +854,15 @@ def card_rect(context):
     width=312*scale
     from .curve_studio import child_mode
     obj=active_curve(context)
-    height=(244 if context.scene.as_pointer() in _drawing else (582+(46 if obj.get('bbe_repeat_kind') else 0)+(36 if obj.get('bbe_repeat_kind')=='AXIS' else 0)) if child_mode(context,obj) else 310+46*len(parameters(obj) if obj and obj.get('bbe_easy_curve') else []))*scale
+    if context.scene.as_pointer() in _drawing:
+        height=244
+    elif obj and obj.get('bbe_repeat_kind')=='AXIS':
+        height=470
+    elif child_mode(context,obj):
+        height=674 if obj.get('bbe_repeat_kind')=='EDGE' else 582
+    else:
+        height=310+46*len(parameters(obj) if obj and obj.get('bbe_easy_curve') else [])
+    height*=scale
     x,y=_anchors.get(context.area.as_pointer(),(64*scale,context.region.height-250*scale))
     x=max(8,min(x,context.region.width-width-8));y=max(height+8,min(y,context.region.height-12))
     return x,y-height,width,height
@@ -903,7 +913,7 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
             binding=(operator,g.target_set_operator(operator));self.button_ops[index]=binding
         op=binding[1]
         for k,v in (props or {}).items():
-            if getattr(op,k)!=v:setattr(op,k,v)
+            if not op.is_property_set(k) or getattr(op,k)!=v:setattr(op,k,v)
         return g
     def draw_prepare(self,context):
         obj=active_curve(context)
@@ -919,9 +929,11 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
         from . import curve_studio,curve_widgets
         curve_widgets.update_theme(context)
         children_screen=curve_studio.child_mode(context,obj)
-        header=self.button(0,'DRAW A CURVE' if state else 'CURVE STUDIO · CHILDREN' if children_screen else 'CURVE STUDIO · PARENT','bbe.curve_move_card',
-                           x+8*scale,y+h-54*scale,w-16*scale,style='HEADER',height=46)
-        header.subtitle=i18n.interface('Click points. Watch the curve take shape.') if state else obj.name[:32]
+        axis_repeat=obj.get('bbe_repeat_kind')=='AXIS' and state is None
+        edge_repeat=obj.get('bbe_repeat_kind')=='EDGE' and state is None
+        header=self.button(0,'DUPLICATE ALONG EDGE PATH' if edge_repeat else 'DUPLICATE ALONG AXIS' if axis_repeat else 'DRAW A CURVE' if state else 'CURVE STUDIO · CHILDREN' if children_screen else 'CURVE STUDIO · PARENT','bbe.curve_move_card',
+                           x+8*scale,y+h-54*scale,w-16*scale,style='AXIS_HEADER' if axis_repeat else 'EDGE_HEADER' if edge_repeat else 'HEADER',height=46)
+        header.subtitle=i18n.interface('Copies along the selected edges' if children_screen else 'Edit path points') if edge_repeat else i18n.interface('Repeat the selected parts in a straight line') if axis_repeat else i18n.interface('Click points. Watch the curve take shape.') if state else obj.name[:32]
         lines=[(16*scale,14*scale,'Drag points or handles  /  Shift: fine  /  X Y Z: axis',curve_widgets.MUTED)]
         if state is not None:
             lines=[(18*scale,h-81*scale,i18n.interface('{count} points placed').format(count=state["count"]),curve_widgets.TEXT),
@@ -931,9 +943,28 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                             {'action':action},style='PRIMARY' if index==1 else 'BUTTON',height=29)
         else:
             yy=y+h-104*scale;index=1
+            if axis_repeat:
+                for n,(space,label) in enumerate((('GLOBAL','Global'),('LOCAL','Part Local'))):
+                    g=self.button(index,label,'bbe.repeat_axis',x+(14+n*145)*scale,y+h-90*scale,139*scale,
+                                  {'space':space,'axis':obj.get('bbe_repeat_axis','X')})
+                    g.enabled=obj.get('bbe_axis_space','GLOBAL')==space;index+=1
+                for n,axis in enumerate('XYZ'):
+                    g=self.button(index,axis,'bbe.repeat_axis',x+(14+n*97)*scale,y+h-124*scale,89*scale,
+                                  {'space':'KEEP','axis':axis})
+                    g.enabled=obj.get('bbe_repeat_axis','X')==axis;index+=1
+                yy=y+h-175*scale
             fields=([('objects_count','Copies'),('spacing','Spacing (m)'),('radius_multiplier','Object size'),('taper','Taper'),('twist','Twist along curve')]
-                    if children_screen else parameters(obj) if obj.get('bbe_easy_curve') else [])
-            if children_screen and obj.get('bbe_repeat_kind'):fields.insert(2,('distance','Distance (m)'))
+                    if children_screen or axis_repeat else parameters(obj) if obj.get('bbe_easy_curve') else [])
+            if edge_repeat and children_screen:fields[-1]=('twist','Spin along path')
+            if axis_repeat:fields[-1]=('twist','Spin around axis')
+            if (children_screen or axis_repeat) and obj.get('bbe_repeat_kind'):fields.insert(2,('distance','Distance (m)'))
+            if children_screen and obj.get('bbe_repeat_kind')=='EDGE':
+                lo,hi=obj.get('bbe_edge_trim_range',(0.,1.))
+                g=self.button(index,'Keep edge range','bbe.trim_edge_path',x+18*scale,yy,w-36*scale,
+                    {'track_x':x+24*scale,'track_width':w-48*scale},style='RANGE',height=44)
+                g.fraction,g.upper_fraction=lo,hi
+                g.value=f'{lo:.0%} – {hi:.0%}'
+                index+=1;yy-=46*scale
             for field,label in fields:
                 value=value_get(obj,field);lo,hi=slider_range(obj,field)
                 g=self.button(index,label,'bbe.curve_value',x+18*scale,yy,w-36*scale,
@@ -946,14 +977,13 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 nonlocal index
                 g=self.button(index,label,'bbe.studio_action',x+dx*scale,y+dy*scale,width*scale,{'action':action},style=style,height=height)
                 g.enabled=enabled;g.value=value;index+=1
-            if children_screen:
+            if axis_repeat:
+                action('Select Copies','ALL',14,23,284)
+                lines=[]
+            elif children_screen:
                 lines=[(16*scale,14*scale,'Drag gizmo  /  G R S, then type a value',curve_widgets.MUTED)]
-                if obj.get('bbe_repeat_kind')=='AXIS':
-                    for n,axis in enumerate('XYZ'):
-                        g=self.button(index,'World '+axis,'bbe.repeat_axis',x+(14+n*97)*scale,y+292*scale,89*scale,{'axis':axis})
-                        g.enabled=obj.get('bbe_repeat_axis')==axis;index+=1
-                action('Fill entire curve','FILL',14,256)
-                action('Align curve face','FACE',160,256)
+                action('Fill edge path' if edge_repeat else 'Fill entire curve','FILL',14,256)
+                action('Align to path plane' if edge_repeat else 'Align curve face','FACE',160,256)
                 native=curve_studio.use_blender_tools(context)
                 action('Use Blender tools','NATIVE',14,222,284,native,style='SWITCH')
                 if not native:
@@ -965,8 +995,8 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 action('Axes','AXES',14,148,284,local,style='SWITCH',value='Local' if local else 'Global')
                 each=context.scene.tool_settings.transform_pivot_point=='INDIVIDUAL_ORIGINS'
                 action('Pivot','PIVOT',14,114,284,each,style='SWITCH',value='Individual' if each else 'Median')
-                action('Select All Children','ALL',14,80,284,height=26)
-                action('Edit Parent','PARENT',14,32,284,style='NAV',height=36)
+                action('Select Copies' if edge_repeat else 'Select All Children','ALL',14,80,284,height=26)
+                action('Edit Edge Path' if edge_repeat else 'Edit Parent','PARENT',14,32,284,style='NAV',height=36)
             else:
                 for n,(label,a) in enumerate([('Smooth curve','SMOOTH'),('Open / Close','CLOSED'),('+  Add point','ADD'),('-  Remove point','REMOVE')]):
                     self.button(index,label,'bbe.curve_action',x+(14+146*(n%2))*scale,y+(202-34*(n//2))*scale,
@@ -974,7 +1004,7 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 g=self.button(index,'Link handles','bbe.curve_action',
                               x+14*scale,y+134*scale,w-28*scale,{'action':'LINK'},style='SWITCH')
                 g.enabled=obj.bbe_curve.linked_handles;index+=1
-                action('Edit Children' if obj.get('has_linked_objects') else 'Duplicate Along Curve',
+                action('Edit Copies' if edge_repeat else 'Edit Children' if obj.get('has_linked_objects') else 'Duplicate Along Curve',
                        'CHILDREN' if obj.get('has_linked_objects') else 'DUPLICATE',14,96,284,
                        style='NAV' if obj.get('has_linked_objects') else 'PRIMARY',height=34)
                 if obj.get('has_linked_objects'):

@@ -1,3 +1,11 @@
+# Base Builder Extended 18.3.1
+
+- Align previews the actual part against a picked point, edge or face. Face and edge alignment allow rotation around the connection.
+- Duplicate Along Edge Path lets you add or remove connected sections and trim the route before making copies. Repeating a part on its own straight edge continues it edge to edge.
+- Duplicate Along Axis supports switching between world axes and the selected part's axes.
+- Viewport action buttons leave more clearance around transform gizmos.
+- Automatic updates check the Blender extension repository before closing BBE tools. A busy repository delays installation and the downloaded package is retried. Updating an enabled extension no longer saves global Blender preferences.
+
 # Base Builder Extended 18.3.0
 
 ## New features since 18.2.48

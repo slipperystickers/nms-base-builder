@@ -133,7 +133,7 @@ def text(value, x, y, size, color=None, align='LEFT'):
 
 class BBE_GT_curve_widget(bpy.types.Gizmo):
     bl_idname = 'BBE_GT_curve_widget'
-    __slots__ = ('width', 'height', 'label', 'subtitle', 'style', 'fraction',
+    __slots__ = ('width', 'height', 'label', 'subtitle', 'style', 'fraction', 'upper_fraction',
                  'value', 'children', 'lines', 'scale', 'enabled', '_shader')
 
     def setup(self):
@@ -167,11 +167,21 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
         x, y = self.matrix_basis.translation[:2]
         w, h, s = self.width, self.height, self.scale
         hot = self.is_highlight or self.is_modal
-        if self.style in {'HEADER','SHAPE_HEADER'}:
+        if self.style in {'HEADER','SHAPE_HEADER','AXIS_HEADER','EDGE_HEADER'}:
             if studio:
                 line(shader,(x,y),(x+w,y),s,EDGE)
             else:rounded(shader, x, y, w, h, 10*s, HEADER)
-            if self.style=='SHAPE_HEADER':
+            if self.style=='AXIS_HEADER':
+                origin=(x+23*s,y+19*s)
+                for dx,dy in ((13,0),(-8,-7),(0,13)):
+                    tip=(origin[0]+dx*s,origin[1]+dy*s)
+                    line(shader,origin,tip,2*s,CYAN)
+                    disc(shader,*tip,2*s,CYAN)
+            elif self.style=='EDGE_HEADER':
+                points=[(x+dx*s,y+dy*s) for dx,dy in ((13,14),(22,25),(34,25))]
+                for a,b in zip(points,points[1:]):line(shader,a,b,2*s,CYAN)
+                for pt in points:disc(shader,*pt,2.5*s,CYAN)
+            elif self.style=='SHAPE_HEADER':
                 from . import menu_surface, shapes
                 menu_surface.draw_image(shapes.preview_icon('STUDIO'),x+10*s,y+5*s,30*s,30*s)
             else:
@@ -234,6 +244,16 @@ class BBE_GT_curve_widget(bpy.types.Gizmo):
                 polygon(shader,[pt(19,4),pt(12,5),pt(15,-2)],TEXT)
                 text(i18n.interface(self.label),x+49*s,cy+2*s,13*s,TEXT)
                 text(self.value,x+49*s,cy-12*s,10*s,MUTED)
+        elif self.style == 'RANGE':
+            text(i18n.interface(self.label),x+2*s,y+26*s,11*s,TEXT)
+            text(self.value,x+w-2*s,y+26*s,11*s,MUTED,'RIGHT')
+            left,cy=x+6*s,y+10*s
+            width=w-12*s
+            lo,hi=left+width*self.fraction,left+width*self.upper_fraction
+            rounded(shader,left,cy-2*s,width,4*s,2*s,TRACK)
+            rounded(shader,lo,cy-2*s,max(1,hi-lo),4*s,2*s,CYAN)
+            for at in (lo,hi):
+                rounded(shader,at-4*s,cy-7*s,8*s,14*s,3*s,TEXT)
         elif self.style == 'SLIDER':
             if hot:rounded(shader, x-4*s, y, w+8*s, h, 7*s, HOVER)
             text(i18n.interface(self.label), x+2*s, y+26*s, 11*s, TEXT if hot else MUTED)

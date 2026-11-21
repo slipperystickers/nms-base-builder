@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 import bpy
 from . import i18n
+from .edge_sections import EdgeSections
 import gpu
 from bpy.app.handlers import persistent
 from gpu_extras.batch import batch_for_shader
@@ -93,41 +94,29 @@ class Surface:
         return {segment(self.vertices[a], self.vertices[b]) for a,b in self.boundary(faces)}
 
     def edge_chain(self, edge, max_turn=35, allowed=None):
-        """Continue through the most aligned edge at each end, stopping at corners."""
-        neighbors = defaultdict(set)
         if allowed is None:
-            allowed = set()
+            allowed = self.boundary(range(len(self.faces)))
             for candidate, faces in self.edges.items():
-                if len(faces)==1:
-                    allowed.add(candidate)
-                elif len(faces)==2:
+                if len(faces) == 2:
                     a,b=tuple(faces)
-                    if self.normals[a].dot(self.normals[b])<math.cos(math.radians(35)):
+                    if self.normals[a].dot(self.normals[b]) < math.cos(math.radians(35)):
                         allowed.add(candidate)
-        for a, b in allowed:
-            neighbors[a].add(b); neighbors[b].add(a)
-        a, b = edge
-        chain = {tuple(sorted(edge))}
-        def walk(previous, current):
-            heading=(self.vertices[current]-self.vertices[previous]).normalized()
-            while True:
-                incoming = (self.vertices[current]-self.vertices[previous]).normalized()
-                choices = []
-                for next_vertex in neighbors[current] - {previous}:
-                    candidate = tuple(sorted((current, next_vertex)))
-                    if candidate in chain: continue
-                    outgoing = (self.vertices[next_vertex]-self.vertices[current]).normalized()
-                    if outgoing.dot(heading)<math.cos(math.radians(70)):continue
-                    turn = incoming.angle(outgoing)
-                    if turn <= math.radians(max_turn): choices.append((turn, candidate, next_vertex))
-                if not choices: break
-                _, candidate, next_vertex = min(choices)
-                chain.add(candidate); previous, current = current, next_vertex
-        walk(a,b); walk(b,a)
-        return chain
+        return EdgeSections(self.vertices, allowed).section(*edge, max_turn)
 
-    def edge_chain_at(self, face, location, xy, region, region_data, scale, max_turn=35):
-        features=list(self.boundary(self.patch_faces(face)))
+    def section_at(self, face, location, xy, region, region_data, scale, max_turn, creases=True):
+        patch = self.patch_faces(face)
+        if not hasattr(self, 'section_cache'):self.section_cache={}
+        key=(min(patch),creases)
+        if key not in self.section_cache:
+            features=self.boundary(patch)
+            if creases:
+                for fi in patch:
+                    for edge in self.face_edges[fi]:
+                        if any(self.normals[fi].dot(self.normals[j]) < .99756 for j in self.edges[edge]):
+                            features.add(edge)
+            self.section_cache[key]=(features,EdgeSections(self.vertices,features))
+        features, graph = self.section_cache[key]
+        depth_distance=float('inf')
         best=None;distance=36*max(.75,scale)
         for edge in features:
             a,b=(self.vertices[i] for i in edge)
@@ -136,10 +125,18 @@ class Surface:
             if pa is None or pb is None:continue
             delta=pb-pa;t=max(0.,min(1.,(xy-pa).dot(delta)/max(delta.length_squared,1e-12)))
             d=(xy-pa-delta*t).length
-            if d<distance:distance=d;best=edge
-        if best is None:return frozenset()
-        return frozenset(segment(self.vertices[a],self.vertices[b])
-                         for a,b in self.edge_chain(best,max_turn=max_turn,allowed=set(features)))
+            depth=(a.lerp(b,t)-location).length_squared
+            if d < distance-.25 or (abs(d-distance)<=.25 and depth<depth_distance):
+                distance=d;depth_distance=depth;best=edge
+        if best is None:return None
+        return best, graph.section(*best,max_turn), distance
+
+    def edge_chain_at(self, face, location, xy, region, region_data, scale, max_turn=35, creases=True):
+        picked=self.section_at(face,location,xy,region,region_data,scale,max_turn,creases)
+        if not picked:return frozenset()
+        best,edges,_=picked
+        self.seed_edge=segment(*(self.vertices[i] for i in best))
+        return frozenset(segment(self.vertices[a],self.vertices[b]) for a,b in edges)
 
     def guide(self, faces, angle=0., hint=None):
         """A straight directional guide projected onto the selected surface."""
@@ -371,14 +368,36 @@ class DenseSurface:
                 if not result or (world-result[-1]).length>1e-5:result.append(world)
         return result,Vector(center),Vector(normal)
 
-    def edge_chain_at(self, face, location, xy, region, region_data, scale, max_turn=35):
+    def pick_edge_ids(self, label, creases):
+        faces=self.patches[label]
+        boundary=self.boundary_ids(faces)
+        if not creases:return boundary
+        if not hasattr(self,'ridge_cache'):self.ridge_cache={}
+        if label not in self.ridge_cache:
+            np=self.np
+            # Process in chunks to bound temporary memory on detailed proxies.
+            ridges=[boundary]
+            for start in range(0,len(faces),8192):
+                block=faces[start:start+8192]
+                neighbors=self.neighbors[block]
+                normals=self.normals_np[np.maximum(neighbors,0)]
+                dot=np.einsum('ijk,ik->ij',normals,self.normals_np[block])
+                ridges.append(self.face_edges_np[block][(neighbors>=0)&(dot<.99756)])
+            self.ridge_cache[label]=np.unique(np.concatenate(ridges))
+        return self.ridge_cache[label]
+
+    def edge_chain_at(self, face, location, xy, region, region_data, scale, max_turn=35, creases=True):
         np = self.np
         label=int(self.patch_labels[face])
-        boundary=self.boundary_ids(self.patch_faces(face))
+        boundary=self.pick_edge_ids(label,creases)
         if not len(boundary):return frozenset()
         vertices=self.edge_vertices[boundary]
-        midpoints=(self.coords[vertices[:,0]]+self.coords[vertices[:,1]])*.5
-        distance = np.linalg.norm(midpoints-np.asarray(location),axis=1)
+        starts=self.coords[vertices[:,0]]
+        spans=self.coords[vertices[:,1]]-starts
+        offset=np.asarray(location)-starts
+        along=np.clip(np.einsum('ij,ij->i',offset,spans)/np.maximum(np.einsum('ij,ij->i',spans,spans),1e-16),0,1)
+        residual=offset-spans*along[:,None]
+        distance=np.einsum('ij,ij->i',residual,residual)
         candidates = np.argpartition(distance,min(128,len(distance)-1))[:128]
         best = None; best_distance = 36*max(.75,scale)
         for candidate in candidates:
@@ -390,84 +409,23 @@ class DenseSurface:
             d=(xy-pa-delta*t).length
             if d<best_distance:best_distance=d;best=int(candidate)
         if best is None:return frozenset()
+        self.seed_edge=segment(*(self.coords[i] for i in vertices[best]))
         cached=getattr(self,'last_edge_preview',None)
-        if cached and cached[0]==(label,max_turn) and best in cached[1]:return cached[2]
-        chain=self.boundary_chain(label,best,max_turn=max_turn)
+        if cached and cached[0]==(label,max_turn,creases) and best in cached[1]:return cached[2]
+        chain=self.boundary_chain(label,best,max_turn=max_turn,creases=creases)
         edges=frozenset(segment(self.coords[a],self.coords[b]) for a,b in vertices[list(chain)])
-        self.last_edge_preview=((label,max_turn),chain,edges)
+        self.last_edge_preview=((label,max_turn,creases),chain,edges)
         return edges
 
-    def boundary_chain(self, label, start, max_turn=35):
-        vertices=self.edge_vertices[self.boundary_ids(self.patches[label])]
+    def boundary_chain(self, label, start, max_turn=35, creases=False):
+        vertices=self.edge_vertices[self.pick_edge_ids(label,creases)]
+        label=(label,creases)
         if label not in self.boundary_graph:
-            graph=defaultdict(list)
-            for i,(a,b) in enumerate(vertices):
-                graph[int(a)].append(i);graph[int(b)].append(i)
-            self.boundary_graph[label]=graph
-        graph=self.boundary_graph[label]
-        chain={start}
-        span=max(self.diagonal*.01,.1)
-        def walk(previous,current):
-            heading=Vector(self.coords[current]-self.coords[previous]).normalized()
-            ahead_previous,ahead=previous,current
-            travelled=0.
-            for _ in range(32):
-                onward=[]
-                for eid in graph[ahead]:
-                    a,b=vertices[eid];other=int(b if a==ahead else a)
-                    if other!=ahead_previous:onward.append(other)
-                if len(onward)!=1:break
-                following=onward[0]
-                travelled+=float(self.np.linalg.norm(self.coords[following]-self.coords[ahead]))
-                ahead_previous,ahead=ahead,following
-                if travelled>=span:break
-            averaged=Vector(self.coords[ahead]-self.coords[previous])
-            if averaged.length_squared>1e-12:heading=averaged.normalized()
-            while True:
-                incoming=Vector(self.coords[current]-self.coords[previous]).normalized()
-                choices=[]
-                for candidate in graph[current]:
-                    if candidate in chain:continue
-                    a,b=vertices[candidate];next_vertex=int(b if a==current else a)
-                    outgoing=Vector(self.coords[next_vertex]-self.coords[current]).normalized()
-                    turn=incoming.angle(outgoing)
-                    choices.append((turn,candidate,next_vertex))
-                if not choices:break
-                turn,candidate,next_vertex=min(choices)
-                if turn>math.radians(max_turn):
-                    if max_turn < 35: break
-                    # Dense triangulation can insert a tiny right-angle jog
-                    # into an otherwise continuous rim. Look ahead for the
-                    # original heading; a real corner does not return to it.
-                    trial=[(candidate,current,next_vertex)]
-                    travelled=(Vector(self.coords[next_vertex])-Vector(self.coords[current])).length
-                    restored=False
-                    while len(trial)<8 and travelled<span:
-                        _,last_from,last_to=trial[-1]
-                        options=[]
-                        for edge_id in graph[last_to]:
-                            if edge_id in chain or any(edge_id==item[0] for item in trial):continue
-                            a,b=vertices[edge_id]
-                            following=int(b if a==last_to else a)
-                            turn_next=Vector(self.coords[last_to]-self.coords[last_from]).angle(
-                                Vector(self.coords[following]-self.coords[last_to]))
-                            options.append((turn_next,edge_id,following))
-                        if not options:break
-                        _,edge_id,following=min(options)
-                        travelled+=(Vector(self.coords[following])-Vector(self.coords[last_to])).length
-                        trial.append((edge_id,last_to,following))
-                        net=Vector(self.coords[following]-self.coords[current]).normalized()
-                        if net.dot(incoming)>math.cos(math.radians(35)) and net.dot(heading)>math.cos(math.radians(70)):
-                            restored=True;break
-                    if not restored:break
-                    chain.update(item[0] for item in trial)
-                    previous,current=trial[-1][1],trial[-1][2]
-                else:
-                    if Vector(self.coords[next_vertex]-self.coords[current]).normalized().dot(heading)<math.cos(math.radians(70)):break
-                    chain.add(candidate);previous,current=current,next_vertex
-        a,b=vertices[start]
-        walk(int(a),int(b));walk(int(b),int(a))
-        return chain
+            graph=EdgeSections(self.coords, vertices)
+            indices={tuple(sorted(edge)):i for i,edge in enumerate(vertices)}
+            self.boundary_graph[label]=graph,indices
+        graph,indices=self.boundary_graph[label]
+        return {indices[edge] for edge in graph.section(*vertices[start],max_turn)}
 
 
 class FastGuide:
@@ -580,6 +538,8 @@ class Pick:
     face_index: int = -1
     angle: float = 0.
     guide_id: int = -1
+    seed_edge: tuple = ()
+    edge_face: int = -1
 
 
 def point_key(co):
@@ -626,6 +586,41 @@ def selected_segments(picks):
             for key,(faces,edges) in groups.items()}
 
 
+def edge_edit(picks, hit):
+    """Plan a click so the hover preview and the committed chain agree."""
+    sections=[p for p in picks if p.kind=='EDGE']
+    existing=next((p for p in sections if p.source==hit.source and
+                   (hit.seed_edge in p.edges or p.edges==hit.edges)),None)
+    if not sections:return picks+(hit,),hit.edges,'Click to start path'
+    if existing is None and any(p.source!=hit.source for p in sections):
+        return picks,(), 'Choose a section touching an end'
+    kept=[p for p in sections if p is not existing]
+    added=hit.edges.difference(*(p.edges for p in kept)) if not existing else ()
+    edges=set(added)
+    for p in kept:edges.update(p.edges)
+    graph=defaultdict(set)
+    for a,b in edges:graph[a].add(b);graph[b].add(a)
+    if existing is None and (not added or any(len(v)>2 for v in graph.values())):
+        return picks,(), 'Choose a section touching an end'
+    component=set()
+    if edges:
+        # Removing the middle retains the side containing the first surviving pick.
+        first=next(iter(kept[0].edges if kept else edges))[0]
+        pending=[first]
+        while pending:
+            v=pending.pop()
+            if v not in component:
+                component.add(v);pending.extend(graph[v]-component)
+    if existing:
+        removed=[existing]+[p for p in kept if next(iter(p.edges))[0] not in component]
+        preview=frozenset(edge for p in removed for edge in p.edges)
+        return (tuple(p for p in picks if p not in removed),preview,
+                'Click to remove section' if len(removed)==1 else 'Click to trim highlighted sections')
+    if len(component)!=len(graph):
+        return picks,(), 'Choose a section touching an end'
+    return picks+(Pick('EDGE',hit.source,frozenset(added),seed_edge=hit.seed_edge,edge_face=hit.edge_face),),added,'Click to extend path'
+
+
 def selection_paths(picks):
     result = []
     for edges in selected_segments(p for p in picks if not (p.kind == 'FACE' and p.points)).values():
@@ -633,6 +628,22 @@ def selection_paths(picks):
         indices = {co:i for i,co in enumerate(coords)}
         result.extend(paths_from_edges([Vector(co) for co in coords],
                                       {(indices[a],indices[b]) for a,b in edges}))
+    # Once a second section is added, repeat towards it regardless of mesh
+    # vertex numbering. The same path order is used for the range preview.
+    if len(result)==1 and not result[0][1] and len(picks)>=2 and all(p.kind=='EDGE' for p in picks):
+        path=result[0][0]
+        def station(pick):
+            a,b=pick.seed_edge or min(pick.edges)
+            midpoint=(Vector(a)+Vector(b))*.5
+            best=(float('inf'),0.)
+            length=0.
+            for start,end in zip(path,path[1:]):
+                delta=end-start
+                t=max(0.,min(1.,(midpoint-start).dot(delta)/max(delta.length_squared,1e-20)))
+                best=min(best,((start+t*delta-midpoint).length_squared,length+t*delta.length))
+                length+=delta.length
+            return best[1]
+        if station(picks[0])>station(picks[1]):path.reverse()
     result.extend(([Vector(co) for co in pick.points],False) for pick in picks
                   if pick.kind in {'DRAW','FACE'} and len(pick.points)>1)
     return result
@@ -748,6 +759,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         self.job_is_hover = False; self.hover_request = None; self.pending_click = None
         self.face_previews = {}; self.hover_due = 0.; self.hover_visible = False
         self.preview_lines = []; self.cursor_kind = None
+        self.trim_selection=None;self.trim_trace=None;self.trim_limits=(0.,1.);self.trim_handle=None
         self.leave_prompt=False;self.leave_action=None;self.leave_pending=False
         self.shader = None; self.batches = []
         self.helper = context.scene.bbe_curve_helper; context.scene.bbe_curve_helper = False
@@ -768,9 +780,9 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         self.cancel_job(); self.commit_stroke(); self.mode = mode; self.hover = None
         self.hover_request = None; self.pending_click = None; self.hover_visible = False
         self.set_cursor('CROSSHAIR')
-        self.area.header_text_set(i18n.interface('EDGE REPEAT: click edges to add/remove | Ctrl Z undo | Enter duplicate | Esc cancel' if self.purpose=='DUPLICATE' else 'SURFACE CURVE: D draw | E edges | F faces | R rotate 90 | drag ring to rotate | Ctrl Z undo | Enter create'))
+        self.area.header_text_set(i18n.interface('EDGE PATH: click a section to add or remove | Ctrl Z undo | Enter continue | Esc cancel' if self.purpose=='DUPLICATE' else 'SURFACE CURVE: D draw | E edges | F faces | R rotate 90 | drag ring to rotate | Ctrl Z undo | Enter create'))
         self.workspace.status_text_set({'DRAW':'Hold left mouse and draw on the model. Orbit to reach the underside. Blank gaps split strokes.',
-            'EDGE':'Click near a visible boundary or crease to select its continuous chain.',
+            'EDGE':'Click a straight or rounded section. Click a touching section to extend, or a selected section to remove.',
             'FACE':'Click a face for a broad surface patch and its longest guide. Drag the rotation ring to adjust.'}[mode])
         self.update_lines()
         if mode in {'FACE','EDGE'}:
@@ -808,6 +820,13 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         return inside,panel,ring,mx,my
 
     def accept_pick(self, pick):
+        if pick.kind=='EDGE':
+            items,_,hint=edge_edit(self.picks,pick)
+            if items is self.picks:self.report({'INFO'},hint)
+            self.history.commit(items)
+            self.active_pick=None
+            self.update_lines()
+            return
         surface = self.cache.get(pick.source)
         existing = next((p for p in self.picks if p.kind == pick.kind and p.source == pick.source
                          and (surface.same_patch(pick.face_index, p.face_index) if pick.kind == 'FACE'
@@ -850,8 +869,21 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         for pick in self.picks:
             if pick.kind in {'DRAW','FACE'}:
                 self.selected_lines.extend(co for edge in zip(pick.points,pick.points[1:]) for co in edge)
+        if getattr(self,'purpose',None)=='DUPLICATE':
+            if self.trim_selection is not self.picks:
+                from .edge_trim import Trace
+                paths=selection_paths(self.picks)
+                self.trim_trace=Trace.from_path(*paths[0]) if len(paths)==1 else None
+                self.trim_limits=(0.,1.);self.trim_selection=self.picks
+            if self.trim_trace and self.trim_limits!=(0.,1.):
+                points,_=self.trim_trace.clipped(*self.trim_limits)
+                self.outline_lines=self.selected_lines
+                self.selected_lines=[p[0] for pair in zip(points,points[1:]) for p in pair]
         if self.stroke: self.selected_lines.extend(self.stroke.lines())
         self.hover_lines = [co for edge in self.hover.edges for co in edge] if self.hover else []
+        if self.hover and self.hover.kind=='EDGE':
+            _,preview,self.edge_hint=edge_edit(self.picks,self.hover)
+            self.hover_lines=[co for edge in preview for co in edge]
         self.preview_lines = ([co for pair in zip(self.hover.points, self.hover.points[1:]) for co in pair]
                               if self.hover else [])
         self.gizmo_lines = [];self.grabber_lines=[]
@@ -987,13 +1019,23 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         key, location, index, obj, matrix, depsgraph = hit
         surface = yield from self.surface_for(hit)
         yield from surface.patch_steps(index)
-        edges=surface.edge_chain_at(index,location,xy,self.region,self.area.spaces.active.region_3d,
-                                    bpy.context.preferences.system.ui_scale,
-                                    max_turn=edge_turn(bpy.context))
-        if not edges:
+        selected=[p for p in self.picks if p.kind=='EDGE' and p.source==key and p.edge_face>=0]
+        pick=None
+        for face in dict.fromkeys([index]+[p.edge_face for p in reversed(selected)]):
+            if face!=index:
+                if surface.same_patch(index,face):continue
+                yield from surface.patch_steps(face)
+            edges=surface.edge_chain_at(face,location,xy,self.region,self.area.spaces.active.region_3d,
+                                        bpy.context.preferences.system.ui_scale,max_turn=edge_turn(bpy.context))
+            if not edges:continue
+            candidate=Pick('EDGE',key,edges,seed_edge=surface.seed_edge,edge_face=face)
+            if pick is None:pick=candidate
+            if not selected or edge_edit(self.picks,candidate)[1]:
+                pick=candidate
+                break
+        if pick is None:
             if not preview:self.report({'INFO'},'Click closer to a visible boundary or crease edge.')
             self.hover=None;self.update_lines();return
-        pick = Pick('EDGE',key,edges)
         self.publish_pick(pick, preview)
 
     def prepare_draw(self, runs, hits):
@@ -1108,11 +1150,12 @@ class BBE_OT_curve_surface(bpy.types.Operator):
     def buttons(self):
         scale=max(.75,bpy.context.preferences.system.ui_scale)
         x=64*scale;top=max(254*scale,self.region.height-250*scale)
+        tuning=[('TOLERANCE','Edge settings',213,-29,89,23)] if self.mode=='EDGE' else []
         if self.purpose=='DUPLICATE':
-            return scale,x,top,[('EDGE','Select one continuous edge path',12,-64,290,30),
+            return scale,x,top,tuning+[('STRAIGHT','Keep longest straight section',12,-64,290,30),
                 ('UNDO','Undo',12,-205,90,26),('REDO','Redo',112,-205,90,26),('STOP','Stop scan',212,-205,90,26),
-                ('FINISH','Duplicate Along Path',12,-242,190,30),('CANCEL','Cancel',212,-242,90,30)]
-        return scale,x,top,[('EDGE','Edges',12,-64,140,30),('FACE','Faces',162,-64,140,30),
+                ('FINISH','Continue to Copies',12,-242,190,30),('CANCEL','Cancel',212,-242,90,30)]
+        return scale,x,top,tuning+[('EDGE','Edges',12,-64,140,30),('FACE','Faces',162,-64,140,30),
             ('DRAW','Draw on Surface',12,-101,290,30),
             ('ROTATE','Rotate 90°',12,-137,290,26),
             ('UNDO','Undo',12,-205,90,26),('REDO','Redo',112,-205,90,26),('STOP','Stop scan',212,-205,90,26),
@@ -1129,14 +1172,24 @@ class BBE_OT_curve_surface(bpy.types.Operator):
             w.text(i18n.interface('DUPLICATE ALONG EDGE PATH' if self.purpose=='DUPLICATE' else 'CURVE FROM EDGES / FACES'),x+14*scale,top-23*scale,13*scale)
             for action,label,bx,by,width,height in buttons:
                 enabled = (action!='STOP' or self.job is not None) and (action!='ROTATE' or self.active_pick in self.picks)
+                if action=='STRAIGHT':enabled=self.trim_trace is not None
                 fill=w.PURPLE if action==self.mode or action=='FINISH' else w.BUTTON
                 w.rounded(shader,x+bx*scale,top+by*scale,width*scale,height*scale,6*scale,fill)
                 w.text(i18n.interface(label),x+(bx+width/2)*scale,top+(by+9)*scale,11*scale,w.TEXT if enabled else w.MUTED,align='CENTER')
+            if self.purpose=='DUPLICATE' and self.trim_trace:
+                lo,hi=self.trim_limits
+                w.text(i18n.interface('Keep edge range'),x+18*scale,top-90*scale,11*scale)
+                w.text(f'{lo:.0%} - {hi:.0%}',x+295*scale,top-90*scale,11*scale,w.TEXT,align='RIGHT')
+                left=x+22*scale;width=270*scale;cy=top-114*scale
+                w.rounded(shader,left,cy-2*scale,width,4*scale,2*scale,w.TRACK)
+                w.rounded(shader,left+lo*width,cy-2*scale,(hi-lo)*width,4*scale,2*scale,w.PURPLE)
+                for v in (lo,hi):w.disc(shader,left+v*width,cy,6*scale,w.CYAN)
             status=(i18n.interface('Rotation: {degrees}°').format(degrees=self.rotation_input) if self.rotating and self.rotation_input
                     else self.progress or i18n.interface('{count} selections / strokes').format(count=len(self.picks)))
             w.text(status,x+14*scale,top-157*scale,10*scale,w.MUTED)
             w.text(i18n.interface('Drag diamond; type degrees while holding.' if self.active_pick in self.picks
                    else 'Stroke marks direction.' if self.mode=='DRAW'
+                   else 'Drag either handle to trim the highlighted path.' if self.purpose=='DUPLICATE' and self.trim_trace
                    else 'Click near a boundary or broad surface.'),x+14*scale,top-174*scale,10*scale,w.MUTED)
             w.text(i18n.interface('Ctrl Z: undo   Ctrl Y: redo   Enter: create'),x+14*scale,top-267*scale,10*scale,w.MUTED)
             if self.hover_visible and self.hover_request is not None:
@@ -1146,7 +1199,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                     and (self.cache[p.source].same_patch(p.face_index,self.hover.face_index) if p.kind=='FACE'
                          else p.edges==self.hover.edges) for p in self.picks)
                 w.disc(shader,mx,my,3*scale,color)
-                w.text(i18n.interface('Click to remove' if selected else 'Click to select' if self.hover else 'Preparing preview…'),
+                w.text(i18n.interface(self.edge_hint if self.hover and self.hover.kind=='EDGE' else 'Click to remove' if selected else 'Click to select' if self.hover else 'Preparing preview…'),
                        mx+15*scale,my+16*scale,11*scale,color)
 
     def draw_lines(self):
@@ -1156,9 +1209,9 @@ class BBE_OT_curve_surface(bpy.types.Operator):
         if self.dirty:
             self.batches=[(batch_for_shader(shader,'LINES',{'pos':lines}),color)
                 for lines,color in ((self.outline_lines,(.25,.65,.6,.3)),
-                                  (self.hover_lines,(.15,.85,1.,.7)),
                                   (self.preview_lines,(.4,1.,.65,1)),
                                   (self.selected_lines,(1.,.9,.2,1)),
+                                  (self.hover_lines,(1.,.44,.16,1.) if getattr(self,'edge_hint','') in {'Click to remove section','Click to trim highlighted sections'} and self.mode=='EDGE' else (.15,.85,1.,.95)),
                                   (self.gizmo_lines,(1.,.55,.18,1)),
                                   (self.grabber_lines,(1.,.9,.2,1))) if lines]
             self.dirty=False
@@ -1204,10 +1257,16 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                 self.report({'INFO'},'Select one continuous edge path. Remove the other selections first.');return {'RUNNING_MODAL'}
             if not names or any(context.scene.objects.get(name) is None for name in names):
                 self.report({'ERROR'},'The source parts are no longer available. Cancel and select them again.');return {'RUNNING_MODAL'}
+        if self.purpose=='DUPLICATE':
+            pointer=self.picks[0].source[0]
+            traced=next((obj for obj in context.scene.objects if obj.as_pointer()==pointer),None)
+            if traced is None:
+                self.report({'WARNING'},'The traced part is no longer available. Pick its edge again.')
+                return {'RUNNING_MODAL'}
         self.cleanup();guides=create_guides(context,paths)
         if self.purpose=='DUPLICATE':
             from . import duplication_tools
-            try:duplication_tools.finish_edge(context,guides[0],names)
+            try:duplication_tools.finish_edge(context,guides[0],names,self.trim_limits,traced)
             except (ValueError,RuntimeError) as exc:
                 self.report({'ERROR'},str(exc));return {'CANCELLED'}
             return {'FINISHED'}
@@ -1246,6 +1305,20 @@ class BBE_OT_curve_surface(bpy.types.Operator):
             if action=='DISCARD':self.cleanup();return {'CANCELLED'}
             if action=='CREATE':return self.finish(context)
             self.set_cursor('CROSSHAIR')
+        if getattr(self,'trim_trace',None):
+            scale,x,top,_=self.buttons()
+            width=270*scale
+            mx,my=event.mouse_x-self.region.x,event.mouse_y-self.region.y
+            over=x+13*scale<=mx<=x+301*scale and abs(my-(top-114*scale))<=12*scale
+            if self.trim_handle is not None or (over and event.type=='LEFTMOUSE' and event.value=='PRESS'):
+                if event.type in {'MOUSEMOVE','INBETWEEN_MOUSEMOVE','LEFTMOUSE'}:
+                    value=min(1.,max(0.,(mx-x-22*scale)/width))
+                    lo,hi=self.trim_limits
+                    if self.trim_handle is None:self.trim_handle=abs(value-lo)<=abs(value-hi)
+                    self.trim_limits=self.trim_trace.move_handle(lo,hi,self.trim_handle,value,width)
+                    if event.type=='LEFTMOUSE' and event.value=='RELEASE':self.trim_handle=None
+                    self.update_lines();self.area.tag_redraw()
+                    return {'RUNNING_MODAL'}
         if event.type=='TIMER':
             if self.job is not None or self.pending_click is not None or self.hover_due:
                 self.advance_preview();self.area.tag_redraw()
@@ -1311,6 +1384,8 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                 if event.type=='LEFTMOUSE' and event.value=='PRESS':
                     for action,label,bx,by,width,height in buttons:
                         if x+bx*scale<=mx<=x+(bx+width)*scale and top+by*scale<=my<=top+(by+height)*scale:
+                            if action=='STRAIGHT' and self.trim_trace:
+                                self.trim_limits=self.trim_trace.longest_straight()
                             if action=='FINISH':return self.finish(context)
                             if action=='CANCEL':return self.request_leave(context,event)
                             if action=='ROTATE':self.rotate_active(math.pi/2)
@@ -1359,7 +1434,7 @@ class BBE_OT_curve_surface(bpy.types.Operator):
                         if hit is None:
                             self.hover=None;self.hover_due=0.;self.update_lines()
                             if self.picks and event.type=='LEFTMOUSE' and event.value=='PRESS':
-                                return self.request_leave(context,event)
+                                if self.purpose!='DUPLICATE':return self.request_leave(context,event)
                         else:
                             same = (self.hover is not None and self.hover.kind==self.mode and self.hover.source==hit[0]
                                     and self.mode=='FACE' and self.cache[hit[0]].same_patch(self.hover.face_index,hit[2]))
@@ -1417,17 +1492,23 @@ class BBE_OT_curve_trace_settings(bpy.types.Operator):
     max_turn:bpy.props.FloatProperty(name='Maximum turn',default=35,min=0,max=90,precision=0)
     def invoke(self,context,event):
         self.max_turn=edge_turn(context)
-        self.session=next((op for op in _sessions if op.window==context.window),None)
-        if self.session: self.session.settings_prompt=True
+        from . import alignment_tools
+        self.session=next((op for op in [*_sessions,*alignment_tools._sessions] if op.window==context.window),None)
+        if self.session:self.session.settings_prompt=True
         return context.window_manager.invoke_props_dialog(self,width=280)
     def draw(self,context):
         self.layout.prop(self,'max_turn',text='Maximum turn (degrees)')
         self.layout.label(text='Lower values stop at gentler bends.')
     def close(self):
-        if self.session and self.session in _sessions:
+        from . import alignment_tools
+        if self.session in _sessions or self.session in alignment_tools._sessions:
             self.session.settings_prompt=False
-            self.session.hover=None;self.session.hover_request=None;self.session.hover_due=0.
-            self.session.update_lines();self.session.area.tag_redraw()
+            self.session.hover=None
+            if self.session in _sessions:
+                self.session.hover_request=None;self.session.hover_due=0.
+                self.session.update_lines()
+            else:self.session.last_xy=None
+            self.session.area.tag_redraw()
     def cancel(self,context): self.close()
     def execute(self,context):
         from .curve_studio import preferences

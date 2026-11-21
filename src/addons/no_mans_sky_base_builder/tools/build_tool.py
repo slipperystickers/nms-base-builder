@@ -332,7 +332,7 @@ class BuildTool(bpy.types.PropertyGroup):
                 return {"CANCELLED"}
 
         from ..curve_studio import prepare_frame
-        if not curve_object.get("has_linked_objects"):
+        if not curve_object.get("has_linked_objects") and "bbe_edge_trim_source" not in curve_object:
             prepare_frame(curve_object)
 
         if "has_linked_objects" in curve_object:
