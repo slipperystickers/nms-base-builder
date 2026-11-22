@@ -2,6 +2,14 @@
 import bpy
 import uuid
 
+def set_roll(modifier, socket, angle):
+    if hasattr(modifier, 'properties'):
+        value = getattr(modifier.properties.inputs, socket.identifier)
+        if value.value != angle:
+            value.value = angle
+    elif modifier.get(socket.identifier) != angle:
+        modifier[socket.identifier] = angle
+
 def sync_roll(obj, context):
     mod=obj.modifiers.get('Supply pipe segments')
     if not mod or not mod.node_group or not mod.node_group.interface.items_tree.get('Roll'):
@@ -11,7 +19,7 @@ def sync_roll(obj, context):
     if mod and mod.node_group:
         socket=mod.node_group.interface.items_tree.get('Roll')
         if socket:
-            mod[socket.identifier]=obj.bbe_supply_roll
+            set_roll(mod, socket, obj.bbe_supply_roll)
             obj.update_tag()
 
 
@@ -64,20 +72,22 @@ def install(obj,mesh,curve=False):
     if mod.node_group!=group:
         mod.node_group=group
     if not curve:
-        roll_key=group.interface.items_tree['Roll'].identifier
-        if mod.get(roll_key)!=obj.bbe_supply_roll:
-            mod[roll_key]=obj.bbe_supply_roll
+        set_roll(mod, group.interface.items_tree['Roll'], obj.bbe_supply_roll)
         key=next(s.identifier for s in group.interface.items_tree if s.name=='Span' and s.in_out=='INPUT')
         from .cable_connections import endpoints
         start,end=endpoints(obj)
         if start is not None and end is not None:
-            driver=mod.driver_add('["'+key+'"]').driver
+            if hasattr(mod, 'properties'):
+                driver = getattr(mod.properties.inputs, key).driver_add('value').driver
+            else:
+                driver = mod.driver_add('["'+key+'"]').driver
             existing=driver.variables[0] if driver.variables else driver.variables.new()
             if existing.type!='LOC_DIFF' or existing.targets[0].id!=start or existing.targets[1].id!=end:
                 existing.name='span';existing.type='LOC_DIFF'
                 existing.targets[0].id=start;existing.targets[1].id=end
             driver.expression='max(span,0.001)'
-        elif key not in mod:mod[key]=max(obj.matrix_world.col[2].xyz.length,.001)
+        elif not hasattr(mod, 'properties') and key not in mod:
+            mod[key]=max(obj.matrix_world.col[2].xyz.length,.001)
     obj.color=(.35,.38,.42,1)
 
 

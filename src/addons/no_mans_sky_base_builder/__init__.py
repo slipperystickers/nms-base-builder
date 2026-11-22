@@ -800,7 +800,7 @@ class NMS_PT_file_buttons_panel(Panel):
         if sidebar_builder.draw_inline(self, context, 'io'):
             return
         from .tools_menu.base_builder_menu_presentation import draw_build_files
-        draw_build_files(i18n.localized_layout(self.layout))
+        draw_build_files(i18n.localized_layout(self.layout), context)
 
 
 class NMS_PT_station_transfer_reference(Panel):

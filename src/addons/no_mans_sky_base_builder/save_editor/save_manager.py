@@ -297,9 +297,7 @@ class SaveManager(bpy.types.PropertyGroup):
         accounts_enum_list = []
         for account in accounts_list:
             folder = account["folder"]
-            steam_persona = account["steam_persona"]
-            label = folder.name if steam_persona is None else f"{steam_persona} ( {folder.name[-3:]} )"
-            accounts_enum_list.append((str(folder), label, ""))
+            accounts_enum_list.append((str(folder), account["label"], ""))
         accounts_enum_list.insert(0, default_account_list_item)
         return accounts_enum_list
     

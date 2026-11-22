@@ -29,8 +29,8 @@ def area_key(context):
     return context.window.as_pointer(), context.area.as_pointer()
 
 
-class _PanelBounds51(ctypes.Structure):
-    # Blender 5.1 DNA_screen_types.h, Panel through its block dimensions.
+class _PanelBounds(ctypes.Structure):
+    # Blender 5.1 through 5.3 share this Panel prefix in DNA_screen_types.h.
     # Access only during a native panel callback. The fold-state tracker
     # also uses PNL_CLOSED here. Never retain an RNA or native pointer.
     _fields_ = [(name, ctypes.c_void_p) for name in ('next', 'prev', 'type', 'layout')] + [
@@ -43,9 +43,9 @@ class _PanelBounds51(ctypes.Structure):
 
 def native_panel(owner):
     owner = getattr(owner, '_owner', owner)
-    if bpy.app.version[:2] != (5, 1) or not isinstance(owner, bpy.types.Panel):
+    if bpy.app.version[:2] not in {(5, 1), (5, 2), (5, 3)} or not isinstance(owner, bpy.types.Panel):
         return None
-    panel = _PanelBounds51.from_address(owner.as_pointer())
+    panel = _PanelBounds.from_address(owner.as_pointer())
     name = owner.bl_idname.encode('ascii')
     if not panel.panelname.startswith(name) or panel.layout != owner.layout.as_pointer():
         return None
@@ -506,7 +506,7 @@ class ToolView(InlineView):
             elif self.menu == 'io':
                 from .tools_menu.base_builder_menu_presentation import draw_build_files
                 root = ui.Layout()
-                draw_build_files(i18n.localized_layout(root))
+                draw_build_files(i18n.localized_layout(root), context)
                 menu_backend.style(root, 'IO')
                 ui.compact_io(root)
                 self.style_build_files(root, width)
@@ -968,7 +968,7 @@ class BBE_OT_sidebar_builder_input(bpy.types.Operator):
             op = bpy.ops.bbe.curve_value if mouse[0] < rect[0]+label_width else bpy.ops.bbe.curve_number
             op('INVOKE_DEFAULT', field=field)
             return {'FINISHED'}
-        elif getattr(view,'menu',None) in {'saves', 'recovery', 'proxies'} or o['key'] in {'material_category', 'line_switch', 'bbe_prefab_search', 'environment'}:
+        elif getattr(view,'menu',None) in {'io', 'saves', 'recovery', 'proxies'} or o['key'] in {'material_category', 'line_switch', 'bbe_prefab_search', 'environment'}:
             return self.start_field(context, view, node, mouse)
         elif isinstance(view, ToolView):
             view.choice_key = None if view.choice_key == o['key'] else o['key']

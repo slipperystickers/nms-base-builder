@@ -371,7 +371,7 @@ def _ensure_toolbar():
             pointer = space.as_pointer()
             if pointer not in _original_visibility:
                 _original_visibility[pointer] = space.show_region_tool_header
-            space.show_region_tool_header = True
+                space.show_region_tool_header = True
     return 1.0
 
 

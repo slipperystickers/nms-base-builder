@@ -7,6 +7,7 @@ import struct
 import sys
 import tempfile
 from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_support import module, QA, report
@@ -67,6 +68,38 @@ results = []
 with tempfile.TemporaryDirectory(prefix='metadata-qa-', dir=QA / 'tmp') as folder:
     folder = Path(folder)
     with patch.object(files.backup_policy, 'settings', return_value=(str(folder / 'backups'), 100)):
+        # GOG and Steam can coexist in a single NMS root. A directly selected
+        # account must never expose or modify the other account's slot.
+        nms = folder / 'HelloGames' / 'NMS'
+        gog = nms / 'DefaultUser'
+        steam = nms / 'st_12345'
+        for account in (gog, steam):
+            account.mkdir(parents=True)
+            for filename in ('save.hg', 'save2.hg'):
+                fixture(account / filename, account.name)
+        pref = SimpleNamespace(nms_save_folder_path=str(nms))
+        context = SimpleNamespace(preferences=SimpleNamespace(addons={utils.ADDON_ID: SimpleNamespace(preferences=pref)}))
+        with patch.object(utils, 'get_steam_names', return_value={'12345': 'Steam Tester'}):
+            assert {a['label'] for a in utils.get_accounts_list(context)} == {'GOG (DefaultUser)', 'Steam Tester ( 345 )'}
+        pref.nms_save_folder_path = str(gog)
+        with patch.object(utils, 'get_steam_names', side_effect=AssertionError('GOG requires no Steam installation')):
+            assert utils.get_accounts_list(context) == [{'folder': gog, 'label': 'GOG (DefaultUser)'}]
+        assert not utils.validate_save_folder(nms.parent) and not utils.validate_save_folder(folder/'missing')
+        slot, = utils.get_save_slots_list(gog)
+        assert slot['slot'] == 1 and slot['save_name'] == 'DefaultUser'
+        paths = [Path(p) for p in slot['saves']]
+        steam_before = files.export_hashes([steam / p.name for p in paths])
+        for path in paths:
+            save = files.SaveFile(path)
+            save.load()
+            core.player(save.json_data, 'Main')[utils.SaveTranslation.freighter_name] = 'QA Freighter'
+            save.save()
+        ship, = utils.extract_bases_list_from_save(paths)['corvettes']
+        objects = copy.deepcopy(T['base']['Objects'])
+        utils.save_base_to_save_file(objects, ship, paths, base_name='GOG rename')
+        assert utils.extract_bases_list_from_save(paths)['corvettes'][0].base_name == 'GOG rename'
+        assert all(inspect(path)['size_matches'] for path in paths)
+        assert files.export_hashes([steam / p.name for p in paths]) == steam_before
         for route in ('corvette', 'pinned_optimizer', 'base_export', 'planet_base_export'):
             paths = [folder / 'save9.hg', folder / 'save10.hg']
             root, ident = fixture(paths[0], 'first')
@@ -92,6 +125,43 @@ with tempfile.TemporaryDirectory(prefix='metadata-qa-', dir=QA / 'tmp') as folde
                 # Updating both save points must not copy unrelated progress between them.
                 for p, marker in zip(paths, ('first', 'second')):
                     assert core.get(core.get(files.SaveFile(p).load(), 'CommonStateData'), 'SaveName') == marker
+
+        # The list comes from the latest save point. A same-named base at a
+        # different position in the older point must not block or receive the export.
+        for kind in utils.BaseType.LOCATED_BASES:
+            for index, path in enumerate(paths):
+                fixture(path, path.name)
+                save = files.SaveFile(path)
+                save.load()
+                base = save.get_bases_list_pointer()[0]
+                base[utils.SaveTranslation.base_type][utils.SaveTranslation.persistent_base_types] = kind
+                base[utils.SaveTranslation.position] = [index, 0, 0]
+                save.save()
+                os.utime(path, (OLD_TIME + index, OLD_TIME + index))
+            target = utils.BaseData(0, base)
+            target.save_context = 'Main'
+            older, latest = paths
+            older_hashes = files.export_hashes([older])
+            message = utils.save_base_to_save_file(objects, target, paths)
+            assert latest.name in message and older.name in message
+            saved = files.SaveFile(latest)
+            saved.load()
+            assert saved.search_base_with_identifier(target)[utils.SaveTranslation.objects] == core.translate(objects, False)
+            assert files.export_hashes([older]) == older_hashes
+
+            # A stale selection found only in the older save must never write.
+            old = files.SaveFile(older)
+            old.load()
+            stale = utils.BaseData(0, old.get_bases_list_pointer()[0])
+            stale.save_context = 'Main'
+            before = files.export_hashes(paths)
+            try:
+                utils.save_base_to_save_file(objects, stale, paths)
+            except ValueError as exc:
+                assert latest.name in str(exc)
+            else:
+                raise AssertionError('Export accepted a stale destination')
+            assert files.export_hashes(paths) == before
 
         # A late failure must restore BOTH save points and their metadata,
         # including the original timestamps used in cross-save comparison.

@@ -1,6 +1,7 @@
 from .. import i18n
 from ..furby_errors import report_error
 import bpy
+from pathlib import Path
 
 from . import save_editor_utils
 from .. import build_metadata
@@ -20,24 +21,21 @@ class SelectSaveFolder(bpy.types.Operator):
     )
 
     def execute(self, context):
-        prefs = context.scene
-        print("folder is :", self.directory)
-        if save_editor_utils.validate_save_folder(str(self.directory)):
-            
-            prefs = context.preferences.addons[ADDON_ID].preferences
-            prefs.nms_save_folder_path = self.directory
-            bpy.ops.wm.save_userpref()
-            
-            scene = context.scene
-            save_data = scene.nms_save_data
-            save_data.on_check_plugin_enabled(context)
-            save_data.nms_account_selected = "Default"
-            
-            self.report({'INFO'}, f"Selected folder is valid NMS save folder")
-            print("Selected folder is valid:", prefs.nms_save_folder_path)
-        else :
-            report_error(self,{'ERROR'}, f"Selected folder is not a NMS save folder. Please select the correct folder.")
-            print("Selected folder is invalid:", self.directory)
+        folder = Path(bpy.path.abspath(self.directory))
+        if not save_editor_utils.validate_save_folder(folder):
+            self.report({'ERROR'}, "Choose HelloGames/NMS, the GOG DefaultUser folder, or a Steam st_ account folder.")
+            return {'CANCELLED'}
+        direct = save_editor_utils.is_account_folder(folder)
+        if direct and not save_editor_utils.get_hg_files_in_folder(folder):
+            self.report({'ERROR'}, "This account folder contains no save*.hg files. Choose the account where you saved your game.")
+            return {'CANCELLED'}
+        prefs = context.preferences.addons[ADDON_ID].preferences
+        prefs.nms_save_folder_path = str(folder)
+        bpy.ops.wm.save_userpref()
+        save_data = context.scene.nms_save_data
+        save_data.on_check_plugin_enabled(context)
+        save_data.nms_account_selected = str(folder) if direct and save_data.check_plugin_enabled else 'Default'
+        self.report({'INFO'}, "Save folder selected")
         return {'FINISHED'}
 
     def invoke(self, context, event):

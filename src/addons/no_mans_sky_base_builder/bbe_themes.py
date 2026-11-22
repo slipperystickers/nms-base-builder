@@ -139,10 +139,12 @@ def apply_colors(surface, raised, accent, text, background, *,
                 space.back = _rgb(surface)
             space.text = _rgb(text)
             space.text_hi = _rgb(accent)
-            space.title = _rgb(text)
+            if hasattr(space, 'title'):
+                space.title = _rgb(text)
             space.header = (*_rgb(raised), 1)
-            space.header_text = _rgb(text)
-            space.header_text_hi = _rgb(accent)
+            if hasattr(space, 'header_text'):
+                space.header_text = _rgb(text)
+                space.header_text_hi = _rgb(accent)
     theme.regions.sidebars.back = (*_rgb(surface), 1)
     theme.regions.sidebars.tab_back = (*_rgb(surface), 1)
     # Dropdown chrome follows the viewport; selections retain their accent.
@@ -155,7 +157,7 @@ def apply_colors(surface, raised, accent, text, background, *,
     theme.regions.channels.text_selected = _rgb(accent)
     theme.regions.asset_shelf.back = (*_rgb(surface), 1)
     theme.regions.asset_shelf.header_back = (*_rgb(raised), 1)
-    theme.common.anim.playhead = _rgb(accent)
+    theme.common.anim.playhead = (*_rgb(accent), *theme.common.anim.playhead[3:])
     gradients = theme.view_3d.space.gradients
     gradients.background_type = background_type
     gradients.high_gradient = _rgb(background)
@@ -232,8 +234,9 @@ def sync_legacy_browser_header(context):
     current = (rgb(ui.wcol_box.inner), rgb(raised), rgb(ui.wcol_regular.inner_sel))
     if any(tuple(rgb(_rgb(value)) for value in palette) == current for palette in swatches):
         header.header = raised
-        header.header_text = ui.wcol_regular.text
-        header.header_text_hi = ui.wcol_regular.text_sel
+        if hasattr(header, 'header_text'):
+            header.header_text = ui.wcol_regular.text
+            header.header_text_hi = ui.wcol_regular.text_sel
 
 
 def _valid_color(color):

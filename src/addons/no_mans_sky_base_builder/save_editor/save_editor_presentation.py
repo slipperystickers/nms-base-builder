@@ -245,8 +245,8 @@ def draw_base_picker(container, save_data, narrow=False, *, sidebar_width=None):
         sf_column.separator()
         select_folder_info_col = sf_column.column(align=True)
         select_folder_info_col.scale_y = 0.8
-        select_folder_info_col.label(text=" Save Folder should end with")
-        select_folder_info_col.label(text=r' path like : "...\HelloGames\NMS"')
+        select_folder_info_col.label(text="Choose the HelloGames/NMS folder")
+        select_folder_info_col.label(text="or a GOG DefaultUser or Steam st_ account.")
         sf_column.separator()
         select_folder_button_col = sf_column.column(align=True)
         select_folder_button_col.alert = True

@@ -34,10 +34,12 @@ def attach_header(callback):
     """Draw beside the native transform group without changing its layout."""
     bpy.utils.register_class(VisibilityButton)
     from . import toolbar_surface
-    toolbar_surface._connector = callback
+    def record_header(owner, context):
+        toolbar_surface.record(callback, owner, context)
+    bpy.types.VIEW3D_HT_header.append(record_header)
     def detach():
         global _previews
-        toolbar_surface._connector = None
+        bpy.types.VIEW3D_HT_header.remove(record_header)
         if 'bl_rna' in VisibilityButton.__dict__:bpy.utils.unregister_class(VisibilityButton)
         if _previews is not None:
             bpy.utils.previews.remove(_previews)

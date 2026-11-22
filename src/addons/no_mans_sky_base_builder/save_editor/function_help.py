@@ -252,10 +252,12 @@ ADDITIONAL_STEPS = {
         ('Sample a part', 'Choose Pick Colour from Object and click a painted part in the viewport to sample its colour.'),
     ),
     'SAVE_MANAGER': (
+        ('Find GOG saves', 'On Windows, choose the HelloGames/NMS folder or open DefaultUser directly. Select GOG (DefaultUser) and your save slot. Steam accounts can appear alongside GOG.'),
         ('Read the export highlights', 'After choosing a different ship or base, use the green Import from Save button to load it. After editing, check the destination again. Blue highlights Optimize & Export for a Corvette or Export to Save for a base.'),
         ('Manage backups', 'Use the folder settings beside the Save Manager heading to choose a backup location and how many generations to keep per save slot. Open the backup folder to find earlier copies.'),
     ),
     'IO': (
+        ('Name your build', 'Enter a Build Name before using Copy All or saving a project, base or Corvette file. The Corvette name field in Save Manager edits the same name. Copy Objects includes only parts.'),
         ('Find the imported build', 'After importing, the viewport frames the build and clears the selection. Click a part in the viewport or the Outliner to start editing.'),
         ('Choose a clipboard format', 'Use Copy All for a full build with metadata. Use Copy Objects when the destination expects only an array of parts. Paste into the matching field in your save editor and check the destination before saving.'),
     ),

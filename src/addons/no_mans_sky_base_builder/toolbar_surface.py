@@ -8,13 +8,16 @@ from types import SimpleNamespace
 import bpy
 import blf
 import gpu
+from . import transform_readout
 
 _records={}
+# Blender skips its normal layout while the header shows transform text.
+# Capture that text before drawing the last tool row in its usual position.
+_pending_layouts={}
 _bounds={}
 _listeners={}
 _handlers=[]
 _enabled=False
-_connector=None
 _hover=None
 _scroll={}
 _drop_marks={}
@@ -45,7 +48,11 @@ def surface():
 def record(callback,owner,context):
     m=surface();root=m.Layout()
     callback(SimpleNamespace(layout=root),context)
-    _records[(context.window.as_pointer(),context.area.as_pointer())]=root
+    area_key=(context.window.as_pointer(),context.area.as_pointer())
+    kind=context.region.type
+    _pending_layouts[(*area_key,kind)]=root
+    if kind=='TOOL_HEADER':
+        _records[area_key]=root
 
 def nodes(root):
     result=[]
@@ -89,14 +96,16 @@ def draw(kind):
     if not _enabled or not context.area or not context.window:return
     region=context.region;key=(context.window.as_pointer(),context.area.as_pointer(),kind)
     _bounds[key]=[]
+    root=_pending_layouts.pop(key,None)
+    if kind == 'TOOL_HEADER':
+        last_toolbar = _records.get(key[:2])
+        relocate = (root is None and last_toolbar is not None and last_toolbar.children
+                    and context.space_data.show_region_header and context.space_data.show_region_tool_header)
+        if transform_readout.header(context, key, relocate):
+            root = last_toolbar
+    if root is None:return
     m=surface();s=context.preferences.system.ui_scale
     background,hover,ink=header_colors(context)
-    if kind=='TOOL_HEADER':
-        root=_records.get(key[:2])
-        if not root:return
-    else:
-        if not _connector:return
-        root=m.Layout();_connector(SimpleNamespace(layout=root),context)
     controls=nodes(root)
     if not controls:return
     blf.size(0,11*s)
@@ -213,6 +222,10 @@ class HeaderEvents(bpy.types.Operator):
         global _hover
         self.window=context.window;self.key=self.window.as_pointer()
         if event.type not in {'LEFTMOUSE','MOUSEMOVE','WHEELUPMOUSE','WHEELDOWNMOUSE'}:return {'PASS_THROUGH'}
+        # Retain menu geometry for the asset strip, but let Blender handle
+        # confirmation, cancellation and snapping while the transform is live.
+        if (self.key, context.area.as_pointer()) in transform_readout._readouts:
+            return {'PASS_THROUGH'}
         hit=None
         for area in self.window.screen.areas:
             for kind in ('HEADER','TOOL_HEADER'):
@@ -300,6 +313,8 @@ def register():
     global _enabled
     _enabled=True;bpy.utils.register_class(HeaderEvents);bpy.utils.register_class(HeaderScroll)
     for kind in ('HEADER','TOOL_HEADER'):_handlers.append((bpy.types.SpaceView3D.draw_handler_add(draw,(kind,),kind,'POST_PIXEL'),kind))
+    _handlers.append((bpy.types.SpaceView3D.draw_handler_add(transform_readout.draw,(),'WINDOW','POST_PIXEL'),'WINDOW'))
+    bpy.app.handlers.load_pre.append(transform_readout.clear)
     config=bpy.context.window_manager.keyconfigs.addon
     if config:
         # Header View2D consumes wheel input before the general Screen map.
@@ -313,7 +328,9 @@ def register():
 
 def unregister():
     global _enabled,_hover
-    _enabled=False;_bounds.clear();_records.clear();_scroll.clear();_drop_marks.clear();_hover=None
+    _enabled=False;_bounds.clear();_records.clear();_pending_layouts.clear();_scroll.clear();_drop_marks.clear();_hover=None
+    bpy.app.handlers.load_pre.remove(transform_readout.clear)
+    transform_readout.clear()
     for keymap,item in _keymaps:keymap.keymap_items.remove(item)
     _keymaps.clear()
     for handler,kind in _handlers:bpy.types.SpaceView3D.draw_handler_remove(handler,kind)

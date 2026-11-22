@@ -1,7 +1,7 @@
 # Base Builder Extended
 
-Current standalone release: **18.2.45** (Forsaken 7.10 support). Windows x64,
-This release was verified with Blender 5.1.2.
+Current standalone release: **18.3.2** for Windows x64. Verified with Blender
+5.1.2, 5.2.0 LTS, 5.2.4 LTS, and 5.3.0.
 
 Build bubble tube routes with nearby part icons, rotation controls and all eight
 basic shapes. Add one new pathway at a time, redirect unused openings, and join
@@ -18,7 +18,7 @@ cockpit-order controls, restored Asset Browser layouts, faster export validation
 and opt-in diagnostic tickets. The Corvette picker closes after selection and
 excludes freighters. The website diagnostic service is deployed and verified.
 
-[Download the installer and read the release notes](https://github.com/slipperystickers/nms-base-builder/releases/tag/v18.2.45).
+[Download the installer and read the release notes](https://github.com/slipperystickers/nms-base-builder/releases/tag/v18.3.2).
 Install the attached plugin ZIP through Blender's **Install from Disk**, then
 restart Blender. Existing Detailed Proxy users receive missing or updated packs
 automatically when Blender Online Access is enabled; no fresh install is needed.

@@ -123,6 +123,8 @@ def hover(context,state,hit):
     return True
 
 def visible(context):
+    if not context.space_data.show_region_header or not context.space_data.show_region_tool_header:
+        return False
     from . import toolbar_surface
     return key(context) in toolbar_surface._records and bool(toolbar_surface.nodes(toolbar_surface._records[key(context)]))
 
@@ -201,6 +203,11 @@ def geometry(context,state):
     if bounds:
         first=min(rect[0] for rect in bounds)-r.x
         last=max(rect[0]+rect[2] for rect in bounds)-r.x
+        state['header_span']=(first,last)
+    # A native transform readout temporarily replaces the header buttons.
+    # Keep the strip anchored while their interactive bounds are empty.
+    if 'header_span' in state:
+        first,last=state['header_span']
         desired=min(right-left,last-first)
         left=max(left,min((first+last-desired)/2,right-desired));right=left+desired
     width=max(100,right-left)

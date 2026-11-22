@@ -24,14 +24,15 @@ class VIEW3D_PT_nms_io_panel(bpy.types.Panel):
 
 
 def draw_io_contents(layout, context):
-    draw_build_files(layout)
+    draw_build_files(layout, context)
     layout.separator()
     save_editor_presentation.draw_save_manager(layout, context, heading=True)
 
 
-def draw_build_files(layout):
+def draw_build_files(layout, context):
     from .. import menu_contract
     from ..save_editor.function_help import corner_help
+    layout.prop(context.scene.nms_base_tool, 'string_base', text='Build Name')
     menu_contract.files(layout, {
       'clear':('object.nms_new_file',{}), 'import':('bbe.import_build_file',{}),
       'json':('object.nms_save_data',{}), 'ship':('bbe.export_ship_file',{}),

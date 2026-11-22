@@ -77,7 +77,7 @@ def ShowMessageBox(message="", title="Message Box", icon="INFO"):
 def get_default_save_folder():
     if system == "Windows":
         # windows
-        return (Path.home()/ "AppData/Roaming/HelloGames/NMS" )
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "HelloGames/NMS"
     elif system == "Darwin":
         # macOS
         return (Path.home()/ "Library/Application Support/HelloGames/NMS" )
@@ -111,8 +111,11 @@ def get_steam_names():
     )
     steam_names = {}
     steamname_path = get_steamname_path()
-    if steamname_path.exists():
-        text = steamname_path.read_text(encoding="utf-8")
+    if steamname_path and steamname_path.is_file():
+        try:
+            text = steamname_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return steam_names
         for steam_id, persona_name in pattern.findall(text):
             steam_names[str(steam_id)] = persona_name
     return steam_names
@@ -121,32 +124,33 @@ def get_steam_names():
 def get_hg_files_in_folder(folder):
     hg_files_list = []
     for file in Path(folder).glob("save*.hg"):
-        if re.fullmatch(r"save(\d+)?\.hg", file.name):
+        if re.fullmatch(r"save(\d+)?\.hg", file.name) and file.is_file():
             hg_files_list.append(file)
     return hg_files_list
 
-#Returns all account folders
+def is_account_folder(folder):
+    name = folder.name.casefold()
+    return name == "defaultuser" or name.startswith("st_")
+
+
 def get_accounts_list(context):
     prefs = context.preferences.addons[ADDON_ID].preferences
-    save_folder_path = prefs.nms_save_folder_path
-    
-    steam_names = get_steam_names()
+    root_dir = Path(prefs.nms_save_folder_path)
+    if not validate_save_folder(prefs.nms_save_folder_path):
+        return []
+    folders = [root_dir] if is_account_folder(root_dir) else root_dir.iterdir()
+    steam_names = None
     accounts_list = []
-    root_dir = Path(save_folder_path)
-    for folder in root_dir.iterdir():
-        if not folder.is_dir():
+    for folder in folders:
+        if not is_account_folder(folder) or not folder.is_dir() or not get_hg_files_in_folder(folder):
             continue
-        # Steam/Gamepass account folders
-        if folder.name.startswith("st_"):
-            files_list = get_hg_files_in_folder(str(folder))
-            account_number = folder.name[3:]
-            steam_persona = steam_names.get(account_number,None)
-            if files_list is not None:
-                if len(files_list) > 0:
-                    accounts_list.append({
-                        "steam_persona" : steam_persona,
-                        "folder"  : folder
-                    })
+        label = 'GOG (DefaultUser)'
+        if folder.name.casefold() != 'defaultuser':
+            if steam_names is None:
+                steam_names = get_steam_names()
+            persona = steam_names.get(folder.name[3:])
+            label = f"{persona} ( {folder.name[-3:]} )" if persona else folder.name
+        accounts_list.append({"folder": folder, "label": label})
     return accounts_list
     
 
@@ -471,7 +475,10 @@ def open_backup_folder_in_explorer(save_links):
     
 # Check if a path string is valid NMS save folder or not
 def validate_save_folder(save_folder):
-    save_folder = Path(save_folder)
-    return save_folder.parts[-2:] == ("HelloGames", "NMS")
+    if not save_folder:
+        return False
+    folder = Path(save_folder)
+    return folder.is_dir() and (is_account_folder(folder) or
+                                (folder.name.casefold() == 'nms' and folder.parent.name.casefold() == 'hellogames'))
     
     

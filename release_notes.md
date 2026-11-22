@@ -1,3 +1,12 @@
+# Base Builder Extended 18.3.2
+
+## Changes since 18.3.1
+
+- Move, Rotate, and Scale show one live measurement below the BBE top bar or the open horizontal asset browser. Hiding the top bar keeps Blender’s native readout.
+- The graphical sidebar now appears on Blender 5.2 LTS and 5.3. Theme application on 5.3 and detailed supply pipe previews on 5.2 and 5.3 have also been fixed.
+- Save Manager recognizes GOG’s `DefaultUser` account on Windows. Choose `HelloGames/NMS` or the account folder directly.
+- **Build Name** is available in the top-bar I/O menu and the Import/Export sidebar. It shares the existing Save Manager name field. Copy All, project JSON, base files, and Corvette packages carry the name. Copy Objects copies parts only.
+
 # Base Builder Extended 18.3.1
 
 - Align previews the actual part against a picked point, edge or face. Face and edge alignment allow rotation around the connection.
