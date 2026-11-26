@@ -1432,6 +1432,32 @@
         -1.8,
         1.25
       ]
+    },
+    "B_LND_D": {
+      "kind": "authored-thumbnail",
+      "reason": "Both thrusters have the same purple-backed placeholder in the native product table.",
+      "source": "Charon Forge 0.2.3",
+      "gameBuild": 26924890,
+      "pngSha256": "764f7f738a4bcfa303c80a6a2d7ea3c8c771c6d55f3ef84d6f7f7378260510b9",
+      "size": [
+        128,
+        128
+      ],
+      "nativeIcon": "textures/ui/frontend/icons/buildable/biggs/big_lnd1x1_d.dds",
+      "nativeIconSha256": "5dca3b636beae514b90974f8e0b5df8555e30e9249796ffc676e34616a304728"
+    },
+    "B_TRU_I": {
+      "kind": "authored-thumbnail",
+      "reason": "Both thrusters have the same purple-backed placeholder in the native product table.",
+      "source": "Charon Forge 0.2.3",
+      "gameBuild": 26924890,
+      "pngSha256": "1ca51b07aa192ed2dd69ef9acf2346fa390928d25a14f064f34dd8f6f5d7002f",
+      "size": [
+        128,
+        128
+      ],
+      "nativeIcon": "textures/ui/frontend/icons/buildable/biggs/big_tru1x1_i.dds",
+      "nativeIconSha256": "5dca3b636beae514b90974f8e0b5df8555e30e9249796ffc676e34616a304728"
     }
   }
 }

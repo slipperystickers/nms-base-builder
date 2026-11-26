@@ -1,6 +1,12 @@
 # Base Builder Extended
 
-Current standalone release: **18.3.2** for Windows x64. Verified with Blender
+BBE 18.2.49 adds Italian menus and feature guides. In Blender, open **Edit → Preferences → Interface → Language**, choose **Italiano**, and enable **Interface** and **Tooltips**. Click **?** in a BBE menu for its guide. The asset browser accepts Italian names, English names, and part IDs.
+
+Per usare BBE in italiano, scegli **Italiano** nelle preferenze di traduzione di Blender e attiva **Interfaccia** e **Suggerimenti**. Premi **?** nel menu che stai usando per leggere la guida. Nel catalogo prova a cercare **pavimento di legno**.
+
+Additional languages use UTF-8 message catalogues under the add-on’s `locales/` folder. Copy `it_IT.json` to a Blender locale name, translate the values, and preserve the English keys and fields in braces. Optional game part names go in `locales/parts/<locale>.json` keyed by ObjectID.
+
+Current standalone release: **18.3.3** for Windows x64. Target Blender versions include
 5.1.2, 5.2.0 LTS, 5.2.4 LTS, and 5.3.0.
 
 Build bubble tube routes with nearby part icons, rotation controls and all eight

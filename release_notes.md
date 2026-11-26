@@ -1,3 +1,17 @@
+# Base Builder Extended 18.3.3
+
+## New in 18.3.3
+
+- The asset browsers include the new Corvette parts, decorations, decals, and red and green Prismatic Cores. Newly added parts are highlighted until first selected.
+- Simple proxies ship with BBE. Existing Detailed Proxy installations automatically fetch the updated HD additions when Blender allows online access.
+
+## Fixes
+
+- The decal projection preview remembers your choice across decals.
+- Whole-build moves include selected cable endpoints and junctions.
+- Curve-linked builds preserve their saved placement when opened without BBE.
+- Deleting a cockpit also removes its attached pilot reference.
+
 # Base Builder Extended 18.3.2
 
 ## Changes since 18.3.1

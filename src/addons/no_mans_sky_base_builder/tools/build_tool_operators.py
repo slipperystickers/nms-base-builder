@@ -1,3 +1,4 @@
+from .. import curve_links
 from .. import i18n
 from ..furby_errors import report_error
 import bpy
@@ -246,7 +247,7 @@ class DuplicateAlongCurve(bpy.types.Operator):
             curve.show_duplicate_selection_help(context)
             return {"CANCELLED"}
 
-        if guide.get("has_linked_objects"):
+        if curve_links.has_followers(guide):
             return self.execute(context)
         else :
             return wm.invoke_props_dialog(self)
@@ -314,7 +315,7 @@ class CurveBreakApart(bpy.types.Operator):
         unlinked_objects = []
         detached_count = 0
         for obj in selected_objects:
-            if "CurveID" in obj:
+            if curve_links.guide_id(obj):
                 try:
                     curve_obj, duplicates = curve.apply_curve_transforms_and_detach(obj)
                     if duplicates is not None:

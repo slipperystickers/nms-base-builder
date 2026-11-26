@@ -12,6 +12,8 @@ from . import styled_ui as art, curve_widgets as paint, i18n
 
 PLUS=__package__.endswith('bbe_plus')
 PREFIX='bbeplus' if PLUS else 'bbe'
+if not PLUS:
+    from .utils import new_assets
 _states={}
 _handlers=[]
 _keymaps=[]
@@ -307,7 +309,13 @@ def draw():
         for part,info,rect in state['cards']:
             px,py,pw,ph=rect
             hot=state.get('hover')=='part:'+part
-            paint.rounded(shader,px,py,pw,ph,5*s,art.HOVER if hot else art.SURFACE)
+            fill = art.HOVER if hot else art.SURFACE
+            if not PLUS and not info.get('is_preset') and new_assets.is_new(part):
+                edge = max(2, 2*s)
+                paint.rounded(shader,px,py,pw,ph,5*s,new_assets.YELLOW)
+                paint.rounded(shader,px+edge,py+edge,pw-2*edge,ph-2*edge,3*s,fill)
+            else:
+                paint.rounded(shader,px,py,pw,ph,5*s,fill)
             if info.get('is_preset'):
                 from . import prefab_thumbnails
                 thumbnail = prefab_thumbnails.get(info['name'], info['link'])
@@ -489,11 +497,14 @@ class StripInput(bpy.types.Operator):
                 self.drag=None
             context.area.tag_redraw()
             return {'RUNNING_MODAL'}
-        for region in context.area.regions:
-            if region.type in {'HEADER','TOOL_HEADER'} and inside((region.x,region.y,region.width,region.height),event.mouse_x,event.mouse_y):
-                cursor(context,state,False);hover(context,state,'')
-                if event.type=='LEFTMOUSE':state['editing']=False
-                return {'PASS_THROUGH'}
+        from . import toolbar_surface
+        if not self.drag and toolbar_surface.over_header(context.area, event):
+            cursor(context,state,False);hover(context,state,'')
+            if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+                state['editing'] = False
+                state['choice'] = None
+                context.area.tag_redraw()
+            return {'PASS_THROUGH'}
         if event.type=='MOUSEMOVE':
             cursor(context,state,hit=='resize' or self.drag=='resize')
             if self.drag=='resize':state['height']=max(96,min(268,(state['bounds'][1]+state['bounds'][3]-y)/s))
@@ -524,6 +535,8 @@ class StripInput(bpy.types.Operator):
         cursor(context,state,hit=='resize')
         if hit.startswith('variants:'):
             part=hit.partition(':')[2]
+            if not PLUS:
+                new_assets.record_click(context,part)
             info=next(info for pid,info,_ in state['cards'] if pid==part)
             open_variants(state,part,info)
         elif hit=='close_variants':

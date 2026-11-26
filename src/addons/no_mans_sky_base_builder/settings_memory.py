@@ -60,10 +60,10 @@ def preferences():
 def preference_fields(pref):
     if pref is None:
         return ()
-    # Shape Studio saves this choice in Blender preferences on click. A stale
-    # snapshot from before the click must not override it on startup or file load.
+    # These controls save Blender preferences on click. Older snapshots must
+    # not overwrite them at startup or when opening another project.
     return tuple(p.identifier for p in pref.bl_rna.properties
-                 if p.identifier not in {'rna_type', 'bl_idname', 'shape_use_blender_tools'}
+                 if p.identifier not in {'rna_type', 'bl_idname', 'shape_use_blender_tools', 'decal_projection_disabled'}
                  and p.type in {'BOOLEAN', 'INT', 'FLOAT', 'STRING', 'ENUM'}
                  and not p.is_readonly and p.subtype != 'PASSWORD')
 

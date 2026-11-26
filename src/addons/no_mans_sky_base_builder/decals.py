@@ -5,6 +5,7 @@ on the original objects. Source meshes are retained for quality changes/undo.
 """
 import bpy
 import numpy as np
+from . import solid_decal_art
 import time
 from mathutils import Matrix, Vector
 from bpy.app.handlers import persistent
@@ -13,7 +14,6 @@ SOURCE = 'bbe_decal_source'
 PROJECTED = 'bbe_projected_decal'
 PREVIEW = 'bbe_decal_preview'
 DISPLAY = 'bbe_decal_display'
-PREVIEW_DISABLED = 'bbe_decal_projection_disabled'
 _signature = None
 _busy = False
 _undoing = False
@@ -29,7 +29,8 @@ _refresh_requested = True
 _request_started = 0.0
 _last_change = 0.0
 _solid_signature = None
-_solid_views = {}
+_clean_old_nodes = True
+
 SOLID_NODE = 'BBE Solid Reference'
 SOLID_PREVIOUS = 'bbe_solid_previous_active'
 # The 2026-10-13 imported stair test paints farther than the mesh cage's
@@ -45,11 +46,10 @@ WHITE_BORDER_HALF_DEPTH = .493681 * .625014 * .5
 WHITE_BORDER_WRAP_BACK_DEPTH = .27
 
 
-def initialize_settings(obj):
-    """Apply the user's default once; existing per-object choices win."""
-    if is_decal(obj) and PREVIEW_DISABLED not in obj:
-        addon = bpy.context.preferences.addons.get(__package__)
-        obj[PREVIEW_DISABLED] = bool(addon and addon.preferences.decal_projection_disabled)
+def projection_disabled():
+    """Use the user's preview mode even for decals saved with an old override."""
+    addon = bpy.context.preferences.addons.get(__package__)
+    return bool(addon and addon.preferences.decal_projection_disabled)
 
 
 def is_decal(obj):
@@ -400,7 +400,7 @@ def project(obj, receivers, cache):
     definition = white_border_projector(source) if trial else projector(source)
     if definition is None:
         return False
-    if obj.get(PREVIEW_DISABLED, False):
+    if projection_disabled():
         return update_trial_floating(obj, source, definition)
     # Project onto all intersecting outward-facing fragments. A centre-point
     # receiver/nearest-depth band wrongly pulls artwork off protrusions when
@@ -414,8 +414,7 @@ def project(obj, receivers, cache):
 def geometry_stamp(obj):
     key = obj.as_pointer()
     revision = (obj.data.as_pointer(), _object_revisions.get(key, 0),
-                _mesh_revisions.get(obj.data.as_pointer(), 0),
-                bool(obj.get(PREVIEW_DISABLED, False)))
+                _mesh_revisions.get(obj.data.as_pointer(), 0))
     cached = _geometry_stamps.get(key)
     if cached is None or cached[0] != revision:
         stamp = (key, *revision, len(obj.data.vertices), len(obj.data.polygons),
@@ -424,9 +423,12 @@ def geometry_stamp(obj):
     return cached[1]
 
 
+def preview_mode(scene):
+    return (scene.as_pointer(), getattr(scene, 'bbe_detailed_proxies', True), projection_disabled())
+
+
 def signature(scene):
-    return (scene.as_pointer(), getattr(scene, 'bbe_detailed_proxies', True),
-            tuple((geometry_stamp(o), o.hide_viewport, o.hide_render)
+    return (*preview_mode(scene), tuple((geometry_stamp(o), o.hide_viewport, o.hide_render)
                   for o in scene.collection.all_objects if o.type == 'MESH' and o.get('ObjectID')))
 
 
@@ -474,7 +476,7 @@ def refresh(scene=None, force=False):
     if not decals:
         if any(obj.get(PREVIEW) for obj in members):
             retire_child_previews(scene)
-        _signature = (scene.as_pointer(), getattr(scene, 'bbe_detailed_proxies', True), ())
+        _signature = (*preview_mode(scene), ())
         _project_signatures.clear()
         _geometry_stamps.clear()
         _mesh_revisions.clear()
@@ -490,11 +492,11 @@ def refresh(scene=None, force=False):
     count = 0
     try:
         retire_child_previews(scene)
-        detailed = getattr(scene, 'bbe_detailed_proxies', True)
-        need_receivers = detailed and any(not o.get(PREVIEW_DISABLED, False) for o in decals)
+        _, detailed, disabled = current[:3]
+        project_surfaces = detailed and not disabled
         receivers = ([o for o in scene.collection.all_objects if o.type == 'MESH' and o.get('ObjectID')
                       and not is_decal(o) and not o.hide_render and not o.hide_viewport]
-                     if need_receivers else [])
+                     if project_surfaces else [])
         # Reconcile membership after additions/deletions. Only integers and
         # numeric arrays survive between updates, never potentially stale RNA.
         _known_meshes.clear()
@@ -522,7 +524,7 @@ def refresh(scene=None, force=False):
         cache = _triangle_cache
         for obj in decals:
             # Low-detail decals still show one artwork face, never the cage.
-            if not detailed or obj.get(PREVIEW_DISABLED, False):
+            if not project_surfaces:
                 source = source_mesh(obj)
                 stamp = ('flat', source.as_pointer(), _mesh_revisions.get(source.as_pointer(), 0),
                          len(source.vertices), len(source.polygons))
@@ -571,7 +573,7 @@ def refresh(scene=None, force=False):
                      _object_revisions.get(obj.as_pointer(), 0),
                      len(source.vertices), len(source.polygons),
                      tuple(v for row in obj.matrix_world for v in row),
-                     bool(obj.get(PREVIEW_DISABLED, False)), tuple(nearby_stamps))
+                     tuple(nearby_stamps))
             if force or stamp != _project_signatures.get(obj.as_pointer()):
                 count += int(project(obj, nearby, cache))
                 _project_signatures[obj.as_pointer()] = stamp
@@ -597,8 +599,7 @@ def tick():
         if not _undoing and time.monotonic() >= _resume_after_undo and not bpy.app.is_job_running('RENDER'):
             now = time.monotonic()
             scene = bpy.context.scene
-            if _signature is not None and _signature[:2] != (
-                    scene.as_pointer(), getattr(scene, 'bbe_detailed_proxies', True)):
+            if _signature is not None and _signature[:3] != preview_mode(scene):
                 request_refresh()
             if _refresh_requested and not transform_active() and (now - _last_change >= .12 or now - _request_started >= .4):
                 refresh()
@@ -607,7 +608,8 @@ def tick():
             views = tuple((window.scene.as_pointer(),
                            getattr(window.scene, 'bbe_solid_decals', True),
                            getattr(window.scene, 'bbe_detailed_proxies', True),
-                           area.spaces.active.as_pointer(), area.spaces.active.shading.type)
+                           area.spaces.active.as_pointer(), area.spaces.active.shading.type,
+                           area.spaces.active.shading.color_type)
                           for window in bpy.context.window_manager.windows
                           for area in window.screen.areas if area.type == 'VIEW_3D')
             if views != _solid_signature:
@@ -619,95 +621,50 @@ def tick():
 
 
 def solid_references(force_disable=False):
-    """Use Workbench's alpha-tested textures only for decal reference artwork.
-
-    Disconnected one-pixel textures keep BBE hulls in their ordinary solid
-    colours. They never enter the material shader or enable scene lighting.
-    """
-    # Material Preview does not use Workbench's active texture node. Avoid
-    # changing material node trees while its dependency graph is rebuilding.
-    if not force_disable and not any(
-            area.type == 'VIEW_3D' and area.spaces.active.shading.type == 'SOLID'
-            for window in bpy.context.window_manager.windows for area in window.screen.areas):
-        return
-    wanted = {}
-    active_views = set()
+    """Paint hulls with their object colors and layer only the decal artwork."""
+    from . import bubble_preview
+    global _clean_old_nodes
+    if _clean_old_nodes:
+        clean_legacy_solid_nodes()
+        _clean_old_nodes = False
+    scenes = {}
     for window in bpy.context.window_manager.windows:
         scene = window.scene
-        enabled = (not force_disable and getattr(scene, 'bbe_solid_decals', True) and
-                   getattr(scene, 'bbe_detailed_proxies', True) and
-                   any(is_decal(o) and not o.hide_viewport and not o.hide_render
-                       for o in scene.collection.all_objects))
-        for area in window.screen.areas:
-            if area.type != 'VIEW_3D':
-                continue
-            space = area.spaces.active
-            key = space.as_pointer()
-            if enabled:
-                active_views.add(key)
-                if key not in _solid_views:
-                    _solid_views[key] = (space, space.shading.color_type)
-                    space.shading.color_type = 'TEXTURE'
-                    area.tag_redraw()
-            elif key in _solid_views:
-                saved, previous = _solid_views.pop(key)
-                if space.shading.color_type == 'TEXTURE':
-                    space.shading.color_type = previous
-                    area.tag_redraw()
-        if enabled:
-            for obj in scene.collection.all_objects:
-                if obj.type == 'MESH' and obj.get('ObjectID'):
-                    for mat in obj.data.materials:
-                        if mat and mat.use_nodes:
-                            wanted[mat] = wanted.get(mat, False) or is_decal(obj)
+        if force_disable or not getattr(scene, 'bbe_detailed_proxies', True):
+            continue
+        spaces = [a.spaces.active for a in window.screen.areas
+                  if a.type == 'VIEW_3D' and a.spaces.active.shading.type == 'SOLID']
+        if not spaces or not any(o.get('ObjectID') for o in scene.objects):
+            continue
+        for space in spaces:
+            # TEXTURE includes files saved by the former solid decal renderer.
+            # A draft bubble routing session owns MATERIAL until it completes.
+            if (space.shading.color_type in {'MATERIAL', 'TEXTURE'}
+                    and space.as_pointer() not in bubble_preview._draft_shading_sessions):
+                space.shading.color_type = 'OBJECT'
+        if (scene.bbe_solid_decals and scene not in scenes
+                and any(space.shading.color_type == 'OBJECT' for space in spaces)):
+            scenes[scene] = [obj for obj in scene.objects if is_decal(obj)
+                             and not obj.hide_viewport and not obj.hide_render]
+    solid_decal_art.sync(scenes)
+
+
+def clean_legacy_solid_nodes():
     for mat in bpy.data.materials:
-        if not mat.use_nodes:
-            continue
-        nodes = mat.node_tree.nodes
-        if mat not in wanted:
-            if SOLID_PREVIOUS in mat:
-                nodes.active = nodes.get(mat[SOLID_PREVIOUS])
-                del mat[SOLID_PREVIOUS]
-                if nodes.get(SOLID_NODE):
-                    nodes.remove(nodes[SOLID_NODE])
-            continue
-        if SOLID_PREVIOUS not in mat:
-            mat[SOLID_PREVIOUS] = nodes.active.name if nodes.active else ''
-        if wanted[mat]:
-            tex = nodes.get('Diffuse')
-            if not tex or tex.type != 'TEX_IMAGE' or not tex.image:
-                tex = next((n for n in nodes if n.type == 'TEX_IMAGE' and n.image), None)
-        else:
-            tex = nodes.get(SOLID_NODE)
-            if tex is None:
-                tex = nodes.new('ShaderNodeTexImage')
-                tex.name = SOLID_NODE
-                tex.label = 'Solid viewport only (not connected)'
-                color = tuple(round(v, 4) for v in mat.diffuse_color[:3]) + (1.0,)
-                name = 'BBE Solid ' + str(color)
-                im = bpy.data.images.get(name)
-                if im is None:
-                    im = bpy.data.images.new(name, width=1, height=1)
-                    im.pixels[:] = color
-                    im.pack()
-                tex.image = im
-                tex.hide = True
-                tex.location = (-1000, -1000)
-        if tex is not None and nodes.active != tex:
-            nodes.active = tex
-    for key in set(_solid_views)-active_views:
-        space, previous = _solid_views.pop(key)
-        try:
-            if space.shading.color_type == 'TEXTURE':
-                space.shading.color_type = previous
-        except ReferenceError:
-            pass
+        if SOLID_PREVIOUS in mat and mat.node_tree and mat.is_editable:
+            nodes = mat.node_tree.nodes
+            nodes.active = nodes.get(mat[SOLID_PREVIOUS])
+            del mat[SOLID_PREVIOUS]
+            node = nodes.get(SOLID_NODE)
+            if node:
+                nodes.remove(node)
 
 
 def reset_tracking():
     global _signature, _solid_signature
     _signature = None
     _solid_signature = None
+    solid_decal_art.reset()
     _project_signatures.clear()
     _mesh_revisions.clear()
     _object_revisions.clear()
@@ -720,11 +677,11 @@ def reset_tracking():
 
 @persistent
 def loaded(_):
-    global _undoing, _resume_after_undo
+    global _undoing, _resume_after_undo, _clean_old_nodes
     _undoing = False
     _resume_after_undo = 0.0
     reset_tracking()
-    _solid_views.clear()
+    _clean_old_nodes = True
 
 
 @persistent
@@ -743,6 +700,7 @@ def after_undo(_):
 
 @persistent
 def before_render(scene, *_):
+    before_save(scene)
     refresh(scene)
 
 
@@ -763,6 +721,8 @@ def changed(scene, depsgraph):
         if isinstance(item, bpy.types.Object):
             if item.type == 'MESH' and item.get('ObjectID'):
                 relevant = True
+                if is_decal(item) and (item.color[3] != 0 or update.is_updated_geometry):
+                    _solid_signature = None
                 if update.is_updated_transform:
                     _geometry_stamps.pop(key, None)
                 if update.is_updated_geometry and not item.data.get(PROJECTED):
@@ -770,6 +730,7 @@ def changed(scene, depsgraph):
                     _solid_signature = None
                     _triangle_cache.pop(item.data.as_pointer(), None)
         elif isinstance(item, bpy.types.Mesh):
+            solid_decal_art.invalidate(item)
             if key in _known_meshes and update.is_updated_geometry:
                 _mesh_revisions[key] = _mesh_revisions.get(key, 0) + 1
                 _triangle_cache.pop(key, None)
@@ -788,14 +749,24 @@ def changed(scene, depsgraph):
         request_refresh()
 
 
+@persistent
+def before_save(*_):
+    global _solid_signature
+    solid_decal_art.sync({})
+    _solid_signature = None
+
+
 def register():
+    global _clean_old_nodes
     reset_tracking()
+    _clean_old_nodes = True
+    solid_decal_art.register()
     bpy.types.Scene.bbe_solid_decals = bpy.props.BoolProperty(
         name='Decals in Solid', default=True,
         description='Show decal artwork over plain hull colours in Solid view, without rendered lighting')
     if not bpy.app.timers.is_registered(tick):
         bpy.app.timers.register(tick, first_interval=1, persistent=True)
-    for handlers, callback in ((bpy.app.handlers.load_post, loaded), (bpy.app.handlers.render_pre, before_render),
+    for handlers, callback in ((bpy.app.handlers.save_pre, before_save), (bpy.app.handlers.load_post, loaded), (bpy.app.handlers.render_pre, before_render),
                                (bpy.app.handlers.depsgraph_update_post, changed),
                                (bpy.app.handlers.undo_pre, before_undo), (bpy.app.handlers.undo_post, after_undo),
                                (bpy.app.handlers.redo_pre, before_undo), (bpy.app.handlers.redo_post, after_undo)):
@@ -806,7 +777,7 @@ def register():
 def unregister():
     if bpy.app.timers.is_registered(tick):
         bpy.app.timers.unregister(tick)
-    for handlers, callback in ((bpy.app.handlers.load_post, loaded), (bpy.app.handlers.render_pre, before_render),
+    for handlers, callback in ((bpy.app.handlers.save_pre, before_save), (bpy.app.handlers.load_post, loaded), (bpy.app.handlers.render_pre, before_render),
                                (bpy.app.handlers.depsgraph_update_post, changed),
                                (bpy.app.handlers.undo_pre, before_undo), (bpy.app.handlers.undo_post, after_undo),
                                (bpy.app.handlers.redo_pre, before_undo), (bpy.app.handlers.redo_post, after_undo)):
@@ -821,4 +792,5 @@ def unregister():
         if is_decal(obj) and obj.data.get(PROJECTED) and obj.get(SOURCE):
             obj.data = obj[SOURCE]
     solid_references(force_disable=True)
+    solid_decal_art.unregister()
     del bpy.types.Scene.bbe_solid_decals

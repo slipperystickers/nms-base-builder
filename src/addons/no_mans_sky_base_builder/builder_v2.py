@@ -86,6 +86,8 @@ COCKPIT_BASE_REVISION = 3
 CORRECTED_LEGACY_PARTS = {r['id'] for r in json.loads((Path(FILE_PATH) / 'resources/native_asset_corrections.json').read_text())['assets']}
 MESH_REVISIONS.update(dict.fromkeys(CORRECTED_LEGACY_PARTS, '18.2.36'))
 REPAIRED_VISUAL_PARTS = {'BASE_TOYCORE'}
+HOLIDAY_PARTS = set(json.loads((Path(FILE_PATH) / 'resources/holiday_assets.json').read_text())['assets'])
+MESH_REVISIONS.update(dict.fromkeys(HOLIDAY_PARTS, 'game-26924890'))
 MESH_REVISIONS['BASE_TOYCORE'] = 'toycore-native-spherical-effects-20261105'
 BYTEBEAT_PARTS = {'BYTEBEAT', 'BYTEBEATSWITCH', 'HOLO_DISCO_0', 'U_BYTEBEATLINE'}
 
@@ -319,8 +321,6 @@ def add_part(
     bpy_object.hide_select = False
     bpy_object[Part.PROP_OBJECT_ID] = object_id
     bpy_object[Part.PROP_SNAP_ID] = object_id
-    from . import decals
-    decals.initialize_settings(bpy_object)
     bpy_object[Part.PROP_TIMESTAMP] = str(int(time.time()))
     bpy_object[Part.PROP_BELONGS_TO_PRESET] = Part.DEFAULT_BELONGS_TO_PRESET
     bpy_object[Part.PROP_ORDER] = len(bpy.data.objects)
@@ -396,7 +396,7 @@ def get_asset_index(rebuild=False):
     # Native additions are a separate, verified component of Detailed Proxies.
     # Old core packs reused several of these IDs for unrelated meshes. An
     # incomplete HD update must use the correct simple proxy, never that mesh.
-    for object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS:
+    for object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS | HOLIDAY_PARTS:
         _asset_index.pop(object_id, None)
     additions_root = hd_library.additions_root()
     additions = additions_root / 'assets' if additions_root else None
@@ -684,7 +684,7 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     if not force and not getattr(bpy.context.scene, "bbe_detailed_proxies", True):
         return None
     asset_index = asset_index if asset_index is not None else get_asset_index()
-    protected = object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS | REPAIRED_VISUAL_PARTS
+    protected = object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS | REPAIRED_VISUAL_PARTS | HOLIDAY_PARTS
     source_path = asset_index.get(object_id)
     source_key = str(Path(source_path).resolve()) if source_path else ''
     if protected and not source_path:
@@ -1068,6 +1068,8 @@ def apply_proxy_mesh(bpy_object, object_id, user_data, cache=None):
         for name, value in carried.items():
             bpy_object[name] = value
         bpy_object.color = colour
+        if mesh.get('bbe_textured_simple'):
+            materials_v2.apply(bpy_object, key[1], tag=False)
         return True
 
     mesh = _find_proxy_placement_mesh(key)

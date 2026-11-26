@@ -22,6 +22,13 @@ _hover=None
 _scroll={}
 _drop_marks={}
 
+def over_header(area, event):
+    # Blender can run viewport keymaps beneath its transparent header regions.
+    return any(region.type in {'HEADER', 'TOOL_HEADER'} and region.width > 1 and region.height > 1
+               and region.x <= event.mouse_x < region.x + region.width
+               and region.y <= event.mouse_y < region.y + region.height
+               for region in area.regions)
+
 def editable_menu(node):
     from .menu_backend import KEYS
     identifier = node.options.get('identifier')

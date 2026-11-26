@@ -19,7 +19,7 @@ _collection = None
 _worker = None
 _cache = None
 # Change when the mesh catalogue or renderer changes.
-_FORMAT = 'shell-1'
+_FORMAT = 'shell-2'
 
 
 def set_library(paths):

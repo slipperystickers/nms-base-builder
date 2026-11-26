@@ -202,8 +202,11 @@ def restore(view, override=None):
     if owned and override:
         # INVOKE releases the native bounding box when clipping is already on.
         with bpy.context.temp_override(**override):
-            view.use_clip_planes = True
-            bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
+            # In newer Blender versions this operator is unavailable in
+            # Material Preview. Restore the RNA settings in either case.
+            if bpy.ops.view3d.clip_border.poll():
+                view.use_clip_planes = True
+                bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
     view.clip_planes = original_planes
     view.use_clip_planes = original_enabled
 
@@ -497,8 +500,15 @@ class BBE_OT_cutaway_pick(bpy.types.Operator):
 
     def invoke(self, context, event):
         from bpy_extras import view3d_utils
-        from . import menu_surface
+        from . import asset_strip, menu_surface, toolbar_surface
+        if toolbar_surface.over_header(context.area, event):
+            return {'PASS_THROUGH'}
         x, y = event.mouse_region_x, event.mouse_region_y
+        strip = asset_strip._states.get(asset_strip.key(context))
+        if strip and strip.get('enabled'):
+            surfaces = (strip.get('bounds'), strip.get('choice') and strip.get('choice_bounds'))
+            if any(rect and asset_strip.inside(rect, x, y) for rect in surfaces) and asset_strip.visible(context):
+                return {'PASS_THROUGH'}
         if (context.area.as_pointer() in menu_surface._sessions or
                 hit_test(geometry(context), handle_values(context.scene), x, y,
                          context.preferences.system.ui_scale) is not None):

@@ -62,6 +62,7 @@ class Item(QtWidgets.QFrame):
         self._layout()
         self._setup()
         self.setObjectName("AssetTile")
+        self._new_highlight = None
         self._refresh_new_border()
         self.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
 
@@ -97,8 +98,16 @@ class Item(QtWidgets.QFrame):
         self.variants_button.clicked.connect(self.open_context_menu)
 
     def _refresh_new_border(self):
-        color = '#ffcc10' if new_assets.is_new(self.item_id) else 'transparent'
+        is_new = new_assets.is_new(self.item_id)
+        if self._new_highlight == is_new:
+            return
+        self._new_highlight = is_new
+        color = '#ffcc10' if is_new else 'transparent'
         self.setStyleSheet(f'QFrame#AssetTile {{ border: 2px solid {color}; }}')
+
+    def showEvent(self, event):
+        self._refresh_new_border()
+        super().showEvent(event)
 
     def _mark_viewed(self):
         new_assets.mark_viewed(self.item_id)
@@ -130,6 +139,7 @@ class Item(QtWidgets.QFrame):
             self.variants_button.setVisible(True)
 
     def add_part(self, part_id):
+        new_assets.mark_viewed(part_id)
         self.varClicked.emit(part_id)
 
 

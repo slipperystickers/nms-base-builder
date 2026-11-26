@@ -1,3 +1,4 @@
+from .. import curve_links
 from .. import i18n
 import json
 import math
@@ -26,7 +27,7 @@ def duplication_selection(objects):
         return None, []
     guide = guides[0]
     seeds = [obj for obj in objects if obj != guide]
-    if any(obj.type != 'MESH' or obj.get('curve_parent') or
+    if any(obj.type != 'MESH' or curve_links.parent_name(obj) or
            not (obj.get('ObjectID') or obj.get('GroupID')) for obj in seeds):
         return guide, []
     return guide, seeds
@@ -126,7 +127,7 @@ def get_curve_children_map(objects=None):
 
     children_by_curve = {}
     for obj in objects:
-        parent_name = obj.get(Curve.PROP_CURVE_PARENT)
+        parent_name = curve_links.parent_name(obj)
         if parent_name is not None:
             children_by_curve.setdefault(parent_name, []).append(obj)
     return children_by_curve
@@ -150,7 +151,7 @@ def update_curves(updated_curves, children_by_curve=None):
     radius_delta = properties.active_curve_radius_multiplier - properties.prev_curve_radius_multiplier
     
     for curve_obj in updated_curves:
-        if curve_obj is None or Curve.PROP_CURVE_ID not in curve_obj:
+        if curve_obj is None or not curve_links.guide_id(curve_obj):
             continue
         
         try:
@@ -214,7 +215,7 @@ def update_curves(updated_curves, children_by_curve=None):
 # update children on curve
 def update_curve_children(curve_obj, new_radius_multier = None, curve_children = None):
     """Refreshes transformations for all objects assigned to this curve."""
-    if not curve_obj.get(Curve.PROP_HAS_LINKED_OBJECTS):
+    if not curve_links.has_followers(curve_obj):
         return
     
     val_data = curve_obj.get("val_data",None)
@@ -228,7 +229,7 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
     if curve_children is None:
         # no prebuilt map handed in, so fall back to scanning for this one curve
         children = [obj for obj in get_follower_objects()
-                    if obj.get(Curve.PROP_CURVE_PARENT) == curve_obj.name]
+                    if curve_links.parent_name(obj) == curve_obj.name]
     else:
         children = curve_children
 
@@ -248,7 +249,7 @@ def update_curve_children(curve_obj, new_radius_multier = None, curve_children =
           if Curve.PROP_SOURCE_TRANSFORM in curve_obj and abs(curve_obj.bbe_curve.twist)>1e-8 else [None]*len(children))
     anchor=Vector(curve_obj['bbe_edge_anchor']) if 'bbe_edge_anchor' in curve_obj else None
     for index, obj in enumerate(children):
-        if obj.get("curve_parent") == curve_name:
+        if curve_links.parent_name(obj) == curve_name:
             taper = 1 - index * reduction
             if abs(obj.get("bbe_taper_factor", 1) - taper) > 1e-7:
                 obj["bbe_taper_factor"] = taper
@@ -310,14 +311,14 @@ def duplicate_along_curve( bpy_object, curve, number_of_duplicates=10, radius_mu
     # curve. Without it the update handler treats a new curve as zero objects.
     curve[Curve.PROP_OBJECTS_COUNT] = number_of_duplicates
 
-    if curve.get(Curve.PROP_HAS_LINKED_OBJECTS, False):
+    if curve_links.has_followers(curve):
         curve_utils.normalise_curve_scale(curve)
     
     if not curve.get(Curve.PROP_IS_INITIALISED, False):
         curve_utils.half_the_weight_points(curve)
         curve[Curve.PROP_IS_INITIALISED] = True
         
-    curve[Curve.PROP_HAS_LINKED_OBJECTS] = True
+    curve[curve_links.LINKED if curve_links.GUIDE in curve else Curve.PROP_HAS_LINKED_OBJECTS] = True
     curve[Curve.PROP_RADIUS_MULTIPLIER] = radius_multiplier
     from ..curve_studio import length
     distribution.prepare(curve,length(curve),number_of_duplicates,curve.bbe_curve)
@@ -437,7 +438,7 @@ def add_objects_to_curve(number_to_add, curve, existing_objs, bpy_object = None)
             if preserve_transform:
                 constraint.use_curve_radius = False
             
-            new_obj[Curve.PROP_CURVE_PARENT] = curve.name
+            curve_links.link_follower(new_obj, curve)
             new_obj[Curve.PROP_BASE_SCALE] = 1.0
             if 'bbe_curve_roll' in new_obj:del new_obj['bbe_curve_roll']
             if preserve_transform:
@@ -490,7 +491,7 @@ def add_objects_to_curve(number_to_add, curve, existing_objs, bpy_object = None)
             
         else :
             new_obj = existing_objs[-1].copy()
-            new_obj[Curve.PROP_CURVE_PARENT] = curve.name
+            curve_links.link_follower(new_obj, curve)
             linked_curve_obj_col.objects.link(new_obj)
             
         existing_objs.append(new_obj)
@@ -529,11 +530,12 @@ def apply_curve_transforms_and_detach(curve):
         Curve.PROP_CURVE_FACTOR,
         Curve.PROP_RADIUS,
         Curve.PROP_SOURCE_SCALE,
-        Curve.PROP_CURVE_PARENT
+        Curve.PROP_CURVE_PARENT,
+        curve_links.PARENT,
     ]
     
     for obj in bpy.context.scene.objects:
-        if obj.get("curve_parent") == curve.name:
+        if curve_links.parent_name(obj) == curve.name:
             
             
             # Clean up custom properties
@@ -570,6 +572,8 @@ def apply_curve_transforms_and_detach(curve):
         'bbe_edge_anchor', 'bbe_edge_skip_source',
         Curve.PROP_CURVE_ID,
         Curve.PROP_HAS_LINKED_OBJECTS,
+        curve_links.GUIDE,
+        curve_links.LINKED,
         Curve.PROP_DUP_OBJECT_ID,
         Curve.PROP_DUP_USER_DATA,
         Curve.PROP_RADIUS_MULTIPLIER,
@@ -590,7 +594,7 @@ def apply_curve_transforms_and_detach(curve):
 # make all objects linked ao a curve unselectable
 def lock_all_objects(curve_obj, lock_location = True):
     for obj in bpy.context.scene.objects:
-        if obj.get(Curve.PROP_CURVE_PARENT) == curve_obj.name:
+        if curve_links.parent_name(obj) == curve_obj.name:
             obj.hide_select = True
             #if lock_location:
                 #obj.lock_location = (lock_location, lock_location, lock_location)
@@ -598,14 +602,14 @@ def lock_all_objects(curve_obj, lock_location = True):
 # make all objects linked to a curve selectable
 def unlock_all_objects(curve_obj, lock_location = False):
     for obj in bpy.context.scene.objects:
-        if obj.get(Curve.PROP_CURVE_PARENT) == curve_obj.name:
+        if curve_links.parent_name(obj) == curve_obj.name:
             obj.hide_select = False
             #obj.lock_location = (lock_location, lock_location, lock_location)
 
 # select parent curve of object
 # make its children unselectable and make only curve selectable
 def select_parent_curve(object):
-    parent_curve_name = object.get(Curve.PROP_CURVE_PARENT, None)
+    parent_curve_name = curve_links.parent_name(object)
     if parent_curve_name is None:
         return
     
@@ -614,7 +618,7 @@ def select_parent_curve(object):
         parent_curve.hide_select = False
         parent_curve[Curve.PROP_PARENT_SELECTED] = True
         for obj in bpy.context.scene.objects:
-            if obj.get(Curve.PROP_CURVE_PARENT) == parent_curve.name:
+            if curve_links.parent_name(obj) == parent_curve.name:
                 obj.hide_select = True
     return parent_curve
             
@@ -626,7 +630,7 @@ def select_children_of_curve(curve):
     
     children = []
     for obj in bpy.context.scene.objects:
-        if obj.get(Curve.PROP_CURVE_PARENT) == curve.name:
+        if curve_links.parent_name(obj) == curve.name:
             obj.hide_select = False
             children.append(obj)
             
@@ -643,11 +647,11 @@ def get_all_curve_children(curve_obj):
     if curve_obj is None:
         return None
     
-    if Curve.PROP_CURVE_ID not in curve_obj:
+    if not curve_links.guide_id(curve_obj):
         return None
     
     children = [obj for obj in get_follower_objects()
-                if obj.get(Curve.PROP_CURVE_PARENT) == curve_obj.name]
+                if curve_links.parent_name(obj) == curve_obj.name]
     return children
     
 # return objects if object is a curve and has lihked objects
@@ -656,10 +660,10 @@ def get_curve_or_linked_curve(obj):
     if obj is None:
         return None
     
-    if is_bezier_or_nurbs_path(obj) and obj.get(Curve.PROP_HAS_LINKED_OBJECTS,False):
+    if is_bezier_or_nurbs_path(obj) and curve_links.has_followers(obj):
         return obj
-    elif Curve.PROP_CURVE_PARENT in obj:
-        return bpy.data.objects.get(obj[Curve.PROP_CURVE_PARENT])
+    elif parent := curve_links.parent_name(obj):
+        return bpy.data.objects.get(parent)
     return None
 
 # delete selected curve and children linked to it
@@ -674,7 +678,7 @@ def delete_curve_and_children(curve):
 
     # Delete all linked objects first - in one batch, see removeobjects_from_curve
     doomed = [obj for obj in bpy.data.objects
-              if obj.get(Curve.PROP_CURVE_PARENT) == curve.name]
+              if curve_links.parent_name(obj) == curve.name]
     deleted_count = len(doomed)
     if doomed:
         bpy.data.batch_remove(doomed)
@@ -692,7 +696,8 @@ def replace_curve_object(curve_obj, source_obj, number_of_objects=None, radius_m
     alignment = get_source_curve_alignment(curve_obj, source_obj)
     new_curve_obj = curve_obj.copy()
     new_curve_obj.data = curve_obj.data.copy()
-    new_curve_obj[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
+    curve_links.protect_guide(new_curve_obj)
+    new_curve_obj[curve_links.GUIDE] = str(uuid.uuid4())
     
     for collection in curve_obj.users_collection:
         collection.objects.link(new_curve_obj)
@@ -727,7 +732,7 @@ def reset_curve(curve):
     if curve is None:
         raise TypeError("curve is None")
     
-    if not is_bezier_or_nurbs_path(curve) or Curve.PROP_HAS_LINKED_OBJECTS not in curve:
+    if not is_bezier_or_nurbs_path(curve) or not curve_links.has_followers(curve):
         raise TypeError("object is not a valid curve")
     
     curve_obj, duplciates = apply_curve_transforms_and_detach(curve)
@@ -742,7 +747,8 @@ def duplicate_curve(curve_obj):
     
     new_curve_obj = curve_obj.copy()
     new_curve_obj.data = curve_obj.data.copy()
-    new_curve_obj[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
+    curve_links.protect_guide(new_curve_obj)
+    new_curve_obj[curve_links.GUIDE] = str(uuid.uuid4())
     parent_collection = collection_utils.get_parent_collection(curve_obj)
     parent_collection.objects.link(new_curve_obj)
     
@@ -760,7 +766,8 @@ def mirror_curve(build_tool,curve_obj, axis = "Z", center = None, auto_duplicate
     if auto_duplicate:
         new_curve_obj = curve_obj.copy()
         new_curve_obj.data = curve_obj.data.copy()
-        new_curve_obj[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
+        curve_links.protect_guide(new_curve_obj)
+        new_curve_obj[curve_links.GUIDE] = str(uuid.uuid4())
         parent_collection = collection_utils.get_parent_collection(curve_obj)
         parent_collection.objects.link(new_curve_obj)
     else:
@@ -814,12 +821,12 @@ def mirror_curve(build_tool,curve_obj, axis = "Z", center = None, auto_duplicate
 # last two objects dictate which function is calling them, 
 def sync_curves(target_curve, source_curve, do_mirror = False, axis = None, from_mirror = False, duping_object_source = None):
 
-    target_curve[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
+    target_curve[curve_links.GUIDE if curve_links.GUIDE in target_curve else Curve.PROP_CURVE_ID] = str(uuid.uuid4())
     target_is_group =  target_curve.get(Curve.PROP_DUP_IS_GROUP,False)
     
     # all child objects of source curve
     source_dupe_objects = [obj for obj in get_follower_objects()
-                           if obj.get(Curve.PROP_CURVE_PARENT) == source_curve.name]
+                           if curve_links.parent_name(obj) == source_curve.name]
     
     radius_multiplier = target_curve[Curve.PROP_RADIUS_MULTIPLIER]
     number_of_objects = target_curve[Curve.PROP_OBJECTS_COUNT]
@@ -921,9 +928,9 @@ def apply_color(curve_obj, user_data):
     if curve_obj is None:
         return None
     
-    if Curve.PROP_HAS_LINKED_OBJECTS in curve_obj and is_bezier_or_nurbs_path(curve_obj):
+    if curve_links.has_followers(curve_obj) and is_bezier_or_nurbs_path(curve_obj):
         curve_obj[Curve.PROP_DUP_USER_DATA] = user_data
         for child_obj in bpy.context.scene.objects:
-            if Curve.PROP_CURVE_PARENT in child_obj and child_obj[Curve.PROP_CURVE_PARENT] == curve_obj.name:
+            if curve_links.parent_name(child_obj) == curve_obj.name:
                 material.restore_material(child_obj, user_data)
                 break

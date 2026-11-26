@@ -1,4 +1,5 @@
 """Object-mode curve editing, parametric guides and persistent viewport controls."""
+from . import curve_links
 from . import i18n, curve_distribution as distribution
 import math
 import json
@@ -29,7 +30,7 @@ def active_curve(context):
         return None
     if obj.type == 'CURVE' and not obj.get('ObjectID'):
         return obj
-    name = obj.get('curve_parent')
+    name = curve_links.parent_name(obj)
     parent = context.scene.objects.get(name) if name else obj.parent
     if parent is not None and parent.type == 'CURVE' and not parent.get('ObjectID'):
         return parent
@@ -47,7 +48,7 @@ def refresh(obj):
             del obj[key]
     obj.data.update_tag()
     obj.update_tag(refresh={'DATA'})
-    if obj.get('has_linked_objects'):
+    if curve_links.has_followers(obj):
         from .utils import curve, curve_utils
         count=int(obj.get('objects_count',1))
         # Point insertion is a shape edit, not a request to change copy count.
@@ -152,7 +153,7 @@ def twist_changed(self, context):
 def taper_changed(self, context):
     from .curve_studio import length
     guide=self.id_data
-    if guide.get('has_linked_objects'):
+    if curve_links.has_followers(guide):
         distribution.prepare(guide,length(guide),int(guide.get('objects_count',1)),self)
         if distribution.KEY in guide:
             count=int(guide.get('objects_count',1))
@@ -768,7 +769,7 @@ def value_set(obj,field,value,source=None):
 
 def helper_parameters(obj):
     rows=parameters(obj) if obj and obj.get('bbe_easy_curve') else []
-    if obj and obj.get('has_linked_objects'):
+    if obj and curve_links.has_followers(obj):
         rows+= [('objects_count','Copies'),('radius_multiplier','Object size')]
     return rows
 
@@ -835,7 +836,7 @@ def draw_controls(layout,context):
     row.operator('bbe.curve_action',text='Insert Point',**icons.ui_icon('ADD')).action='ADD'
     row.operator('bbe.curve_action',text='Remove Point',**icons.ui_icon('REMOVE')).action='REMOVE'
     layout.label(text='Diamonds move points; round tips shape bends.')
-    if obj.get('has_linked_objects'):
+    if curve_links.has_followers(obj):
         layout.prop(obj.bbe_curve,'taper',slider=True)
         layout.prop(obj.bbe_curve,'twist',slider=True)
         props=context.scene.nms_properties
@@ -1004,10 +1005,10 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
                 g=self.button(index,'Link handles','bbe.curve_action',
                               x+14*scale,y+134*scale,w-28*scale,{'action':'LINK'},style='SWITCH')
                 g.enabled=obj.bbe_curve.linked_handles;index+=1
-                action('Edit Copies' if edge_repeat else 'Edit Children' if obj.get('has_linked_objects') else 'Duplicate Along Curve',
-                       'CHILDREN' if obj.get('has_linked_objects') else 'DUPLICATE',14,96,284,
-                       style='NAV' if obj.get('has_linked_objects') else 'PRIMARY',height=34)
-                if obj.get('has_linked_objects'):
+                action('Edit Copies' if edge_repeat else 'Edit Children' if curve_links.has_followers(obj) else 'Duplicate Along Curve',
+                       'CHILDREN' if curve_links.has_followers(obj) else 'DUPLICATE',14,96,284,
+                       style='NAV' if curve_links.has_followers(obj) else 'PRIMARY',height=34)
+                if curve_links.has_followers(obj):
                     self.button(index,'Duplicate set','object.nms_duplicate',x+14*scale,y+66*scale,138*scale);index+=1
                     action('Unlink objects','DETACH',160,66)
                 else:lines.append((16*scale,74*scale,'Select parts + this curve to create copies.',curve_widgets.MUTED))
@@ -1059,7 +1060,7 @@ def reset(*_):
     # Old child-edit mode saved the guide with selection disabled.
     for obj in bpy.data.objects:
         if (obj.type == 'CURVE' and not obj.library and
-                (obj.get('has_linked_objects') or obj.get('is_initialised') and 'parent_selected' in obj)):
+                (curve_links.has_followers(obj) or obj.get('is_initialised') and 'parent_selected' in obj)):
             obj.hide_select=False
 
 

@@ -6,6 +6,7 @@ from functools import lru_cache
 from math import atan2, cos, floor, pi, sin
 
 import bpy
+from . import curve_links
 from . import i18n
 import gpu
 from bpy.app.handlers import persistent
@@ -51,7 +52,7 @@ def eligible(obj):
         or "ObjectID" not in obj
         or obj.library
         or "bbe_shape_slot" in obj
-        or "curve_parent" in obj
+        or curve_links.parent_name(obj)
     ):
         return False
     if obj["ObjectID"] in repeat_ports.SUPPORTED:

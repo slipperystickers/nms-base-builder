@@ -34,7 +34,7 @@ _busy = False
 
 class UnresolvedContact(ValueError):
     def __init__(self, query):
-        super().__init__('Native collision geometry is unresolved at the pilot’s feet')
+        super().__init__("Using the cockpit seat pose. Contact at the pilot's feet could change the hand position.")
         self.diagnostics = query
 
 
@@ -114,7 +114,13 @@ def scene_placements(scene, cockpit):
 
 def solve_build(placements, target_index, locator, settings):
     catalog = _json(ROOT / 'resources/pilot_profiles/colliders.json')
-    instances, _ = collisions.instantiate_transforms(catalog, placements)
+    instances, missing = collisions.instantiate_transforms(catalog, placements, strict=False)
+    if missing:
+        ids = sorted({part['part_id'] for part in missing})
+        names = ', '.join(ids[:3])
+        if len(ids) > 3:
+            names += f' and {len(ids) - 3} more'
+        raise ValueError(f'Using the cockpit seat pose. Hand alignment is unverified because collision data is unavailable for {names}.')
     model = collisions.pilot_model_transform(placements[target_index]['matrix'], locator)
     # Preset size belongs to the character, independently of cockpit scale.
     # Keep the solver in native rig units and perform collision queries through
@@ -233,12 +239,13 @@ def _signature(scene, models, cockpit):
 
 def update_scene(scene, force=False):
     from . import pilot_reference as reference, undo_guard
-    models = [obj for obj in scene.objects if obj.get(reference.TAG)]
+    models = reference.attached_references(scene)
+    key = scene.as_pointer()
     if not models:
+        _signatures.pop(key, None)
         return []
     undo_guard.track_generated_preview()
     cockpit = reference.first_cockpit(scene)
-    key = scene.as_pointer()
     try:
         signature = _signature(scene,models,cockpit)
     except ValueError as exc:

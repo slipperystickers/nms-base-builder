@@ -1,3 +1,4 @@
+from .. import curve_links
 from ..utils import mirror_utils
 import bpy
 import os
@@ -91,7 +92,7 @@ class BuildTool(bpy.types.PropertyGroup):
         hierarchy_results = []
         if objects_to_mirror is None and not auto_duplicate:
             for obj in selected_objects:
-                if obj is not None and curve.Curve.PROP_CURVE_PARENT in obj:
+                if obj is not None and curve_links.parent_name(obj):
                     continue
                 
                 if obj.parent:
@@ -153,9 +154,7 @@ class BuildTool(bpy.types.PropertyGroup):
                     new_items.append(new_item)
                    
             # mirror if object is a custom nms curve
-            elif curve.is_bezier_or_nurbs_path(target) and "has_linked_objects" in target:
-                if not target["has_linked_objects"]:
-                    continue
+            elif curve.is_bezier_or_nurbs_path(target) and curve_links.has_followers(target):
                 
                 should_auto_duplicate = auto_duplicate and not change_orientation
                 new_curve_obj = curve.mirror_curve( self, target, axis, center, should_auto_duplicate)
@@ -332,10 +331,10 @@ class BuildTool(bpy.types.PropertyGroup):
                 return {"CANCELLED"}
 
         from ..curve_studio import prepare_frame
-        if not curve_object.get("has_linked_objects") and "bbe_edge_trim_source" not in curve_object:
+        if not curve_links.has_followers(curve_object) and "bbe_edge_trim_source" not in curve_object:
             prepare_frame(curve_object)
 
-        if "has_linked_objects" in curve_object:
+        if curve_links.has_followers(curve_object):
             new_curve_object, old_curve_object = curve.replace_curve_object(
                 curve_object, dup_object, number_of_objects, radius_multiplier
             )
@@ -345,7 +344,7 @@ class BuildTool(bpy.types.PropertyGroup):
         else :
             alignment = curve.get_source_curve_alignment(curve_object, dup_object)
             curve.set_source_curve_alignment(curve_object, alignment)
-            curve_object[Curve.PROP_CURVE_ID] = str(uuid.uuid4())
+            curve_object[curve_links.GUIDE] = str(uuid.uuid4())
             curve_object["parent_selected"] = True
             curve_object.show_in_front = True
             properties = bpy.context.scene.nms_properties
@@ -407,14 +406,14 @@ class BuildTool(bpy.types.PropertyGroup):
         duplicates = []
         for target in selected_objects:
             
-            if "ObjectID" not in target and "PresetID" not in target and "CurveID" not in target:
+            if "ObjectID" not in target and "PresetID" not in target and not curve_links.guide_id(target):
                 message = (
                     "This item can not be duplicated via the No Man's Sky tool. "
                     "Try using Blender hotkey instead (Shift-D)."
                 )
                 ShowMessageBox(message=message, title="Duplicate")
                 return
-            if "CurveID" in target:
+            if curve_links.guide_id(target):
                 new_item = curve.duplicate_curve(target)
                 duplicates.append(new_item)
             else:

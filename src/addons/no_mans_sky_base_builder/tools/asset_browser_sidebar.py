@@ -209,7 +209,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 if hit and pressed == (hover, event.type):
                     tile, action = hit
                     if not tile[5].get('is_preset'):
-                        new_assets.mark_viewed(tile[4])
+                        new_assets.record_click(context, tile[4])
                     if event.type == 'RIGHTMOUSE' or action == 'options':
                         self.show_options(context, tile)
                     elif action == 'variants':

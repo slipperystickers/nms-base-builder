@@ -1,6 +1,7 @@
 """Regular BBE bindings for first-party duplication and alignment tools."""
 import bpy
 from mathutils import Quaternion
+from . import curve_links
 from . import curve_tools,curve_studio
 from .utils import curve
 PREFIX='bbe'
@@ -31,7 +32,7 @@ def make_array(context,guide,sources,count):
         # The grouping operation uses a world-aligned frame for multiple seeds.
         seed_rotation = sources[0].matrix_world.to_quaternion().normalized() if len(sources)==1 else Quaternion()
         result=context.scene.nms_build_tool.duplicate_along_curve(count,1)
-        if result=={'CANCELLED'} or not guide.get('has_linked_objects'):raise ValueError('Could not duplicate the selected BBE parts')
+        if result=={'CANCELLED'} or not curve_links.has_followers(guide):raise ValueError('Could not duplicate the selected BBE parts')
     finally:
         followers=curve.get_all_curve_children(guide) or []
         keep={guide,*followers,*(child for obj in followers for child in obj.children_recursive)}

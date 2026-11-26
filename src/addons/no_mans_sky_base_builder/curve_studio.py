@@ -1,4 +1,5 @@
 """Curve Studio workflow over BBE's existing followers and Blender transforms."""
+from . import curve_links
 from . import i18n, curve_distribution as distribution
 import math
 import bpy
@@ -93,7 +94,7 @@ def session_visible(scene, session):
     if obj is None or obj.mode != 'OBJECT' or not obj.select_get(view_layer=layer):
         return False
     if obj.type != 'CURVE' or obj.get('ObjectID'):
-        parent_name = obj.get('curve_parent')
+        parent_name = curve_links.parent_name(obj)
         obj = scene.objects.get(parent_name) if parent_name else obj.parent
     return obj is not None and obj.session_uid == session['guide']
 
@@ -202,7 +203,7 @@ def prepare_frame(obj):
         if key in obj:del obj[key]
     return True
 
-def child_mode(context,obj):return bool(obj and obj.get('has_linked_objects') and context.active_object!=obj)
+def child_mode(context,obj):return bool(obj and curve_links.has_followers(obj) and context.active_object!=obj)
 
 def choose(context,objects):
     for item in context.selected_objects:item.select_set(False)
@@ -283,7 +284,7 @@ def apply_transform(context,kind,value,axis='Z'):
     and convert back through the existing path frame, keeping the same followers.
     """
     context.view_layer.update()
-    objects=[o for o in context.selected_objects if o.get('curve_parent')]
+    objects=[o for o in context.selected_objects if curve_links.parent_name(o)]
     if not objects:return {'CANCELLED'}
     worlds=[o.matrix_world.copy() for o in objects]
     frames=[w@o.matrix_basis.inverted_safe() for o,w in zip(objects,worlds)]
@@ -303,7 +304,7 @@ def apply_transform(context,kind,value,axis='Z'):
         obj.matrix_basis=frame.inverted_safe()@desired
     context.view_layer.update()
     for obj in objects:
-        parent=context.scene.objects.get(obj.get('curve_parent'))
+        parent=context.scene.objects.get(curve_links.parent_name(obj))
         if parent:curve.calculate_base_scale(parent,obj)
     return {'FINISHED'}
 
@@ -316,7 +317,7 @@ class BBE_OT_studio_drag(bpy.types.Operator):
         self.obj=active_curve(context)
         if not child_mode(context,self.obj):return {'CANCELLED'}
         self.kind=self.obj.get('bbe_studio_tool','MOVE')
-        self.records=[(o,o.matrix_basis.copy()) for o in context.selected_objects if o.get('curve_parent')==self.obj.name]
+        self.records=[(o,o.matrix_basis.copy()) for o in context.selected_objects if curve_links.parent_name(o)==self.obj.name]
         self.start=press_position(context,event).mouse_region_x
         context.window_manager.modal_handler_add(self)
         context.area.header_text_set(self.kind.title()+' '+self.axis+' | Drag left/right | Shift: fine | Esc: cancel')
@@ -460,7 +461,7 @@ class BBE_OT_studio_transform(bpy.types.Operator):
         apply_transform(context,self.kind,self.move if self.kind=='MOVE' else self.angle if self.kind=='ROTATE' else self.size,self.axis)
         context.view_layer.update()
         for child in context.selected_objects:
-            if child.get('curve_parent')==obj.name:curve.calculate_base_scale(obj,child)
+            if curve_links.parent_name(child)==obj.name:curve.calculate_base_scale(obj,child)
         return {'FINISHED'}
 
 CLASSES=(BBE_OT_studio_action,BBE_OT_studio_transform,BBE_OT_studio_drag)

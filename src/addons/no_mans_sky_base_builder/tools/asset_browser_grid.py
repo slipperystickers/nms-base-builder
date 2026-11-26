@@ -511,7 +511,7 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                 if hit and pressed == (hover, event.type):
                     tile, action = hit
                     if not tile[5].get('is_preset'):
-                        new_assets.mark_viewed(tile[4])
+                        new_assets.record_click(context, tile[4])
                     if event.type == 'RIGHTMOUSE' or action == 'options':
                         self.show_options(context, tile)
                     elif action == 'variants':
@@ -563,7 +563,7 @@ class BBE_OT_asset_grid(bpy.types.Operator):
         batch_for_shader(shader, 'TRI_FAN', {'pos': ((x, y), (x+w, y), (x+w, y+h), (x, y+h))}).draw(shader)
 
     def new_border(self, x, y, w, h, scale):
-        color = (1.0, 0.78, 0.06, 1.0)
+        color = new_assets.YELLOW
         edge = max(2, 2 * scale)
         for rect in ((x, y, w, edge), (x, y+h-edge, w, edge),
                      (x, y, edge, h), (x+w-edge, y, edge, h)):

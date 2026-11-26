@@ -2,6 +2,7 @@ from . import i18n
 from .reload_support import prepare_package as _prepare_package
 _prepare_package(globals())
 
+from . import curve_links
 from .furby_errors import report_error
 import json
 import base64
@@ -550,9 +551,9 @@ class NMSMain(PropertyGroup):
 
         for obj in selected_objects:
             # detect if object is nms curve
-            if "has_linked_objects" in obj and curve.is_bezier_or_nurbs_path(obj):
+            if curve_links.has_followers(obj) and curve.is_bezier_or_nurbs_path(obj):
                 for child_obj in bpy.context.scene.objects:
-                    if "curve_parent" in child_obj and child_obj["curve_parent"] == obj.name:
+                    if curve_links.parent_name(child_obj) == obj.name:
                         _material.assign_material(child_obj, int(colour_index), int(maeterial_index))
                         obj["dup_UserData"] = child_obj["UserData"]
             elif "GroupID" in obj:
@@ -617,7 +618,7 @@ class NMSMain(PropertyGroup):
         target_userdata = None
         if "UserData" in target_object:
             target_userdata = target_object["UserData"]
-        elif "has_linked_objects" in target_object:
+        elif curve_links.has_followers(target_object):
             target_userdata = target_object["dup_UserData"]
 
         unique_keys = {}
@@ -645,7 +646,7 @@ class NMSMain(PropertyGroup):
         if target_userdata is not None:
 
             for obj in selected_objects:
-                if "has_linked_objects" in obj and curve.is_bezier_or_nurbs_path(obj):
+                if curve_links.has_followers(obj) and curve.is_bezier_or_nurbs_path(obj):
                     curve.apply_color(obj, target_userdata)
                 elif "ObjectID" in obj and not _materials_v2.is_high_res(obj):
                     obj_id = obj["ObjectID"]
@@ -2279,7 +2280,7 @@ def reset_curve_tracking():
     scene = getattr(bpy.context, 'scene', None)
     known_curve_names = {
         obj.name for obj in scene.objects
-        if obj.type == 'CURVE' and curve.Curve.PROP_CURVE_ID in obj
+        if obj.type == 'CURVE' and curve_links.guide_id(obj)
     } if scene is not None else set()
 
 # To reset toggle button of save editor and initialize curve registry
@@ -2289,7 +2290,7 @@ def reset_plugin_state(dummy):
 
     # collect all curves when a blend file is reopened
     global known_curve_names
-    known_curves = set( obj for obj in bpy.context.scene.objects  if obj.type == 'CURVE' and obj.get("has_linked_objects", False) )
+    known_curves = set( obj for obj in bpy.context.scene.objects  if obj.type == 'CURVE' and curve_links.has_followers(obj) )
     known_curve_names = set( obj.name for obj in known_curves )
     # one scene pass shared by every curve, rather than one per curve
     curve.update_curves(known_curves, children_by_curve=curve.get_curve_children_map())
@@ -2342,10 +2343,9 @@ def udpates_handler(scene, depsgraph):
             # the object can already be gone by the time we look it up
             if orig_obj is None:
                 continue
-            if orig_obj.type == 'CURVE' and curve.Curve.PROP_CURVE_ID in orig_obj:
+            if orig_obj.type == 'CURVE' and curve_links.guide_id(orig_obj):
                 updated_curve_names.add(orig_obj.name)
-            elif curve.Curve.PROP_CURVE_PARENT in orig_obj:
-                parent_curve_name = orig_obj[curve.Curve.PROP_CURVE_PARENT]
+            elif parent_curve_name := curve_links.parent_name(orig_obj):
                 parent_curve = scene.objects.get(parent_curve_name,None)
                 if parent_curve is not None and not parent_curve.get(curve.Curve.PROP_PARENT_SELECTED,True):
                     #store base scale of object
@@ -2363,12 +2363,12 @@ def udpates_handler(scene, depsgraph):
                 new_curve = bpy.context.scene.objects.get(new_curve_name,None)
                 if new_curve is None:
                     continue
-                new_uuid = new_curve.get(curve.Curve.PROP_CURVE_ID)
+                new_uuid = curve_links.guide_id(new_curve)
                 # Look for curves that have same unique_id as new curve
                 # if a duplciate unique_id found, new curve must be duplicate of that curve
                 for curve_name in known_curve_names:
                     matching_curve = bpy.context.scene.objects.get(curve_name,None)
-                    if matching_curve is not None and matching_curve.get(curve.Curve.PROP_CURVE_ID) == new_uuid and matching_curve.name != new_curve.name:
+                    if matching_curve is not None and curve_links.guide_id(matching_curve) == new_uuid and matching_curve.name != new_curve.name:
                         curve.sync_curves(new_curve, matching_curve)
                         break
             except ReferenceError as error:
@@ -2395,7 +2395,7 @@ def udpates_handler(scene, depsgraph):
             # the sliders apply to everything selected, so all of them rebuild
             selected = getattr(bpy.context, "selected_objects", None) or []
             curves_to_update = [
-                obj for obj in selected if curve.Curve.PROP_CURVE_ID in obj
+                obj for obj in selected if curve_links.guide_id(obj)
             ]
         elif updated_curve_names:
             # otherwise only the curves the depsgraph says actually moved
@@ -2406,7 +2406,7 @@ def udpates_handler(scene, depsgraph):
             ]
 
         if (active_object is not None
-                and curve.Curve.PROP_CURVE_ID in active_object
+                and curve_links.guide_id(active_object)
                 and (sliders_moved or active_object.name in updated_curve_names)
                 and active_object not in curves_to_update):
             curves_to_update.append(active_object)
@@ -2436,7 +2436,7 @@ def udpates_handler(scene, depsgraph):
         # whole scene, which is ~4 ms a piece once a base gets big
         orphans = [
             obj for obj in curve.get_follower_objects()
-            if obj.get(curve.Curve.PROP_CURVE_PARENT) in dead_curve_names
+            if curve_links.parent_name(obj) in dead_curve_names
         ]
         if orphans:
             bpy.data.batch_remove(orphans)
@@ -2662,6 +2662,8 @@ def register_core():
     from .save_editor import corvette_actions
     corvette_actions.register()
 
+    if curve_links.protect_legacy_arrays not in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.append(curve_links.protect_legacy_arrays)
     if reset_plugin_state not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(reset_plugin_state)
     if save_manager.capture_before_load not in bpy.app.handlers.load_pre:
@@ -2785,6 +2787,8 @@ def unregister():
     del bpy.types.Scene.nms_batch_tool
     del bpy.types.Scene.nms_asset_browser
 
+    if curve_links.protect_legacy_arrays in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.remove(curve_links.protect_legacy_arrays)
     if reset_plugin_state in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(reset_plugin_state)
     if save_manager.capture_before_load in bpy.app.handlers.load_pre:

@@ -406,7 +406,10 @@ def apply_palette(bpy_object, palette, finish=None, finish_name=None):
     # so the viewport colour has to live on the object - the same reason the
     # palette slots do. Primary is the part's body colour, so it is the one
     # that reads as "what colour is this part".
-    bpy_object.color = primary
+    # Workbench can show one colour per object. Preserve the intrinsic colour
+    # of unpainted trophies and organic salvage until a palette is selected.
+    native_tint = bpy_object.data.get("bbe_native_solid_tint") if bpy_object.data else None
+    bpy_object.color = native_tint if native_tint is not None and palette.get("id") == "LEGACY1" else primary
 
 
 def apply(bpy_object, user_data_value, tag=True):

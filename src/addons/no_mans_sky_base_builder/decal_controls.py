@@ -183,21 +183,17 @@ class BBE_OT_toggle_decal_projection(bpy.types.Operator):
     bl_idname = 'bbe.toggle_decal_projection'
     bl_translation_context = "BBEExtendedInterface"
     bl_label = 'Toggle Decal Projection Preview'
-    bl_description = 'Switch between projected and flat artwork in Blender only; game export is unchanged'
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_description = 'Switch all decals between projected and flat artwork in Blender'
 
     @classmethod
     def poll(cls, context):
         return selected_decal(context) is not None
 
     def execute(self, context):
-        obj = context.active_object
-        obj[decals.PREVIEW_DISABLED] = not obj.get(decals.PREVIEW_DISABLED, False)
-        addon = context.preferences.addons.get(__package__)
-        if addon:
-            addon.preferences.decal_projection_disabled = obj[decals.PREVIEW_DISABLED]
-            bpy.ops.wm.save_userpref()
+        prefs = context.preferences.addons[__package__].preferences
+        prefs.decal_projection_disabled = not prefs.decal_projection_disabled
         decals.request_refresh()
+        bpy.ops.wm.save_userpref()
         return {'FINISHED'}
 
 
@@ -290,7 +286,7 @@ class BBE_GGT_decal_controls(bpy.types.GizmoGroup):
         self.card.matrix_basis = Matrix.Translation((x, y, 0))
         self.card.width, self.card.height, self.card.font_size = width, height, 11*scale
         self.card.lines = ((10*scale, height-19*scale, 'Decal placement', (.94, .95, .97, 1)),
-                           (10*scale, 10*scale, 'Preview toggle does not change export.', (.72, .79, .85, 1)))
+                           (10*scale, 10*scale, 'Preview applies to all decals.', (.72, .79, .85, 1)))
         self.grip.matrix_basis = Matrix.Translation((x, y+height-28*scale, 0))
         self.grip.width, self.grip.height = width, 28*scale
         for i, (button, _) in enumerate(self.buttons):
@@ -300,7 +296,7 @@ class BBE_GGT_decal_controls(bpy.types.GizmoGroup):
         self.buttons[2][0].width = 270*scale
         toggle = self.buttons[5][0]
         toggle.width = 270*scale
-        toggle.text = ('Projection Preview: OFF (Flat)' if context.active_object.get(decals.PREVIEW_DISABLED)
+        toggle.text = ('Projection Preview: OFF (Flat)' if decals.projection_disabled()
                        else 'Projection Preview: ON')
 
 

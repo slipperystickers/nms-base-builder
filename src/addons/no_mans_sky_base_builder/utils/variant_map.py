@@ -45,7 +45,8 @@ TIER_SUFFIX = re.compile(r"\((BASE|MID|TOP)\)\s*$")
 # Their historical root transforms do not reproduce those meshes, so loading
 # the asset is safer than rebuilding it from the NE part.
 OWN_ASSET_VARIANTS = {'B_STR_T_NWTB', 'B_STR_T_NWTB1',
-                      'B_STR_T_NWTB2', 'B_STR_T_NWTB3'}
+                      'B_STR_T_NWTB2', 'B_STR_T_NWTB3',
+                      'B_WNG_O_0_R'}
 
 
 def _tier(nice_name):

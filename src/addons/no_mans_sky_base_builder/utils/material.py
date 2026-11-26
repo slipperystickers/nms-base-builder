@@ -6,6 +6,7 @@ import re
 
 import bpy
 
+from .. import curve_links
 from ..utils import python as python_utils
 from ..utils import userdata
 
@@ -29,6 +30,11 @@ def _materials_v2():
     """
     from ..utils import materials_v2
     return materials_v2
+
+
+def _uses_native_materials(item):
+    data = getattr(item, "data", None)
+    return _materials_v2().is_high_res(item) or bool(data and data.get("bbe_textured_simple"))
 
 
 def get_palette_from_row(row):
@@ -277,7 +283,7 @@ def assign_default_material(item, index=0):
     """
     # High res parts keep their real textures - painting the default grey over
     # them would throw the model away. Their equivalent is palette `index`.
-    if _materials_v2().is_high_res(item):
+    if _uses_native_materials(item):
         _materials_v2().recolour_from_user_data([item], index)
         return None
 
@@ -314,7 +320,7 @@ def restore_material(item, user_data_value):
 
     # High res parts colour by object property, so the value goes on wholesale
     # and their mesh keeps being shared. See utils/materials_v2.py.
-    if _materials_v2().is_high_res(item):
+    if _uses_native_materials(item):
         _materials_v2().recolour_from_user_data([item], user_data_value)
         return
 
@@ -336,7 +342,7 @@ def assign_material(item, colour_index=0, material_index=0):
     """
     # A high res part is repainted in place instead - no flat material is put
     # over its textures, and nothing is copied.
-    if _materials_v2().is_high_res(item):
+    if _uses_native_materials(item):
         _materials_v2().recolour(
             [item], colour_index=colour_index, material_index=material_index
         )
@@ -391,7 +397,7 @@ def optimise_materials():
     unique_materials = {}
     # loop through all objects
     for obj in bpy.context.scene.objects:
-        if "ObjectID" in obj and obj.get("curve_parent") is None:
+        if "ObjectID" in obj and curve_links.parent_name(obj) is None:
 
             obj_id = obj.get("ObjectID")
             # skip objects that are more complex

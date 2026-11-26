@@ -1,3 +1,4 @@
+from .. import curve_links
 from ..utils import mirror_utils
 import bpy
 import os
@@ -157,20 +158,18 @@ class BatchTool(bpy.types.PropertyGroup):
 
                 # Copy transforms
                 replaced_object.matrix_world = source_object.matrix_world.copy()
-                # Preview preferences belong to the placed decal, not the newly
-                # loaded browser template. Never reuse its projected surface.
+                # A replacement needs the original artwork mesh for its own surface.
                 from .. import decals
                 if decals.is_decal(source_object) and decals.is_decal(replaced_object):
                     replaced_object.data = decals.source_mesh(target_object)
                     replaced_object[decals.SOURCE] = replaced_object.data
-                    replaced_object[decals.PREVIEW_DISABLED] = bool(source_object.get(decals.PREVIEW_DISABLED, False))
                     decals.request_refresh()
                 # Link the new object to the scene
                 current_collection.objects.link(replaced_object)
 
                 replaced_objects_list.append(replaced_object)
                 objects_to_delete.append(source_object)
-            elif "has_linked_objects" in source_object and source_object.get("has_linked_objects", False):
+            elif curve_links.has_followers(source_object):
                 new_curve, old_curve = curve.replace_curve_object(source_object, target_object)
                 replaced_objects_list.append(new_curve)
                 objects_to_delete.append(old_curve)

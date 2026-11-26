@@ -197,7 +197,7 @@ TOPICS.update({
         ('Show rings or a wire sphere', 'After importing a supported base, expand Build Boundary in the Outliner. Use the eye beside Rings or Wire Sphere to show that guide. The collection eye controls both.'),
     )),
     'DECALS': ('Position a decal', (
-        ('Place on Surface', 'Select a decal and click Place on Surface beside it. Click the desired surface. Use Rotate, Closer or Away to fine-tune its position. Projection Preview switches the projected appearance on or off.'),
+        ('Place on Surface', 'Select a decal and click Place on Surface beside it. Click the desired surface. Use Rotate, Closer or Away to fine-tune its position. Projection Preview switches all decals between projected and flat artwork. Blender remembers your choice for future placements.'),
     )),
     'TUBES': ('Bubble tube openings and branches', (
         ('Choose opening direction', 'Select a supported tube junction. Use the arrows on its viewport controls to preview another opening direction. Finish connecting open elbows before exporting a Corvette.'),

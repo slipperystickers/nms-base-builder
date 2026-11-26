@@ -4,6 +4,7 @@ from mathutils import Matrix, Vector
 import bpy
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
+from . import curve_links
 from . import i18n
 from .curve_shapes import SHAPES
 
@@ -12,7 +13,6 @@ SECOND = "Click another endpoint to join or close the path. Esc cancels."
 HELP = "Click two endpoints to join paths or close one path. Esc cancels."
 GUIDE = 'bbe_easy_curve'
 bbeplus_GUIDE = 'bbeplus_easy_curve'
-FOLLOWERS = 'has_linked_objects'
 
 
 def endpoints(context):
@@ -67,8 +67,8 @@ def join(context, first, second):
         return
     # Keep an existing array attached to its guide. Two independent arrays cannot
     # both control one path without changing their spacing and ownership.
-    if keep != donor and donor.get(FOLLOWERS):
-        if keep.get(FOLLOWERS):
+    if keep != donor and curve_links.has_followers(donor):
+        if curve_links.has_followers(keep):
             raise ValueError("Unlink one array before connecting two guides with attached parts.")
         return join(context, second, first)
     if keep != donor and len(donor.data.splines) == 1 and donor.children:
@@ -177,10 +177,10 @@ def move_and_connect(context,first,second):
         raise ValueError('Choose open endpoints on two different curves.')
     source=context.view_layer.objects[first[0]]
     target=context.view_layer.objects[second[0]]
-    if source.get(FOLLOWERS) and target.get(FOLLOWERS):
+    if curve_links.has_followers(source) and curve_links.has_followers(target):
         raise ValueError('Unlink one array before joining two guides with attached parts.')
     # Keep the object that owns children/array settings. Validate before moving.
-    keep,donor=(source,target) if source.children or source.get(FOLLOWERS) else (target,source)
+    keep,donor=(source,target) if source.children or curve_links.has_followers(source) else (target,source)
     if len(donor.data.splines)==1 and donor.children:
         raise ValueError('Both curves have attached children. Unlink one set before joining.')
     if keep.matrix_world.to_3x3().determinant()==0:

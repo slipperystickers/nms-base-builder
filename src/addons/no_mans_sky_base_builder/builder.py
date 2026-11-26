@@ -202,8 +202,6 @@ class Builder(object):
         
         if placement_matrix is not None:
             item.object.matrix_world = placement_matrix
-        from . import decals
-        decals.initialize_settings(item.object)
         return item
 
     def add_preset(self, preset_id):

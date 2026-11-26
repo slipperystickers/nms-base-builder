@@ -1,4 +1,5 @@
 import bpy
+from .. import curve_links
 from ..utils import curve, dictionary, blend_utils
 from .. import builder
 import re
@@ -134,8 +135,8 @@ class Properties(bpy.types.PropertyGroup):
         visited_curves_names = []
         curves_to_select = []
         for obj in selected_objects:
-            if curve.Curve.PROP_CURVE_PARENT in obj and curve.Curve.PROP_CURVE_ID not in obj:
-                parent_curve_name = obj.get(curve.Curve.PROP_CURVE_PARENT)
+            if curve_links.parent_name(obj) and not curve_links.guide_id(obj):
+                parent_curve_name = curve_links.parent_name(obj)
                 if parent_curve_name in visited_curves_names:
                     continue
 
@@ -155,7 +156,7 @@ class Properties(bpy.types.PropertyGroup):
         selected_objects = bpy.context.selected_objects
 
         for obj in selected_objects:
-            if "CurveID" not in obj:
+            if not curve_links.guide_id(obj):
                 ShowMessageBox(
                     message="All selected objects are not curves",
                     title="Selection Failed"
@@ -163,7 +164,7 @@ class Properties(bpy.types.PropertyGroup):
                 return
 
         children_to_select = []
-        if active_object is not None and curve.Curve.PROP_CURVE_ID in active_object:
+        if active_object is not None and curve_links.guide_id(active_object):
             for curve_obj in selected_objects:
                 children = curve.select_children_of_curve(curve_obj)
                 if children:
@@ -176,11 +177,11 @@ class Properties(bpy.types.PropertyGroup):
         selected_objects = bpy.context.selected_objects
         active_object = bpy.context.view_layer.objects.active
         active_curve_name = self.active_curve_name
-        if "has_linked_objects" in active_object:
+        if curve_links.has_followers(active_object):
             for obj in selected_objects:
                 if obj.name == active_curve_name:
                     return True
-        elif "curve_parent" in active_object:
+        elif curve_links.parent_name(active_object):
             for obj in selected_objects:
                 if obj.name == active_object.name:
                     return True

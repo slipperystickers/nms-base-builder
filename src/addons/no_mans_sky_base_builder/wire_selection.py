@@ -3,7 +3,8 @@
 Blender intersects the location locks of every selected object when drawing
 its gizmo. Cable meshes are driven by their ends, so their redundant locks
 must not hide the Move arrows for an otherwise movable complete selection.
-A single free cable also selects its two private controls for native Move.
+Selected spans bring their free controls into native Move. Shared junctions
+are included only when every incident span is selected.
 """
 import bpy
 from bpy.app.handlers import persistent
@@ -14,13 +15,17 @@ TAG = '_bbe_endpoint_move_lock'
 _rigs = []
 _endpoint_uses = {}
 _signature = None
+_selection_key = None
+_auto_controls = set()
 _busy = False
 _saving = False
 
 
 def invalidate():
-    global _signature
+    global _signature, _selection_key
     _signature = None
+    _selection_key = None
+    _auto_controls.clear()
 
 
 def shared_endpoint(control):
@@ -60,6 +65,55 @@ def _restore():
             pass
 
 
+def _movable_control(control, layer):
+    return (cables.free_control(control) and not any(control.lock_location)
+            and not control.hide_select and control.name in layer.objects
+            and control.visible_get(view_layer=layer))
+
+
+def _end_moves_with_selection(control, layer, selected):
+    owner = cables.attached_device(control)
+    if owner is not None:
+        return owner in selected
+    return (control.name in layer.objects and control.select_get(view_layer=layer)
+            and not control.hide_select and control.visible_get(view_layer=layer)
+            and not any(control.lock_location))
+
+
+def _include_controls(layer, selected):
+    """Complete a span selection once, leaving manual endpoint edits alone."""
+    global _selection_key
+    chosen = {obj for obj, _, _ in _rigs if obj in selected}
+    group = len(chosen) > 1 or any(not o.get('rig_item') for o in selected - chosen)
+    key = (layer.as_pointer(), frozenset(chosen), group)
+    if key == _selection_key:
+        return
+    _selection_key = key
+    if not chosen:
+        _auto_controls.clear()
+        return
+
+    uses = {}
+    for obj, start, end in _rigs:
+        if obj in chosen:
+            for control in (start, end):
+                uses[control] = uses.get(control, 0) + 1
+    eligible = {control for control, count in uses.items()
+                if count == _endpoint_uses[control] and _movable_control(control, layer)}
+    # A lone click on an attached span must still allow its socket to be picked.
+    if not group:
+        lone = next(iter(chosen))
+        if (layer.objects.active != lone or lone.get('ObjectID') not in cables.EDITABLE_LINES
+                or len(eligible) != 2 or (selected - chosen - _auto_controls)):
+            eligible.clear()
+    for control in (_auto_controls & selected) - eligible:
+        control.select_set(False, view_layer=layer)
+    _auto_controls.intersection_update(eligible & selected)
+    for control in eligible - selected:
+        control.select_set(True, view_layer=layer)
+        _auto_controls.add(control)
+
+
 @persistent
 def refresh_selection(scene=None, _depsgraph=None):
     global _busy, _signature, _rigs
@@ -92,26 +146,16 @@ def refresh_selection(scene=None, _depsgraph=None):
                     _rigs.append((obj, *ends))
             _signature = signature
         object_mode = context.mode == 'OBJECT'
-        active = layer.objects.active
-        single = (object_mode and active is not None and active.get('ObjectID') in cables.EDITABLE_LINES
-                  and context.selected_objects == [active])
+        if not _rigs:
+            return
+        selected = set(context.selected_objects or ()) if object_mode else set()
+        _include_controls(layer, selected)
         for obj, start, end in _rigs:
             try:
-                # A shared junction belongs to other lines too. Only include it
-                # in a selection when the user explicitly selects the ends.
-                if single and obj == active and all(
-                    _endpoint_uses.get(end_obj) == 1 and cables.free_control(end_obj)
-                    and not any(end_obj.lock_location) and not end_obj.hide_select
-                    and end_obj.name in layer.objects and end_obj.visible_get(view_layer=layer)
-                    for end_obj in (start, end)
-                ):
-                    start.select_set(True, view_layer=layer)
-                    end.select_set(True, view_layer=layer)
-                complete = object_mode and all(
-                    item.name in layer.objects and item.select_get(view_layer=layer)
-                    and not item.hide_select and item.visible_get(view_layer=layer)
-                    for item in (obj, start, end)
-                ) and not any(start.lock_location) and not any(end.lock_location)
+                complete = obj in selected and not obj.hide_select and all(
+                    _end_moves_with_selection(control, layer, selected)
+                    for control in (start, end)
+                )
                 locks = (not complete,) * 3
                 if tuple(obj.lock_location) != locks:
                     obj.lock_location = locks

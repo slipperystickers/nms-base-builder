@@ -49,7 +49,8 @@ def target(context):
     if not obj.get(TAG) and cockpit_id(obj) not in NATIVE:
         return None
     first = first_cockpit(context.scene)
-    return first if obj.get(TAG) or obj == first else None
+    owner = obj.get(TARGET) if obj.get(TAG) else obj
+    return first if owner == first else None
 
 
 def references(scene, cockpit):
@@ -228,11 +229,11 @@ def retarget_reference(model, cockpit):
 
 def sync_flight_reference(context):
     """Called by explicit cockpit-order edits, never from draw/depsgraph handlers."""
+    models = attached_references(context.scene)
     cockpit = first_cockpit(context.scene)
     if cockpit:
-        for model in context.scene.objects:
-            if model.get(TAG):
-                retarget_reference(model, cockpit)
+        for model in models:
+            retarget_reference(model, cockpit)
     from . import pilot_pose
     pilot_pose.update_scene(context.scene, force=True)
 
@@ -265,9 +266,7 @@ def resolved_mesh(race, detailed):
 def sync_scene_quality(scene, detailed):
     """Reuse cached meshes when BBE's existing proxy-quality action runs."""
     switched = missing = 0
-    for model in scene.objects:
-        if not model.get(TAG):
-            continue
+    for model in attached_references(scene):
         mesh, actual, warning = resolved_mesh(model[RACE], detailed)
         model[DETAIL] = actual
         model['bbe_pilot_asset_warning'] = warning
@@ -287,7 +286,7 @@ def choose(context, race):
         raise ValueError('Pilot references require a positive, uniform cockpit scale')
     # Resolve asset before mutating the scene; failures preserve the old model.
     mesh, detailed, warning = resolved_mesh(race, scene_detail(context.scene))
-    existing = [obj for obj in context.scene.objects if obj.get(TAG)]
+    existing = attached_references(context.scene)
     model = existing[0] if existing else None
     if model is None:
         collection = bpy.data.collections.new('Pilot reference — ' + cockpit.name)
@@ -320,24 +319,57 @@ def choose(context, race):
     return model
 
 
+def _remove_reference(model):
+    collections = list(model.users_collection)
+    root, mesh = model.parent, model.data
+    bpy.data.objects.remove(model, do_unlink=True)
+    if mesh and mesh.get('bbe_pilot_posed_mesh') and not mesh.users:
+        bpy.data.meshes.remove(mesh)
+    if root and root.get(ROOT_TAG) and not root.children:
+        bpy.data.objects.remove(root, do_unlink=True)
+    for collection in collections:
+        if collection.get('bbe_pilot_collection') and not collection.objects and not collection.children:
+            bpy.data.collections.remove(collection)
+
+
+def attached_references(scene):
+    """Prune deleted owners before export order can nominate another cockpit."""
+    attached = []
+    for model in [obj for obj in scene.objects if obj.get(TAG)]:
+        owner = model.get(TARGET)
+        if owner and scene.objects.get(owner.name) == owner:
+            attached.append(model)
+        elif owner and any(s.objects.get(owner.name) == owner for s in model.users_scene):
+            # A linked scene still owns this pilot. Unlink only our own dedicated
+            # collection from this scene, preserving the other scene's data.
+            for collection in list(model.users_collection):
+                if (collection.get('bbe_pilot_collection') and not collection.children
+                        and scene.collection.children.get(collection.name) == collection
+                        and all(obj in (model, model.parent) for obj in collection.objects)):
+                    scene.collection.children.unlink(collection)
+        else:
+            _remove_reference(model)
+
+    # Native multi-select Delete may already have removed the visible model.
+    for collection in list(scene.collection.children):
+        if collection.get('bbe_pilot_collection'):
+            for root in list(collection.objects):
+                if root.get(ROOT_TAG) and not root.children:
+                    bpy.data.objects.remove(root, do_unlink=True)
+            if not collection.objects and not collection.children:
+                bpy.data.collections.remove(collection)
+    return attached
+
+
 def remove(context):
     cockpit = target(context)
-    for obj in references(context.scene, cockpit):
-        collections = list(obj.users_collection)
-        root = obj.parent
-        mesh = obj.data
-        if context.active_object == obj:
-            obj.select_set(False)
-            cockpit.select_set(True)
-            context.view_layer.objects.active = cockpit
-        bpy.data.objects.remove(obj, do_unlink=True)
-        if mesh.get('bbe_pilot_posed_mesh') and mesh.users == 0:
-            bpy.data.meshes.remove(mesh)
-        if root and root.get(ROOT_TAG) and not root.children:
-            bpy.data.objects.remove(root, do_unlink=True)
-        for collection in collections:
-            if collection.get('bbe_pilot_collection') and not collection.objects and not collection.children:
-                bpy.data.collections.remove(collection)
+    if cockpit:
+        for obj in references(context.scene, cockpit):
+            if context.active_object == obj:
+                obj.select_set(False)
+                cockpit.select_set(True)
+                context.view_layer.objects.active = cockpit
+            _remove_reference(obj)
 
 
 class BBE_OT_choose_pilot(bpy.types.Operator):
@@ -353,8 +385,8 @@ class BBE_OT_choose_pilot(bpy.types.Operator):
             model = choose(context, self.race)
             if model.get('bbe_pilot_asset_warning'):
                 self.report({'WARNING'}, model['bbe_pilot_asset_warning'])
-            if model.get('bbe_pilot_pose_warning'):
-                self.report({'WARNING'}, model['bbe_pilot_pose_warning'])
+            elif model.get('bbe_pilot_pose_warning') and 'bbe_pilot_hand_positions' not in model:
+                self.report({'INFO'}, 'Pilot placed. ' + model['bbe_pilot_pose_warning'])
         except (ValueError, OSError, RuntimeError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}

@@ -302,6 +302,9 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
     
     
     def execute(self, context):
+        if not self.is_preset:
+            from ..utils import new_assets
+            new_assets.record_click(context, self.object_id)
         from .. import shapes
         if shapes._requests:
             try:
@@ -335,12 +338,6 @@ class AssetBrowserObjectSelected(bpy.types.Operator):
             except Exception as error:
                 report_error(self, {'ERROR'}, f'Could not add character reference: {error}')
                 return {'CANCELLED'}
-        if not self.is_preset:
-            from ..utils import new_assets
-            if new_assets.mark_viewed(self.object_id):
-                for window in context.window_manager.windows:
-                    for area in window.screen.areas:
-                        area.tag_redraw()
         variants = self.variants
         scene = context.scene
         asset_browser = scene.nms_asset_browser
