@@ -171,9 +171,11 @@ def _refresh():
     t = bpy.app.translations
     if _registered_choice is not None:
         t.unregister(__package__)
-    maps = {}
-    for tag in set(t.locales) | set(catalogues()):
-        automatic = catalogues().get(locale_key(tag), {})
+    tags = set(t.locales) | set(catalogues())
+    by_language = {}
+    # Regional aliases use identical dictionaries, including unsupported locales.
+    for language in {locale_key(tag) for tag in tags}:
+        automatic = catalogues().get(language, {})
         # Only the extension's private context follows its override.
         entries = {(ctx, key): val for ctx in (t.contexts.default, t.contexts.operator_default, __package__)
                    for key, val in automatic.items()}
@@ -181,8 +183,8 @@ def _refresh():
         if selected == "en_US":
             scoped = {source: source for source in automatic}
         entries.update({(CONTEXT, key): val for key, val in scoped.items()})
-        maps[tag] = entries
-    t.register(__package__, maps)
+        by_language[language] = entries
+    t.register(__package__, {tag: by_language[locale_key(tag)] for tag in tags})
     _registered_choice = selected
 
 

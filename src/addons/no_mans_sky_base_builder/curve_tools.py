@@ -15,6 +15,9 @@ from .curve_shapes import SHAPES, shape_points, resample_offsets
 _building = False
 _drawing = {}
 _anchors = {}
+# Window-local editing intent. Do not store this in a project or in preferences.
+_viewport_sessions = {}
+_selection_owner = object()
 
 # Keep existing stored enum values: Side was 3 before Rear was introduced.
 DRAW_PLANES=[('VIEW','Current View','Draw facing your current view through the 3D cursor',0),
@@ -24,18 +27,77 @@ DRAW_PLANES=[('VIEW','Current View','Draw facing your current view through the 3
              ('YZ','Side','Vertical side plane through the 3D cursor',3)]
 
 
-def active_curve(context):
-    obj = context.active_object
-    if obj is None or not obj.select_get():
+def selected_guide(obj, scene, view_layer):
+    from .utils.curve import is_guide_object
+    if obj is None or not obj.select_get(view_layer=view_layer):
         return None
-    if obj.type == 'CURVE' and not obj.get('ObjectID'):
-        return obj
+    if obj.type == 'CURVE':
+        return obj if is_guide_object(obj) else None
     name = curve_links.parent_name(obj)
-    parent = context.scene.objects.get(name) if name else obj.parent
-    if parent is not None and parent.type == 'CURVE' and not parent.get('ObjectID'):
-        return parent
-    selected=[o for o in context.selected_objects if o.type=='CURVE' and not o.get('ObjectID')]
-    return selected[0] if len(selected)==1 else None
+    guide = scene.objects.get(name) if name else None
+    # Older cached parts can retain a follower's tag after losing its constraint.
+    if is_guide_object(guide) and any(c.type == 'FOLLOW_PATH' and c.target == guide for c in obj.constraints):
+        return guide
+    return None
+
+
+def active_curve(context):
+    return selected_guide(context.active_object, context.scene, context.view_layer)
+
+
+def _session_key(window, guide_id):
+    return (window.workspace.session_uid, window.scene.session_uid, guide_id)
+
+
+def viewport_session_matches(window, guide_id):
+    return _viewport_sessions.get(window.as_pointer()) == _session_key(window, guide_id)
+
+
+def open_viewport_controls(context, guide):
+    _viewport_sessions[context.window.as_pointer()] = _session_key(context.window, guide.session_uid)
+    context.scene.bbe_curve_helper = True
+    for area in context.screen.areas:
+        if area.type == 'VIEW_3D':
+            area.spaces.active.show_gizmo = True
+            area.tag_redraw()
+
+
+def viewport_curve(context):
+    window = context.window
+    if window is None:
+        return None
+    key = window.as_pointer()
+    session = _viewport_sessions.get(key)
+    if session is None:
+        return None
+    guide = active_curve(context)
+    if guide is not None and _session_key(context.window, guide.session_uid) == session:
+        return guide
+    _viewport_sessions.pop(key, None)
+    return None
+
+
+def _selection_changed():
+    # Also end a session when the user changes selection with gizmos hidden.
+    if not _viewport_sessions:
+        return
+    windows = {w.as_pointer(): w for w in bpy.context.window_manager.windows}
+    for key in tuple(_viewport_sessions):
+        window = windows.get(key)
+        if window is None:
+            _viewport_sessions.pop(key)
+        else:
+            with bpy.context.temp_override(window=window):
+                viewport_curve(bpy.context)
+
+
+@persistent
+def _reset_viewport_sessions(*_):
+    _viewport_sessions.clear()
+    bpy.msgbus.clear_by_owner(_selection_owner)
+    for key in ((bpy.types.LayerObjects, 'active'), (bpy.types.Window, 'scene'),
+                (bpy.types.Window, 'workspace'), (bpy.types.Window, 'view_layer')):
+        bpy.msgbus.subscribe_rna(key=key, owner=_selection_owner, args=(), notify=_selection_changed)
 
 
 def editable(obj):
@@ -300,9 +362,7 @@ def new_curve(context,kind):
         if not (selected.get('ObjectID') or selected.get('GroupID')):
             selected.select_set(False)
     obj.select_set(True);context.view_layer.objects.active=obj
-    context.scene.bbe_curve_helper=True
-    for area in context.screen.areas:
-        if area.type=='VIEW_3D':area.spaces.active.show_gizmo=True
+    open_viewport_controls(context, obj)
     context.scene.nms_properties.set_active_obect(obj)
     return obj
 
@@ -495,6 +555,7 @@ class BBE_OT_curve_draw(bpy.types.Operator):
             context.area.tag_redraw()
         self.old_selection=[o.name for o in context.selected_objects]
         self.old_active=context.active_object.name if context.active_object else ''
+        self.previous_session = _viewport_sessions.get(context.window.as_pointer())
         self.obj=new_curve(context,'FREE');self.points=[]
         self.origin=Vector(self.start_position) if self.start_at_point else context.scene.cursor.location.copy()
         if self.start_at_point:self.obj.location=self.origin
@@ -526,6 +587,8 @@ class BBE_OT_curve_draw(bpy.types.Operator):
                 obj=context.scene.objects.get(name)
                 if obj:obj.select_set(True)
             context.view_layer.objects.active=context.scene.objects.get(self.old_active)
+            if self.previous_session is not None:
+                _viewport_sessions[context.window.as_pointer()] = self.previous_session
             return {'CANCELLED'}
         set_free_points(self.obj,self.points)
         return {'FINISHED'}
@@ -585,6 +648,17 @@ class BBE_OT_curve_action(bpy.types.Operator):
     def execute(self,context):
         obj=active_curve(context)
         if not editable(obj):return {'CANCELLED'}
+        if self.action == 'SHOW_CONTROLS':
+            open_viewport_controls(context, obj)
+            return {'FINISHED'}
+        if self.action == 'HIDE_CONTROLS':
+            _viewport_sessions.pop(context.window.as_pointer(), None)
+            from . import curve_studio
+            curve_studio.restore_if_left(context.scene)
+            for area in context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.tag_redraw()
+            return {'FINISHED'}
         p=obj.bbe_curve
         if self.action=='LINK':
             p.linked_handles=not p.linked_handles
@@ -821,7 +895,10 @@ def draw_controls(layout,context):
     row = layout.row(align=True)
     row.label(text=obj.name,**icons.ui_icon('MOD_DASH'))
     row.operator('object.nms_curve_delete', text='Delete Curve', icon='TRASH')
-    layout.prop(context.scene,'bbe_curve_helper',text='Viewport controls & drag points')
+    shown = context.scene.bbe_curve_helper and viewport_curve(context) == obj
+    control = layout.operator('bbe.curve_action', text='Hide Viewport Controls' if shown else 'Edit in Viewport',
+                              **icons.ui_icon('HIDE_ON' if shown else 'MOD_DASH'))
+    control.action = 'HIDE_CONTROLS' if shown else 'SHOW_CONTROLS'
     layout.prop(obj.bbe_curve,'linked_handles',text='Link tangent handles')
     if obj.get('bbe_easy_curve') and obj.bbe_curve.kind!='FREE':
         for field,label in parameters(obj):
@@ -895,7 +972,7 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
     @classmethod
     def poll(cls,context):
         from . import undo_guard
-        return not undo_guard.restoring and context.mode=='OBJECT' and context.scene.bbe_curve_helper and editable(active_curve(context))
+        return not undo_guard.restoring and context.mode=='OBJECT' and context.scene.bbe_curve_helper and editable(viewport_curve(context))
     def setup(self,context):
         self.card=self.gizmos.new('BBE_GT_curve_widget');self.card.hide_select=True
         self.card.style='CARD'
@@ -917,7 +994,7 @@ class BBE_GGT_curve_controls(bpy.types.GizmoGroup):
             if not op.is_property_set(k) or getattr(op,k)!=v:setattr(op,k,v)
         return g
     def draw_prepare(self,context):
-        obj=active_curve(context)
+        obj=viewport_curve(context)
         if obj is None:return
         scale=self.scale=context.preferences.system.ui_scale
         # Hiding a live gizmo clears its hover before the following click.
@@ -1075,6 +1152,8 @@ def register():
     bpy.types.Object.bbe_curve=bpy.props.PointerProperty(type=BBE_PG_curve)
     bpy.types.Scene.bbe_curve_helper=bpy.props.BoolProperty(default=True)
     bpy.types.Scene.bbe_curve_plane=bpy.props.EnumProperty(translation_context="BBEExtendedInterface", items=DRAW_PLANES, default='XY')
+    _reset_viewport_sessions()
+    bpy.app.handlers.load_post.append(_reset_viewport_sessions)
     bpy.app.handlers.load_post.append(reset)
     bpy.app.timers.register(reset,first_interval=.1)
 def unregister():
@@ -1084,6 +1163,9 @@ def unregister():
     curve_surface.unregister()
     if bpy.app.timers.is_registered(reset):bpy.app.timers.unregister(reset)
     reset()
+    bpy.msgbus.clear_by_owner(_selection_owner)
+    _viewport_sessions.clear()
+    bpy.app.handlers.load_post.remove(_reset_viewport_sessions)
     if reset in bpy.app.handlers.load_post:bpy.app.handlers.load_post.remove(reset)
     del bpy.types.Object.bbe_curve;del bpy.types.Scene.bbe_curve_helper;del bpy.types.Scene.bbe_curve_plane
     for cls in reversed(CLASSES):bpy.utils.unregister_class(cls)

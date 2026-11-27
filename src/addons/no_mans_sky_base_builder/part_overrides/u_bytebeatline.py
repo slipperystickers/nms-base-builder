@@ -11,6 +11,13 @@ class U_BYTEBEATLINE(line.Line):
         from .. import cable_connections
         cable_connections.style(self.object)
 
+    @staticmethod
+    def position_matrix(data, cable, compensate_normal=True):
+        line.Line.position_matrix(data, cable, compensate_normal)
+        # Even unrigged import previews need the same width on both local axes.
+        from .. import cable_connections
+        cable_connections.set_bytebeat_width(cable.object, cable_connections.bytebeat_width(cable.object))
+
     def retrieve_object_from_id(self, object_id):
         # Keep Line's special length/export math and endpoint rig. Only the
         # display mesh changes; the generic bulk importer normalises lengths.

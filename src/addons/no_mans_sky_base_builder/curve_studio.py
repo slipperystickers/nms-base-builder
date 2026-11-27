@@ -89,14 +89,16 @@ def session_visible(scene, session):
     if (window is None or window.scene != scene or window.workspace.session_uid != session['workspace']
             or not getattr(scene, 'bbe_curve_helper', False)):
         return False
+    from .curve_tools import selected_guide, viewport_session_matches
+    if not viewport_session_matches(window, session['guide']):
+        return False
     layer = window.view_layer
     obj = layer.objects.active
-    if obj is None or obj.mode != 'OBJECT' or not obj.select_get(view_layer=layer):
+    if obj is None or obj.mode != 'OBJECT':
         return False
-    if obj.type != 'CURVE' or obj.get('ObjectID'):
-        parent_name = curve_links.parent_name(obj)
-        obj = scene.objects.get(parent_name) if parent_name else obj.parent
-    return obj is not None and obj.session_uid == session['guide']
+    guide = selected_guide(obj, scene, layer)
+    return guide is not None and guide.session_uid == session['guide']
+
 
 
 def restore_if_left(scene):
@@ -227,6 +229,8 @@ def select_children(context,obj):
     choose(context,children)
     if children:context.scene.nms_properties.set_active_obect(children[0])
     if children:
+        from .curve_tools import open_viewport_controls
+        open_viewport_controls(context, obj)
         entered = begin_transform_session(context, obj)
         if use_blender_tools(context): return
         if entered:

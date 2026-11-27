@@ -108,6 +108,7 @@ TOPICS.update({
         ('Place Cables', 'Choose Electrical, Teleport, ByteBeat, or Supply Pipe, then click Place Cables. Click a start and an end for each cable, then repeat. Right-click, press Esc, or choose another tool, asset, or menu to finish. Electrical targets and cables are blue, teleport cyan, ByteBeat pink, and supply orange. Green targets are structural snaps. Electrical, ByteBeat, and supply ends can also be placed in empty space.'),
         ('Supply pipes', 'Connect gas or mineral extractors to supply depots using orange supply sockets. These are separate from electrical sockets. You can also place free endpoints or branch an existing supply pipe.'),
         ('Show or hide connectors', 'Use the eye button in the viewport toolbar to show or hide connectors. Place Cables shows compatible sockets while you work and restores your visibility setting when you finish. To hide the cables themselves, use their collection in the Outliner.'),
+        ('Scale a ByteBeat cable', 'Select the span of a free ByteBeat cable. Press S and type a scale factor, or change ByteBeat Thickness in Cables & Logic. Both endpoints stay in place. Attaching either end to a device restores normal width.'),
         ('Hide a cable type', 'In the Outliner, click the eye beside Electrical Connections, Teleport Connections, ByteBeat Connections, or Supply Pipes. Its cables and endpoint controls hide together. Click the eye again to show them.'),
         ('Proximity-controlled door', 'Select a power door and click +Prox Control. The inverter closes the powered door until the proximity switch senses a player. BBE connects the feed to the closest visible socket on a battery, generator, solar panel, or their wired grid. If there is no supply, click a socket to finish the feed.'),
         ('New Point', 'For Electrical, ByteBeat, or Supply Pipe, click New Point, then click a matching cable where you want a junction. Both spans stay connected. Click a destination to branch, or press Esc to keep just the junction. Click empty space to start a fresh path. Teleport cables cannot branch.'),
@@ -231,7 +232,7 @@ ADDITIONAL_STEPS = {
         ('Keep tapered copies touching', 'Start with full-size copies. Set Spacing so the first two touch, then increase Taper. Spacing shrinks with each copy. Increase the copy count if the run ends early.'),
         ('Twist along curve', 'Use Twist along curve to roll the copies progressively. Enter 360 degrees for one turn or a negative angle to reverse it.'),
         ('Taper a corkscrew or spiral', 'Choose a Corkscrew or Spiral preset. Increase Radius taper to narrow the last winding, or use a negative value to widen it.'),
-        ('Use Blender Tools', 'In the piece controls, enable Use Blender Tools to keep your Blender transform gizmo. Reselect the curve or a linked part to return to the studio.'),
+        ('Use Blender Tools', 'In the piece controls, enable Use Blender Tools to keep your Blender transform gizmo. To reopen Curve Studio, select the guide or a linked copy and choose Edit in Viewport from Curve Tools.'),
     ),
     'SHAPES': (
         ('Fit a filled outline', 'Choose a 2D shape and select Fill. Set the outside face of the part first. Increase Edge detail to refine corners and set Part limit to control the number of pieces.'),

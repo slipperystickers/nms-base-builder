@@ -138,6 +138,71 @@ class BBE_GGT_endpoint_snap(bpy.types.GizmoGroup):
 def wrapped(angle):
     return (angle + math.pi) % math.tau - math.pi
 
+class BBE_OT_scale_bytebeat(bpy.types.Operator):
+    bl_idname = 'bbe.scale_bytebeat'
+    bl_label = 'Scale ByteBeat Cable Thickness'
+    bl_description = 'Widen or narrow a free ByteBeat cable around its endpoints'
+    bl_options = {'UNDO', 'BLOCKING'}
+
+    @classmethod
+    def poll(cls, ctx):
+        obj = ctx.active_object
+        if not (ctx.area and ctx.area.type == 'VIEW_3D' and ctx.mode == 'OBJECT'
+                and obj and obj.is_editable and obj.select_get() and cables.free_bytebeat(obj)):
+            return False
+        ends = cables.endpoints(obj)
+        return all(item == obj or item in ends for item in ctx.selected_objects)
+
+    def invoke(self, ctx, event):
+        self.cable = ctx.active_object
+        self.original = max(.001, cables.bytebeat_width(self.cable))
+        self.mouse_x = event.mouse_x
+        self.factor = 1.0
+        self.number = ''
+        self.show_width(ctx)
+        ctx.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def show_width(self, ctx):
+        ctx.area.header_text_set(i18n.interface(
+            'ByteBeat thickness {width}x | Move mouse or type a scale factor | Enter to confirm, Esc to cancel'
+        ).format(width=f'{self.cable.bbe_bytebeat_width:.3g}'))
+        ctx.area.tag_redraw()
+
+    def modal(self, ctx, event):
+        if event.type in {'ESC', 'RIGHTMOUSE', 'WINDOW_DEACTIVATE'}:
+            self.cable.bbe_bytebeat_width = self.original
+            ctx.area.header_text_set(None)
+            return {'CANCELLED'}
+        if event.value == 'PRESS' and event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'}:
+            ctx.area.header_text_set(None)
+            return {'FINISHED'}
+        if event.type == 'MOUSEMOVE':
+            dx = (event.mouse_x - self.mouse_x) / max(1, ctx.preferences.system.ui_scale)
+            self.mouse_x = event.mouse_x
+            self.factor *= 2 ** max(-16, min(16, dx / (1200 if event.shift else 120)))
+            self.factor = max(.001 / self.original, min(1e30 / self.original, self.factor))
+        elif event.value == 'PRESS':
+            char = event.unicode
+            if char and (char in '0123456789' or (char == '.' and '.' not in self.number)):
+                self.number += char
+            elif event.type == 'BACK_SPACE':
+                self.number = self.number[:-1]
+        try:
+            factor = float(self.number) if self.number else self.factor
+            if factor > 0:
+                self.cable.bbe_bytebeat_width = min(1e30, self.original * factor)
+        except ValueError:
+            pass  # A decimal point may be the first character typed.
+        self.show_width(ctx)
+        return {'RUNNING_MODAL'}
+
+
+def write_bytebeat_width(obj, value):
+    if cables.free_bytebeat(obj):
+        cables.set_bytebeat_width(obj, value)
+
+
 class BBE_OT_roll_pipe(bpy.types.Operator):
     bl_idname = 'bbe.roll_pipe'
     bl_label = 'Roll Supply Pipe'
@@ -317,14 +382,18 @@ class BBE_GGT_pipe_axis(bpy.types.GizmoGroup):
             self.dial.target_set_prop('offset',obj,'bbe_supply_roll')
             self.owner = obj
 
-CLASSES = (BBE_OT_roll_pipe, BBE_OT_attach_moved_end, BBE_GGT_pipe_axis, BBE_GGT_endpoint_snap)
+CLASSES = (BBE_OT_scale_bytebeat, BBE_OT_roll_pipe, BBE_OT_attach_moved_end, BBE_GGT_pipe_axis, BBE_GGT_endpoint_snap)
 def register():
-    
+    bpy.types.Object.bbe_bytebeat_width = bpy.props.FloatProperty(
+        name='ByteBeat Thickness', description='Cable width multiplier with fixed endpoints',
+        min=.001, soft_min=.1, soft_max=10, precision=3, default=1.0,
+        get=cables.bytebeat_width, set=write_bytebeat_width, options=set())
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     config = bpy.context.window_manager.keyconfigs.addon
     if config:
         km = config.keymaps.new(name='Object Mode',space_type='EMPTY')
+        _keymaps.append((km, km.keymap_items.new('bbe.scale_bytebeat','S','PRESS',head=True)))
         _keymaps.append((km, km.keymap_items.new('bbe.roll_pipe','R','PRESS',head=True)))
         # Mirror the built-in Rotate tool's drag fallback for selected pipes.
         # When poll fails Blender continues to the user's native transform.
@@ -353,6 +422,7 @@ def register():
 def unregister():
     from . import cable_clipboard
     cable_clipboard.unregister()
+    del bpy.types.Object.bbe_bytebeat_width
     release_rotate_spaces()
     for handlers, callback in rotate_handlers():
         if callback in handlers:

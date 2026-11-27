@@ -1,4 +1,5 @@
 """Colored, clickable cable sockets; independent of structural snap markers."""
+import json
 import math
 from collections import defaultdict
 from typing import NamedTuple
@@ -162,6 +163,7 @@ class BBE_OT_cable_start(bpy.types.Operator):
 
     new_point: bpy.props.BoolProperty(options={'SKIP_SAVE', 'HIDDEN'})
     source_name: bpy.props.StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
+    branch_queue: bpy.props.StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
     source_key: bpy.props.StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
     group_power: bpy.props.BoolProperty(options={'SKIP_SAVE', 'HIDDEN'})
     chain: bpy.props.BoolProperty(options={'SKIP_SAVE', 'HIDDEN'})
@@ -215,6 +217,11 @@ class BBE_OT_cable_start(bpy.types.Operator):
         if source is not None:
             current = session(context)
             current['source'] = source
+            if self.branch_queue:
+                # Divide's dialog closes before this viewport session starts.
+                # Resolve its ordered junctions here, including repeated midpoints.
+                current['next_starts'] = [point for name in json.loads(self.branch_queue)
+                                          if (point := context.scene.objects.get(name)) is not None]
             if len(keys) == 1:
                 key, position = next(iter(keys.items()))
                 current['first'] = (source, key)
@@ -264,11 +271,12 @@ class BBE_OT_cable_start(bpy.types.Operator):
             window,area=context.window,context.area
             region=next((r for r in area.regions if r.type=='WINDOW'),None)
             if region is None:return {'CANCELLED'}
-            values={k:getattr(self,k) for k in ('kind', 'new_point', 'source_name', 'source_key', 'group_power', 'chain', 'repeat_placement', 'selected_only', 'launch_ready', 'launch_x', 'launch_y')}
+            values={k:getattr(self,k) for k in ('kind', 'new_point', 'source_name', 'source_key', 'branch_queue', 'group_power', 'chain', 'repeat_placement', 'selected_only', 'launch_ready', 'launch_x', 'launch_y')}
             values.update(launch_ready=True,launch_x=self.launch_x if self.launch_x>=0 else event.mouse_x,
                           launch_y=self.launch_y if self.launch_y>=0 else event.mouse_y)
+            scene = context.scene
             def start():
-                if window not in list(bpy.context.window_manager.windows) or area not in list(window.screen.areas):return
+                if window not in list(bpy.context.window_manager.windows) or window.scene != scene or area not in list(window.screen.areas):return
                 with bpy.context.temp_override(window=window,area=area,region=region):
                     bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT',**values)
             bpy.app.timers.register(start,first_interval=.02)

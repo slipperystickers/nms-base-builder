@@ -110,6 +110,7 @@ class AssetBrowser(bpy.types.PropertyGroup):
 
     categories_data = {}
     search_results = {}
+    _search_index = (None, None, ())
     # Sub category enum entries, kept per category. Blender needs the strings a
     # dynamic enum hands back to stay alive for as long as it might use them, so
     # the same list object is returned every time rather than a fresh one.
@@ -280,9 +281,13 @@ class AssetBrowser(bpy.types.PropertyGroup):
         self.invalidate_view()
 
     def filter_objects_with_string(self,search_filter):
-        return asset_browser_utils.filter_objects(
-            self.get_categories_data(), search_filter, i18n.part_names()
-        )
+        categories = self.get_categories_data()
+        names = i18n.part_names()
+        previous_categories, previous_names, rows = AssetBrowser._search_index
+        if categories is not previous_categories or names is not previous_names:
+            rows = tuple(asset_browser_utils.iter_search_rows(categories, names))
+            AssetBrowser._search_index = (categories, names, rows)
+        return asset_browser_utils.filter_objects(categories, search_filter, rows=rows)
 
     def get_search_results(self):
         return AssetBrowser.search_results

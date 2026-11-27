@@ -12,13 +12,12 @@ FIRST = "Click the first curve endpoint. Esc cancels."
 SECOND = "Click another endpoint to join or close the path. Esc cancels."
 HELP = "Click two endpoints to join paths or close one path. Esc cancels."
 GUIDE = 'bbe_easy_curve'
-bbeplus_GUIDE = 'bbeplus_easy_curve'
 
 
 def endpoints(context):
+    from .utils.curve import is_guide_object
     for obj in context.visible_objects:
-        if (obj.type != 'CURVE' or obj.hide_select or obj.library or obj.data.library or
-                obj.data.shape_keys or obj.get(bbeplus_GUIDE) or obj.get('ObjectID') or obj.get('bbeplus_part_json')):
+        if (not is_guide_object(obj) or obj.hide_select or obj.library or obj.data.library or obj.data.shape_keys):
             continue
         for index, spline in enumerate(obj.data.splines):
             if spline.type != 'BEZIER' or spline.use_cyclic_u or len(spline.bezier_points) < 2:
@@ -63,6 +62,11 @@ def join(context, first, second):
         props.kind, props.spline, props.selected = 'FREE', ai, 0
         for key in ('bbe_curve_baseline', 'bbe_curve_handle_baseline'):
             if key in keep: del keep[key]
+        for obj in context.selected_objects:
+            obj.select_set(False)
+        keep.select_set(True)
+        context.view_layer.objects.active = keep
+        curve_tools.open_viewport_controls(context, keep)
         curve_tools.refresh(keep)
         return
     # Keep an existing array attached to its guide. Two independent arrays cannot
@@ -117,6 +121,7 @@ def join(context, first, second):
         obj.select_set(False)
     keep.select_set(True)
     context.view_layer.objects.active = keep
+    curve_tools.open_viewport_controls(context, keep)
     curve_tools.refresh(keep)
 
 
@@ -131,9 +136,9 @@ ACTIONS = (
 
 def curve_points(context):
     # Same editable-owner filter as endpoint joining, including closed paths.
+    from .utils.curve import is_guide_object
     for obj in context.visible_objects:
-        if (obj.type != 'CURVE' or obj.hide_select or obj.library or obj.data.library or
-                obj.data.shape_keys or obj.get(bbeplus_GUIDE) or obj.get('ObjectID') or obj.get('bbeplus_part_json')):
+        if (not is_guide_object(obj) or obj.hide_select or obj.library or obj.data.library or obj.data.shape_keys):
             continue
         for index,spline in enumerate(obj.data.splines):
             if spline.type=='BEZIER':

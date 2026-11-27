@@ -361,6 +361,8 @@ class BuildTool(bpy.types.PropertyGroup):
             curve.lock_all_objects(curve_object)
             
         blend_utils.select(curve_object)
+        from ..curve_tools import open_viewport_controls
+        open_viewport_controls(bpy.context, curve_object)
         properties = bpy.context.scene.nms_properties
         properties.set_active_obect(curve_object)
         

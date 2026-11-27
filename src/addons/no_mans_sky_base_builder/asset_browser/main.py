@@ -444,6 +444,20 @@ Right click on a tab to pin it to the left of the tab bar.""",
         self.top_bar_layout.addWidget(self.refresh_presets_button)
         self.main_layout.addWidget(self.tab_widget)
         self.main_layout.addWidget(self.search_scroll)
+        from .. import asset_weights, i18n
+        scale = "".join(f'<span style="color:{colour}">&#9644;</span>' for _, _, colour in asset_weights.BANDS)
+        caption = i18n.interface(asset_weights.TITLE)
+        self.weight_key = QtWidgets.QLabel(f"{caption} &nbsp; {i18n.interface('Low')} &nbsp;{scale}&nbsp; {i18n.interface('High')}", self)
+        self.weight_key.setToolTip("\n".join(asset_weights.legend_lines()))
+        self.weight_key.setAccessibleName(caption)
+        self.main_layout.addWidget(self.weight_key)
+        def update_weight_key(*_):
+            tabs = self.search_tab_widget if self.search_lineedit.text() else self.tab_widget
+            self.weight_key.setVisible(tabs.tabText(tabs.currentIndex()) not in {"Prefabs", "Presets"})
+        self.tab_widget.currentChanged.connect(update_weight_key)
+        self.search_tab_widget.currentChanged.connect(update_weight_key)
+        self.search_lineedit.textChanged.connect(update_weight_key)
+        update_weight_key()
 
     def _setup_ui(self):
         self.search_lineedit.textChanged.connect(self.refresh_search)

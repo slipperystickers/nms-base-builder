@@ -84,7 +84,9 @@ def _clear_build_source(scene):
 def _store_build_source(scene, build_file, suffix):
     from uuid import uuid4
     block = bpy.data.texts.new('BBE build source ' + uuid4().hex[:10])
-    block.write(base64.b64encode(build_file.source_bytes).decode('ascii'))
+    # The retained package is one ASCII line. Assign it in bulk: Text.write
+    # performs editor insertion and gets progressively slower on long lines.
+    block.lines[0].body = base64.b64encode(build_file.source_bytes).decode('ascii')
     block.use_fake_user = True  # retain package metadata across .blend saves
     scene['bbe_build_source_text'] = block.name
     scene['bbe_build_source_suffix'] = suffix.lower()
@@ -864,8 +866,7 @@ def selected_colour_row(context):
         colour, material = _userdata.get_colour(int(value)), _userdata.get_material(int(value))
     except (ValueError, TypeError):
         return None
-    return next((row for row in _material.BAKED_COLOURS
-                 if int(row[3]) == colour and int(row[4]) == material), None)
+    return _material.palette_row(colour, material)
 
 
 def sync_selected_palette(context):
@@ -881,7 +882,24 @@ def sync_selected_palette(context):
         context.scene.nms_main.material_switch = f'{row[4]}_{row[2]}'
 
 
-def draw_material_finishes(layout, settings, previews):
+def _colour_icon(key):
+    global _colour_files
+    previews = preview_collections.get("main")
+    if previews is None:
+        return None
+    if key not in previews:
+        if _colour_files is None:
+            directory = Path(FILE_PATH) / 'images' / 'colours'
+            with os.scandir(directory) as files:
+                _colour_files = {Path(entry.name).stem: entry.path for entry in files if entry.is_file()}
+        path = _colour_files.get(key)
+        if path is None:
+            return None
+        previews.load(key, path, 'IMAGE')
+    return previews[key]
+
+
+def draw_material_finishes(layout, settings):
     category = _material.palette_category(settings)
     palettes = _material.CATEGORY_PALETTES[category]
     if len(palettes) < 2:
@@ -892,7 +910,7 @@ def draw_material_finishes(layout, settings, previews):
     for palette in palettes:
         index = int(palette.partition("_")[0])
         name = palette.partition(" - ")[2]
-        icon = previews.get(icons[index]) if previews and index < len(icons) else None
+        icon = _colour_icon(icons[index]) if index < len(icons) else None
         op = row.operator("bbe.choose_material_finish", text="" if icon else name,
                           icon_value=icon.icon_id if icon else 0,
                           depress=palette == settings.material_switch)
@@ -908,7 +926,7 @@ def draw_colour_palette(layout, context, *, horizontal=False):
     pcoll = preview_collections.get("main")
     from .save_editor.function_help import corner_help
     if selected is not None:
-        current_icon = pcoll.get(os.path.splitext(selected[9])[0]) if pcoll else None
+        current_icon = _colour_icon(os.path.splitext(selected[9])[0])
         current = layout.row(align=True)
         current.label(text=f'Current: {selected[5]}', icon_value=current_icon.icon_id if current_icon else 0)
         current.label(text=selected[2])
@@ -918,7 +936,7 @@ def draw_colour_palette(layout, context, *, horizontal=False):
         palette = colour_area.row(align=True)
         palette.ui_units_x = 8
         palette.prop(nms_tool, "material_category", text="")
-        draw_material_finishes(colour_area, nms_tool, pcoll)
+        draw_material_finishes(colour_area, nms_tool)
         grid = colour_area.row(align=True)
         grid.scale_x = 1.0
     else:
@@ -927,7 +945,7 @@ def draw_colour_palette(layout, context, *, horizontal=False):
         header.prop(nms_tool, "material_category", text="Palette")
         if selected is None:
             corner_help(header, 'COLOUR')
-        draw_material_finishes(colour_area, nms_tool, pcoll)
+        draw_material_finishes(colour_area, nms_tool)
         colour_area.separator()
         grid = colour_area.grid_flow(columns=12, even_columns=True, align=True)
         grid.scale_x = 0.6
@@ -937,7 +955,7 @@ def draw_colour_palette(layout, context, *, horizontal=False):
         return
     for row in colours:
         index, name, thumb = row[3], row[5], row[9]
-        colour_icon = pcoll.get(os.path.splitext(thumb)[0])
+        colour_icon = _colour_icon(os.path.splitext(thumb)[0])
         op = grid.operator(
             "object.nms_apply_colour", text="",
             icon_value=colour_icon.icon_id if colour_icon else 0,
@@ -991,6 +1009,12 @@ class NMS_PT_logic_panel(Panel):
         place = col.operator('bbe.start_cable_connection', text='Place Cables', icon='CURVE_PATH')
         place.kind = get_line_type_from_enum(context)
         place.repeat_placement = True
+        from . import cable_connections
+        cable = context.active_object
+        if cable and cable.get('ObjectID') == cable_connections.BYTEBEAT:
+            width_row = col.row()
+            width_row.enabled = cable_connections.free_bytebeat(cable)
+            width_row.prop(cable, 'bbe_bytebeat_width', text='ByteBeat Thickness')
         col.separator()
         col.label(text="Operations")
         row = col.row(align=True)
@@ -1845,7 +1869,7 @@ class Divide(bpy.types.Operator):
         i18n.localized_layout(self.layout).row(align=True).prop(self, "layout_mode", expand=True)
 
     def execute(self, context):
-        from . import cable_connections, cable_targets
+        from . import cable_connections
         obj = context.active_object
         kind = obj['ObjectID']
         try:
@@ -1858,9 +1882,8 @@ class Divide(bpy.types.Operator):
             self.report({'WARNING'}, str(error))
             return {'CANCELLED'}
         blend_utils.select(points[0])
-        result = bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=kind, source_name=points[0].name)
-        if result != {'CANCELLED'}:
-            cable_targets.session(context)['next_starts'] = points[1:]
+        bpy.ops.bbe.start_cable_connection('INVOKE_DEFAULT', kind=kind, source_name=points[0].name,
+                                           branch_queue=json.dumps([p.name for p in points[1:]]))
         return {'FINISHED'}
 
 
@@ -2338,7 +2361,11 @@ def udpates_handler(scene, depsgraph):
         if isinstance(update.id, bpy.types.Object):
             if update.id.get('ObjectID') == 'BASE_BUBPIPE':
                 native_bubble_changed = True
-            # validate each object
+            # Linking one new part may tag every object in a large scene. Only
+            # curve guides and followers need a writable datablock below.
+            updated = update.id.original
+            if updated.type != 'CURVE' and not curve_links.parent_name(updated):
+                continue
             orig_obj = bpy.data.objects.get(update.id.name)
             # the object can already be gone by the time we look it up
             if orig_obj is None:
@@ -2395,7 +2422,7 @@ def udpates_handler(scene, depsgraph):
             # the sliders apply to everything selected, so all of them rebuild
             selected = getattr(bpy.context, "selected_objects", None) or []
             curves_to_update = [
-                obj for obj in selected if curve_links.guide_id(obj)
+                obj for obj in selected if obj is not None and curve_links.guide_id(obj)
             ]
         elif updated_curve_names:
             # otherwise only the curves the depsgraph says actually moved
@@ -2446,6 +2473,7 @@ def udpates_handler(scene, depsgraph):
 
 
 preview_collections = {}
+_colour_files = None
 
 # Plugin Registration ---
 
@@ -2563,21 +2591,10 @@ def register_core():
         if not os.path.exists(data_path):
             os.makedirs(data_path)
 
-    # Load Icons.
-    pcoll = bpy.utils.previews.new()
-
-    # Load Colours
-    colours_dir = os.path.join(os.path.dirname(__file__), "images", "colours")
-    colour_files = os.listdir(colours_dir)
-    for colour_file in colour_files:
-        file_name = os.path.splitext(colour_file)[0]
-        pcoll.load(
-            file_name,
-            os.path.join(colours_dir, colour_file),
-            "IMAGE",
-        )
-
-    preview_collections["main"] = pcoll
+    # Allocate palette previews as their swatches and finishes become visible.
+    global _colour_files
+    _colour_files = None
+    preview_collections["main"] = bpy.utils.previews.new()
     icons.register_icons()
     from . import base_boundary
     base_boundary.register()
@@ -2599,6 +2616,8 @@ def register_core():
     schedule_prefab_catalogue()
     bpy.types.Scene.nms_save_data = bpy.props.PointerProperty(type=SaveManager)
     bpy.types.Scene.nms_build_tool = bpy.props.PointerProperty(type=BuildTool)
+    from . import build_analysis
+    build_analysis.register()
     part_counts.register()
     build_timer.register()
     bpy.types.Scene.nms_properties = bpy.props.PointerProperty(type=Properties)
@@ -2639,6 +2658,8 @@ def register_core():
     character_references.register()
     from . import wire_selection
     wire_selection.register()
+    from . import cable_delete
+    cable_delete.register()
     from . import cable_targets
     cable_targets.register()
     from . import curve_tools
@@ -2727,6 +2748,8 @@ def unregister():
     character_references.unregister()
     decal_controls.unregister()
     from . import wire_selection
+    from . import cable_delete
+    cable_delete.unregister()
     wire_selection.unregister()
     from . import cable_targets
     from . import curve_tools
@@ -2781,6 +2804,8 @@ def unregister():
     del bpy.types.Scene.nms_base_tool
     del bpy.types.Scene.nms_save_data
     build_timer.unregister()
+    from . import build_analysis
+    build_analysis.unregister()
     part_counts.unregister()
     del bpy.types.Scene.nms_build_tool
     del bpy.types.Scene.nms_properties

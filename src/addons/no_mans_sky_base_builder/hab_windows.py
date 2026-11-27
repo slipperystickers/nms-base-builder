@@ -31,6 +31,7 @@ REFERENCE = 'bbe_waste_reference_mesh'
 GHOST_MESH = 'bbe_waste_ghost_mesh'
 _table = None
 _signatures = {}
+_checked_quality = {}
 _busy = False
 
 
@@ -511,15 +512,28 @@ def refresh(scene=None, force=False, *, interactive=False):
         _busy = False
 
 
+@persistent
+def mark_changed(_scene, graph):
+    if _checked_quality and any(graph.id_type_updated(kind) for kind in ('OBJECT', 'MESH', 'COLLECTION', 'SCENE')):
+        _checked_quality.clear()
+
+
 def tick():
     try:
-        if not bpy.app.is_job_running('RENDER'):
+        if not _busy and undo_guard.history_ready() and not bpy.app.is_job_running('RENDER'):
             pending = False
             if _activities:
                 for key in _activities.keys() - {scene.as_pointer() for scene in bpy.data.scenes}:
                     finish_activity(key)
             for scene in bpy.data.scenes:
-                pending = refresh(scene, interactive=True) or pending
+                key = scene.session_uid
+                quality = getattr(scene, 'bbe_detailed_proxies', True)
+                if _checked_quality.get(key) == quality:
+                    continue
+                if refresh(scene, interactive=True):
+                    pending = True
+                else:
+                    _checked_quality[key] = quality
             if pending:
                 return .016
     except Exception as exc:
@@ -534,6 +548,7 @@ def loaded(_):
     for key in tuple(_activities):
         finish_activity(key)
     _signatures.clear()
+    _checked_quality.clear()
     # The timer refreshes after the load/undo settle period.
 
 
@@ -545,7 +560,8 @@ def before_render(scene, *_):
 def register():
     if not bpy.app.timers.is_registered(tick):
         bpy.app.timers.register(tick, first_interval=.5, persistent=True)
-    for handlers, callback in ((bpy.app.handlers.load_post, loaded),
+    for handlers, callback in ((bpy.app.handlers.depsgraph_update_post, mark_changed),
+                               (bpy.app.handlers.load_post, loaded),
                                (bpy.app.handlers.undo_post, loaded),
                                (bpy.app.handlers.redo_post, loaded),
                                (bpy.app.handlers.render_pre, before_render)):
@@ -557,7 +573,8 @@ def unregister():
     loaded(None)
     if bpy.app.timers.is_registered(tick):
         bpy.app.timers.unregister(tick)
-    for handlers, callback in ((bpy.app.handlers.load_post, loaded),
+    for handlers, callback in ((bpy.app.handlers.depsgraph_update_post, mark_changed),
+                               (bpy.app.handlers.load_post, loaded),
                                (bpy.app.handlers.undo_post, loaded),
                                (bpy.app.handlers.redo_post, loaded),
                                (bpy.app.handlers.render_pre, before_render)):

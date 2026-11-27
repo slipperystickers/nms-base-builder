@@ -15,6 +15,7 @@ CYAN = (.34, .82, .87, 1)
 TEXT = (.94, .91, 1, 1)
 MUTED = (.61, .56, .7, 1)
 _round_shader = None
+_round_batch = None
 
 def mix(a,b,t):return tuple(a[i]*(1-t)+b[i]*t for i in range(4))
 
@@ -34,7 +35,7 @@ def update_theme(context):
 
 
 def rounded_shader():
-    global _round_shader
+    global _round_shader, _round_batch
     if _round_shader is None:
         interface = gpu.types.GPUStageInterfaceInfo('bbe_curve_round_iface')
         interface.smooth('VEC2', 'pixel')
@@ -47,7 +48,10 @@ def rounded_shader():
         info.push_constant('FLOAT', 'radius')
         info.push_constant('BOOL', 'ui_region')
         info.fragment_out(0, 'VEC4', 'fragColor')
-        info.vertex_source('void main() { pixel=pos; gl_Position=ModelViewProjectionMatrix*vec4(pos,0.0,1.0); }')
+        info.vertex_source('''void main() {
+            pixel = rect.xy - vec2(1.0) + pos * (2.0 * rect.zw + vec2(4.0));
+            gl_Position = ModelViewProjectionMatrix * vec4(pixel, 0.0, 1.0);
+        }''')
         info.fragment_source('''void main() {
             vec2 q=abs(pixel-rect.xy-rect.zw*0.5)-rect.zw*0.5+vec2(radius);
             float d=length(max(q,vec2(0.0)))+min(max(q.x,q.y),0.0)-radius;
@@ -56,6 +60,7 @@ def rounded_shader():
             fragColor=vec4(ui_region ? fill.rgb : rgb,fill.a*(1.0-smoothstep(-0.7,0.7,d)));
         }''')
         _round_shader = gpu.shader.create_from_info(info)
+        _round_batch = batch_for_shader(_round_shader, 'TRIS', {'pos': ((0, 0), (1, 0), (0, 1))})
     return _round_shader
 
 
@@ -104,8 +109,7 @@ def rounded(shader, x, y, w, h, radius, color):
     shader.uniform_bool('ui_region',(bpy.context.region is not None and bpy.context.region.type=='UI',))
     shader.uniform_float('radius',min(radius,w/2,h/2))
     # One oversized triangle has no interior edge for driver antialiasing to expose.
-    points=((x-1,y-1),(x+2*w+3,y-1),(x-1,y+2*h+3))
-    batch_for_shader(shader,'TRIS',{'pos':points}).draw(shader)
+    _round_batch.draw(shader)
 
 
 def disc(shader, x, y, r, color):
@@ -125,8 +129,10 @@ def text(value, x, y, size, color=None, align='LEFT'):
     if color is None:color=TEXT
     blf.size(0, size)
     blf.color(0, *color)
-    w, _ = blf.dimensions(0, value)
-    left = x-(w if align == 'RIGHT' else w/2 if align == 'CENTER' else 0)
+    left = x
+    if align in {'RIGHT', 'CENTER'}:
+        width, _ = blf.dimensions(0, value)
+        left -= width if align == 'RIGHT' else width / 2
     blf.position(0, left, y, 0)
     blf.draw(0, value)
 
@@ -341,6 +347,7 @@ def register():
     for cls in CLASSES:bpy.utils.register_class(cls)
 
 def unregister():
-    global _round_shader
+    global _round_shader, _round_batch
     for cls in reversed(CLASSES):bpy.utils.unregister_class(cls)
+    _round_batch=None
     _round_shader=None

@@ -12,6 +12,7 @@ from collections import OrderedDict
 from array import array
 
 import bpy
+from .. import asset_weights
 import blf
 import gpu
 from bpy.app.handlers import persistent
@@ -28,18 +29,57 @@ _enabled = False
 _loading_handler = None
 
 
+def hover_legend(surface, x, y):
+    rect = getattr(surface, '_legend_bounds', None)
+    if surface._drag or not rect or not _contains(rect, x, y):
+        if surface._hover == (None, 'legend'):
+            surface._hover = None
+            surface._area.tag_redraw()
+        return False
+    if surface._hover != (None, 'legend'):
+        surface._hover = (None, 'legend')
+        surface._stats_since = time.monotonic()
+        surface._pressed = None
+        surface._area.tag_redraw()
+    return True
+
+
 def draw_part_stats(surface, left, width, height, scale):
     """Passive hover card; it never changes tile layout or intercepts clicks."""
     if not surface._hover or time.monotonic()-getattr(surface,'_stats_since',0)<.45:return
-    info=part_stats.lines(surface._hover[0])
+    part, action = surface._hover
+    if action == 'legend':
+        rect = surface._legend_bounds
+        if not rect:return
+        anchor_x, anchor_y = rect[0], rect[1]+rect[3]+3*scale
+        info = asset_weights.legend_lines()
+    else:
+        tile=next((t for t in surface._tiles if t[4]==part),None)
+        if tile is None:return
+        anchor_x, anchor_y = tile[0], height-(tile[1]-surface._offset)-tile[3]
+        info = asset_weights.lines(part) if action == "weight" else part_stats.lines(part)
     if not info:return
-    tile=next((t for t in surface._tiles if t[4]==surface._hover[0]),None)
-    if tile is None:return
     pad=8*scale; line=17*scale
-    w=min(width-2*pad,324*scale);h=(len(info)*17+16)*scale
-    x=max(left+pad,min(tile[0],left+width-w-pad))
-    y=height-(tile[1]-surface._offset)-tile[3]-h
-    y=max(pad,min(y,height-h-pad))
+    w=min(width-2*pad,324*scale)
+    if action in {"weight", "legend"}:
+        blf.size(0, 11*scale)
+        wrapped = []
+        for entry in info:
+            current = ""
+            # Chinese copy can wrap between characters without inserting spaces.
+            char_wrap = any('\u3400' <= ch <= '\u9fff' for ch in entry)
+            for word in (entry if char_wrap else entry.split()):
+                candidate = current+word if char_wrap else (current+" "+word).strip()
+                if current and blf.dimensions(0, candidate)[0] > w-2*pad:
+                    wrapped.append(current)
+                    current = word
+                else:
+                    current = candidate
+            wrapped.append(current)
+        info = wrapped
+    h=(len(info)*17+16)*scale
+    x=max(left+pad,min(anchor_x,left+width-w-pad))
+    y=max(pad,min(anchor_y if action == 'legend' else anchor_y-h,height-h-pad))
     surface.rectangle(x-1,y-1,w+2,h+2,(.40,.35,.50,1))
     surface.rectangle(x,y,w,h,(.07,.055,.10,.98))
     for i,text in enumerate(info):
@@ -357,6 +397,8 @@ def tile_action(tile, x, y, scale=1):
         return 'options'
     if data.get('variants') and _contains((left + width - button, top, button, button), x, y):
         return 'variants'
+    if not data.get('is_preset') and _contains(asset_weights.meter_bounds(left, top+height-11*scale, width, scale), x, y):
+        return 'weight'
     return 'place'
 
 
@@ -369,6 +411,32 @@ def bubble_notice(context, hover=None):
         return (i18n.interface(PLACEMENT_HELP[hover[0]]),)
     return ()
 
+
+def show_asset_options(context, object_id, data, *, horizontal=False):
+    from ..utils import asset_browser_utils
+    is_favourite = (not data.get('is_preset') and
+                    object_id in asset_browser_utils.load_stored_list('favourite_objects'))
+    def menu(menu, _context):
+        layout = i18n.localized_layout(menu.layout.column(align=True))
+        op = layout.operator('object.nms_asset_browser_object_selected',
+                             text='Place Reference' if data.get('is_reference') else 'Place Part', icon='ADD')
+        op.object_id, op.is_preset = object_id, bool(data.get('is_preset'))
+        if data.get('variants'):
+            op = layout.operator('bbe.asset_family', text='Show Variants', icon='PAUSE')
+            op.part, op.horizontal = object_id, horizontal
+        if not data.get('is_preset'):
+            layout.separator()
+            op = layout.operator('object.nms_asset_browser_object_favourite', icon='HEART',
+                text='Remove from Favourites' if is_favourite else 'Add to Favourites')
+            op.object_id = object_id
+            if not data.get('is_reference'):
+                op = layout.operator('object.nms_asset_browser_batch_replace', text='Replace Selected Objects')
+                op.object_id = object_id
+        layout.separator()
+        layout.operator_context = 'INVOKE_DEFAULT'
+        layout.operator('bbe.function_help',text='Asset Browser Help',icon='QUESTION').topic='ASSETS'
+    title = data['name'] if data.get('is_preset') else i18n.part_names().get(object_id, data['name'])
+    context.window_manager.popup_menu(menu, title=title)
 
 class BBE_OT_asset_grid(bpy.types.Operator):
     bl_idname = 'bbe.asset_grid'
@@ -468,6 +536,8 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                 return {'PASS_THROUGH'}
             region = next(r for r in self._area.regions if r.type == 'WINDOW')
             x, y = event.mouse_x - region.x, region.height - (event.mouse_y - region.y)
+            if hover_legend(self, x, region.height-y):
+                return {'PASS_THROUGH'}
             if self.navigation.event(self,context,event,x,y,navigate):return {'RUNNING_MODAL'}
             if asset_families.close_event(self, event, x, region.height-y):
                 return {'RUNNING_MODAL'}
@@ -510,10 +580,12 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                 pressed, self._pressed = self._pressed, None
                 if hit and pressed == (hover, event.type):
                     tile, action = hit
+                    if action == "weight":
+                        return {"RUNNING_MODAL"}
                     if not tile[5].get('is_preset'):
                         new_assets.record_click(context, tile[4])
                     if event.type == 'RIGHTMOUSE' or action == 'options':
-                        self.show_options(context, tile)
+                        show_asset_options(context, tile[4], tile[5])
                     elif action == 'variants':
                         asset_families.open_family(self, tile[4], tile[5])
                     else:
@@ -532,29 +604,6 @@ class BBE_OT_asset_grid(bpy.types.Operator):
             self.finish(context)
             return {'CANCELLED'}
         return {'PASS_THROUGH'}
-
-    def show_options(self, context, tile):
-        object_id, data = tile[4:]
-        def menu(menu, _context):
-            layout = i18n.localized_layout(menu.layout.column(align=True))
-            op = layout.operator('object.nms_asset_browser_object_selected',
-                                 text='Place Reference' if data.get('is_reference') else 'Place Part', icon='ADD')
-            op.object_id, op.is_preset = object_id, bool(data.get('is_preset'))
-            if data.get('variants'):
-                layout.operator('bbe.asset_family', text='Show Variants', icon='PAUSE').part = object_id
-            if not data.get('is_preset'):
-                layout.separator()
-                op = layout.operator('object.nms_asset_browser_object_favourite', icon='HEART',
-                    text='Remove from Favourites' if data.get('is_fav') else 'Add to Favourites')
-                op.object_id = object_id
-                if not data.get('is_reference'):
-                    op = layout.operator('object.nms_asset_browser_batch_replace', text='Replace Selected Objects')
-                    op.object_id = object_id
-            layout.separator()
-            layout.operator_context = 'INVOKE_DEFAULT'
-            layout.operator('bbe.function_help',text='Asset Browser Help',icon='QUESTION').topic='ASSETS'
-        title = data['name'] if data.get('is_preset') else i18n.part_names().get(object_id, data['name'])
-        context.window_manager.popup_menu(menu, title=title)
 
     def rectangle(self, x, y, w, h, color):
         shader = self._rect_shader
@@ -686,12 +735,13 @@ class BBE_OT_asset_grid(bpy.types.Operator):
                     # Keep the behavior visible even on the smallest tiles.
                     self.label(x+6*scale, y+18*scale, 'Pipe', label_width, 10, text_color)
                     behavior = data['name'].split(' â€” ', 1)[-1]
-                    self.label(x+6*scale, y+5*scale, behavior, label_width, 10, text_color)
+                    self.label(x+6*scale, y+8*scale, behavior, label_width, 10, text_color)
                 else:
                     name = data.get('variant_label') or (data['name'] if data.get('is_preset') else names.get(object_id, data['name']))
                     self.label(x+6*scale, y+8*scale, name, label_width, 11, text_color)
                 # These rectangles match tile_action's hit boxes exactly.
                 if not data.get('is_preset'):
+                    asset_weights.draw_meter(*asset_weights.meter_bounds(x, y, w, scale), scale, object_id)
                     for line in range(3):
                         self.rectangle(x+8*scale, y+h-(8+line*4)*scale, 11*scale, scale, text_color)
                 if data.get('variants'):
@@ -711,7 +761,13 @@ class BBE_OT_asset_grid(bpy.types.Operator):
             if item:
                 title = item[5]['name'] if item[5].get('is_preset') else names.get(item[4], item[5]['name'])
                 hint = title + '  |  ' + item[4]
-            self.label(10*scale, 10*scale, hint, width-20*scale, 11)
+            parts_view = self._window.scene.nms_asset_browser.enum_asset_browser_what_to_display != 'preset'
+            key_width = min(width-20*scale, 285*scale) if parts_view else 0
+            hint_width = width-key_width-26*scale
+            if hint_width > 65*scale:
+                self.label(10*scale, 10*scale, hint, hint_width, 11)
+            self._legend_bounds = (asset_weights.draw_key(width-key_width-10*scale, 10*scale, key_width, scale, palette['text'])
+                                   if parts_view else None)
             if lines:
                 self.rectangle(0, 30*scale, width, footer-30*scale, palette['background'])
                 self.rectangle(0, 30*scale, 5*scale, footer-30*scale, palette['accent'])

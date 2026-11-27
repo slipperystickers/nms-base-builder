@@ -139,7 +139,7 @@ def _deserialise_from_data(data, progress):
 
     # Use these only an object requires special steps to be imported
     classes_dict = parts_override.get_override_classes()
-    asset_index = get_asset_index()
+    asset_index = get_asset_index() if getattr(bpy.context.scene, "bbe_detailed_proxies", True) else {}
 
     # exclude view layer from blender
     # so that importing and updating scene with new objects doesnt get reflected
@@ -670,6 +670,8 @@ def _relink_mesh_textures(mesh):
     # Library .blend files carry the pack author's absolute texture paths.
     # Resolve them before a progress redraw can show this mesh in a scene.
     images = _mesh_texture_images(mesh)
+    if not images:
+        return True
     hd_library.relink_texture_images(images)
     for image in images:
         if image.source == 'FILE' and not image.packed_file:
@@ -683,12 +685,14 @@ def _relink_mesh_textures(mesh):
 def load_high_res_mesh(object_id, asset_index=None, *, force=False):
     if not force and not getattr(bpy.context.scene, "bbe_detailed_proxies", True):
         return None
-    asset_index = asset_index if asset_index is not None else get_asset_index()
     protected = object_id in FORSAKEN_PARTS | CORRECTED_LEGACY_PARTS | REPAIRED_VISUAL_PARTS | HOLIDAY_PARTS
-    source_path = asset_index.get(object_id)
-    source_key = str(Path(source_path).resolve()) if source_path else ''
-    if protected and not source_path:
-        return None
+    if protected:
+        if asset_index is None:
+            asset_index = get_asset_index()
+        source_path = asset_index.get(object_id)
+        if not source_path:
+            return None
+        source_key = str(Path(source_path).resolve())
     # the cache lives in bpy.data rather than in a module level dict, so it
     # survives a new file, a module reload and a scene the user already saved
     mesh_name = MESH_PREFIX + object_id
@@ -703,6 +707,9 @@ def load_high_res_mesh(object_id, asset_index=None, *, force=False):
             correct_hd_display(cached, object_id)
             return cached if _relink_mesh_textures(cached) else None
         cached.name = mesh_name + "_legacy"
+
+    if asset_index is None:
+        asset_index = get_asset_index()
 
     # A reproducible variant is built out of the mesh it is a variant of rather
     # than out of its own asset - most of the corvette variants ship the wrong

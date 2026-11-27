@@ -261,6 +261,11 @@ class Part(object):
             new_object.parent = None
             new_object.matrix_parent_inverse = mathutils.Matrix.Identity(4)
 
+        # A standalone copy loses its path constraint and its array membership together.
+        if 'curve_parent' in new_object or 'bbe_curve_parent' in new_object:
+            from .utils.curve import clear_follower_properties
+            clear_follower_properties(new_object)
+
         # Convert to Base Builder Object.
         new_object = self.builder.get_builder_object_from_bpy_object(new_object)
         new_object.remove_constraints()

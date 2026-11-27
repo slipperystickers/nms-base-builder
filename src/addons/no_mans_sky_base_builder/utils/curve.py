@@ -21,8 +21,16 @@ BUILDER = builder.get_builder()
 nice_name_dictionary = dictionary.get_nice_names_diictionary()
 
 
+def is_guide_object(obj):
+    """Prefab handles and display helpers can also be Blender curves."""
+    return (obj is not None and obj.type == 'CURVE'
+            and not any(key in obj for key in
+                        ('PresetID', 'ObjectID', 'GroupID', 'furby_supply_ghost',
+                         'bbeplus_part_json', 'bbeplus_easy_curve')))
+
+
 def duplication_selection(objects):
-    guides = [obj for obj in objects if is_bezier_or_nurbs_path(obj)]
+    guides = [obj for obj in objects if is_guide_object(obj) and is_bezier_or_nurbs_path(obj)]
     if len(guides) != 1:
         return None, []
     guide = guides[0]
@@ -507,6 +515,13 @@ def is_bezier_or_nurbs_path(curve):
     return False
 
         
+def clear_follower_properties(obj):
+    for key in ('curve_parent', 'bbe_curve_parent', 'curve_factor', 'bbe_curve_roll',
+                Curve.PROP_BASE_SCALE, Curve.PROP_RADIUS, Curve.PROP_SOURCE_SCALE):
+        if key in obj:
+            del obj[key]
+
+
 def apply_curve_transforms_and_detach(curve):
     """
     Bakes the visual transforms created by the FOLLOW_PATH constraint into actual 
@@ -524,25 +539,12 @@ def apply_curve_transforms_and_detach(curve):
     
     unlinked_curve_obj_col = collection_utils.get_collection(collection_utils.UNLINKED_CURVE_OBJ_COL)
     
-    child_props_to_delete = [
-        'bbe_curve_roll',
-        Curve.PROP_BASE_SCALE,
-        Curve.PROP_CURVE_FACTOR,
-        Curve.PROP_RADIUS,
-        Curve.PROP_SOURCE_SCALE,
-        Curve.PROP_CURVE_PARENT,
-        curve_links.PARENT,
-    ]
-    
     for obj in bpy.context.scene.objects:
         if curve_links.parent_name(obj) == curve.name:
             
             
-            # Clean up custom properties
-            for prop in child_props_to_delete:
-                if prop in obj:
-                    del obj[prop]
-            
+            clear_follower_properties(obj)
+
             # Capture the exact 3D space matrix dictated by the constraint
             baked_matrix = obj.matrix_world.copy()
             

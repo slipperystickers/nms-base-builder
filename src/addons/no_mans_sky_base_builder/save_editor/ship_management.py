@@ -11,7 +11,7 @@ import blf
 import gpu
 from bpy.app.handlers import persistent
 from gpu_extras.batch import batch_for_shader
-from . import ship_core as core, ship_inventory as catalog, ship_files, ship_repair
+from . import ship_core as core, ship_files, ship_repair
 from .save_editor_utils import BaseType
 
 SESSION = None
@@ -185,6 +185,7 @@ class BBE_OT_ship_add(Dialog,bpy.types.Operator):
 
 
 def roll_choices(self,context):
+    from . import ship_inventory as catalog
     s=SESSION
     values=[('KEEP','Current roll','Keep the number shown below')]
     if s:
@@ -211,6 +212,7 @@ class BBE_OT_ship_item(Dialog,bpy.types.Operator):
         self.existing='KEEP'
         return context.window_manager.invoke_props_dialog(self,width=470)
     def draw(self,context):
+        from . import ship_inventory as catalog
         item=at(current_inventory(),state()['selected']);l=i18n.localized_layout(self.layout)
         l.label(text=catalog.info(item).get('name') or item['Id']);l.label(text=item['Id'])
         if self.action=='REMOVE':l.label(text='Remove this item from the draft?',icon='TRASH');return
@@ -225,6 +227,7 @@ class BBE_OT_ship_item(Dialog,bpy.types.Operator):
             l.prop(self,'roll');l.prop(self,'existing')
             l.label(text='Rolls are not ranked. Final upgrade stats are calculated in game.')
     def execute(self,context):
+        from . import ship_inventory as catalog
         try:
             inv=current_inventory();item=at(inv,state()['selected'])
             if not item:raise ValueError('Item no longer exists')
@@ -248,6 +251,7 @@ class BBE_PG_ship_catalog_item(bpy.types.PropertyGroup):
 
 
 def search_changed(self,context):
+    from . import ship_inventory as catalog
     if not SESSION:return
     ship=core.ships(SESSION['root'],SESSION['context'])[SESSION['index']]
     tech=SESSION['container']=='Inventory_TechOnly'
@@ -277,6 +281,7 @@ class BBE_OT_ship_insert(Dialog,bpy.types.Operator):
         st=context.window_manager.bbe_ship_catalog;st.search='';search_changed(st,context)
         return context.window_manager.invoke_props_dialog(self,width=620)
     def draw(self,context):
+        from . import ship_inventory as catalog
         st=context.window_manager.bbe_ship_catalog;l=i18n.localized_layout(self.layout);l.prop(st,'search')
         l.template_list('BBE_UL_ship_catalog','',st,'results',st,'active',rows=9)
         if st.results:
@@ -288,6 +293,7 @@ class BBE_OT_ship_insert(Dialog,bpy.types.Operator):
             if entry.get('procedural'):l.prop(self,'roll')
         l.label(text='Items are filtered for this ship; type more to narrow large result sets.')
     def execute(self,context):
+        from . import ship_inventory as catalog
         try:
             s=state();inv=current_inventory();pos=s['selected'];st=context.window_manager.bbe_ship_catalog
             if at(inv,pos):raise ValueError('Choose an empty cell first')
@@ -663,6 +669,7 @@ def draw_overlay(self):
     for i,(label,action) in enumerate((('Add item','insert'),('Edit / Roll','edit'),('Remove','remove'),('Unlock All','unlock'),('Move Hyperslot','special'))):
         button(255+i*112,h-108,105,label,(action,None))
     button(815,h-108,132,'Edit Ship Stats...',('stats',None))
+    from . import ship_inventory as catalog
     inv=current_inventory();linked=catalog.links(inv);x0,top,cw,ch=layout_geometry(region)
     valid={(v['X'],v['Y']) for v in inv.get('ValidSlotIndices',[])}
     specials={(v['Index']['X'],v['Index']['Y']) for v in inv.get('SpecialSlots',[]) if v['Type']['InventorySpecialSlotType']=='TechBonus'}

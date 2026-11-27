@@ -13,6 +13,7 @@ from . import styled_ui as art, curve_widgets as paint, i18n
 PLUS=__package__.endswith('bbe_plus')
 PREFIX='bbeplus' if PLUS else 'bbe'
 if not PLUS:
+    from . import asset_weights
     from .utils import new_assets
 _states={}
 _handlers=[]
@@ -21,6 +22,7 @@ _saved=None
 PREFAB_CATEGORY = 'Presets / Prefabs'
 PREFAB_PREFIX = 'prefab:'
 _catalogue_cache = (None, None, None)
+_search_cache = (None, None, ())
 
 def key(context):return (context.window.as_pointer(),context.area.as_pointer())
 def settings():
@@ -74,6 +76,17 @@ def place(context,part):
             'EXEC_DEFAULT', object_id=part[len(PREFAB_PREFIX):], is_preset=True)
     return bpy.ops.object.nms_asset_browser_object_selected('EXEC_DEFAULT',object_id=part)
 
+def show_options(context, state, part):
+    from .tools.asset_browser_grid import show_asset_options
+    info = next(info for pid, info, _ in state['cards'] if pid == part)
+    object_id = part.removeprefix(PREFAB_PREFIX) if info.get('is_preset') else part
+    if not info.get('is_preset'):
+        new_assets.record_click(context, object_id)
+    hover(context, state, '')
+    show_asset_options(context, object_id, info, horizontal=True)
+    context.area.tag_redraw()
+
+
 def snapping(toggle=False):
     if PLUS:
         from . import gallery as backend
@@ -124,6 +137,12 @@ def hover(context,state,hit):
         bpy.app.timers.register(redraw,first_interval=.5)
     return True
 
+def clear_hover(window, area):
+    state = _states.get((window.as_pointer(), area.as_pointer()))
+    if state and state.get('hover'):
+        state['hover'] = ''
+        area.tag_redraw()
+
 def visible(context):
     if not context.space_data.show_region_header or not context.space_data.show_region_tool_header:
         return False
@@ -133,6 +152,25 @@ def visible(context):
 @lru_cache(maxsize=128)
 def sorted_choices(values, locale):
     return tuple(sorted(values, key=lambda value: (i18n.for_locale(locale, value).casefold(), value)))
+
+
+def _search_rows(tree, locale):
+    global _search_cache
+    previous_tree, previous_locale, rows = _search_cache
+    if tree is previous_tree and locale == previous_locale:
+        return rows
+    labels = i18n.part_names()
+    rows = []
+    for category, sections in tree.items():
+        for group, parts in sections.items():
+            if category != PREFAB_CATEGORY and group in {'ALL', 'All'}:
+                continue
+            for part, info in parts.items():
+                name = str(info.get('name') or info.get('Name') or '')
+                text = ' '.join((part, name, labels.get(part, ''), category, group))
+                rows.append((part, info, text.casefold()))
+    _search_cache = (tree, locale, rows)
+    return rows
 
 
 def refresh(context,state):
@@ -165,15 +203,13 @@ def refresh(context,state):
             state.update(items=[], signature=None)
             return []
     if searching:
-        signature=(context.scene.as_pointer(),id(tree),tuple(query),i18n.interface_locale())
+        signature=(context.scene.as_pointer(),id(tree),tuple(query),locale)
         if signature!=state.get('search_signature'):
-            localized=i18n.part_names();matches={}
-            for cat,sections in tree.items():
-                for group,parts in sections.items():
-                    if cat!=PREFAB_CATEGORY and group in {'ALL','All'}:continue
-                    for part,info in parts.items():
-                        text=' '.join((part,str(info.get('name') or info.get('Name') or ''),localized.get(part,''),cat,group)).casefold()
-                        if all(term in text for term in query):matches.setdefault(part,info)
+            matches = {}
+            first, *other_terms = query
+            for part, info, text in _search_rows(tree, locale):
+                if first in text and (not other_terms or all(term in text for term in other_terms)):
+                    matches.setdefault(part, info)
             state.update(search_items=list(matches.items()),search_signature=signature)
         state['items']=state['search_items']
         return state['items']
@@ -191,6 +227,16 @@ def open_variants(state, part, info):
 def close_variants(state):
     if state.pop('family', None):
         state.update(scroll=state.pop('return_scroll'), signature=None, hover='')
+
+def corner_button(card, size, inset, floating, *, right=False):
+    x, y, w, h = card
+    bx = x+w-size-inset if right else x+inset
+    by = y+h-size
+    for _, (cx, cy, cw, ch) in floating:
+        if bx < cx+cw and bx+size > cx and by < cy+ch and by+size > cy:
+            by = cy-size
+    return (bx, by, size, size)
+
 
 def geometry(context,state):
     r=context.region;s=context.preferences.system.ui_scale
@@ -226,15 +272,28 @@ def geometry(context,state):
     items=refresh(context,state);maximum=max(0,len(items)-columns)
     state['scroll']=max(0,min(maximum,int(state['scroll'])))
     if not state['search_active'] and not state.get('family'):state['browse_scroll']=state['scroll']
+    floating=[('auto_snap',(right-142*s,top-26*s,132*s,23*s))]
+    if not PLUS and state['category']==PREFAB_CATEGORY and not state['search_active'] and not state.get('family'):
+        stacked = width < 285*s
+        preview_rect = (right-(142 if stacked else 277)*s,
+                        top-(52 if stacked else 26)*s, 132*s, 23*s)
+        floating.append(('prefab_previews', preview_rect))
+    if state.get('family'):
+        label=i18n.interface('Close variants')
+        blf.size(0,11*s)
+        floating.append(('close_variants',(left+4*s,top-26*s,blf.dimensions(0,label)[0]+34*s,23*s)))
     targets=[];cards=[]
     for column,(part,info) in enumerate(items[state['scroll']:state['scroll']+columns]):
         rect=(left+26*s+column*tile,top-icon-25*s,tile-4*s,icon+21*s)
         cards.append((part,info,rect));targets.append(('part:'+part,rect))
-        if info.get('variants') and not state.get('family'):
-            badge_x=rect[0]+rect[2]-22*s
-            # Keep the variant control below Auto-snap.
-            badge_y=top-(48 if badge_x+21*s>right-142*s else 26)*s
-            targets.append(('variants:'+part,(badge_x,badge_y,21*s,21*s)))
+        if not PLUS and not info.get('is_preset'):
+            targets.append(('weight:'+part, asset_weights.meter_bounds(rect[0],rect[1],rect[2],s)))
+        has_variants = bool(info.get('variants')) and not state.get('family')
+        size = min(21*s, (rect[2]-2*s)/2) if has_variants else 21*s
+        if not PLUS:
+            targets.append(('options:'+part, corner_button(rect, size, s, floating)))
+        if has_variants:
+            targets.append(('variants:'+part, corner_button(rect, size, s, floating, right=True)))
     row_y=bottom+11*s
     blf.size(0,11*s)
     widths=[]
@@ -248,18 +307,14 @@ def geometry(context,state):
                     ('previous',(left+2*s,top-icon-20*s,22*s,icon)),
                     ('next',(right-24*s,top-icon-20*s,22*s,icon)),
                     ('resize',(left,bottom-3*s,width,10*s)),
-                    ('scroll',(left+28*s,bottom+40*s,max(20,width-56*s),6*s)),
-                    ('auto_snap',(right-142*s,top-26*s,132*s,23*s))])
-    if not PLUS and state['category']==PREFAB_CATEGORY and not state['search_active'] and not state.get('family'):
-        stacked = width < 285*s
-        preview_rect = (right-(142 if stacked else 277)*s,
-                        top-(52 if stacked else 26)*s, 132*s, 23*s)
-        targets.append(('prefab_previews', preview_rect))
-    state.update(bounds=(left,bottom,width,height),targets=targets,cards=cards,maximum=maximum,columns=columns,scale=s)
-    if state.get('family'):
-        label=i18n.interface('Close variants')
-        blf.size(0,11*s)
-        targets.append(('close_variants',(left+4*s,top-26*s,blf.dimensions(0,label)[0]+34*s,23*s)))
+                    ('scroll',(left+28*s,bottom+40*s,max(20,width-56*s),6*s))])
+    targets.extend(floating)
+    legend_height = 14*s if any(key.startswith('weight:') for key, _ in targets) else 0
+    if legend_height:
+        targets = [(key, (x, y-legend_height, w, h) if key=='resize' else (x,y,w,h))
+                   for key,(x,y,w,h) in targets]
+    state['legend_height'] = legend_height
+    state.update(bounds=(left,bottom-legend_height,width,height+legend_height),targets=targets,cards=cards,maximum=maximum,columns=columns,scale=s)
     if state.get('search'):
         x,y,w,h=next(rect for action,rect in targets if action=='search')
         targets.append(('clear_search',(x+w-22*s,y,22*s,h)))
@@ -328,11 +383,15 @@ def draw():
                 art.image(preview(part),px+4*s,py+21*s,pw-8*s,ph-24*s)
             name=card_title(state,part,info)
             display_name = name if info.get('is_preset') else i18n.interface(str(name))
-            paint.text(art.trim(display_name,pw-8*s,10*s),px+pw/2,py+6*s,10*s,art.TEXT,align='CENTER')
+            paint.text(art.trim(display_name,pw-8*s,10*s),px+pw/2,py+8*s,10*s,art.TEXT,align='CENTER')
+        state['legend_bounds'] = (asset_weights.draw_key(x+10*s,y+6*s,w-20*s,s,art.MUTED)
+                                  if state.get('legend_height') else None)
         for action,rect in state['targets']:
             px,py,pw,ph=rect
             if action.startswith('part:'):continue
-            if action in {'category','group'}:
+            if action.startswith('weight:'):
+                asset_weights.draw_meter(px,py,pw,ph,s,action[7:])
+            elif action in {'category','group'}:
                 paint.rounded(shader,px,py,pw,ph,5*s,art.EDGE)
                 paint.rounded(shader,px+s,py+s,pw-2*s,ph-2*s,4*s,art.SURFACE)
                 searching=state.get('search_active',False)
@@ -351,6 +410,12 @@ def draw():
                 if focused and not state.get('select_all'):
                     blf.size(0,11*s);cx=px+7*s+min(pw-34*s,blf.dimensions(0,value[:state.get('caret',len(value))])[0])
                     paint.line(shader,(cx,py+4*s),(cx,py+ph-4*s),s,art.TEXT)
+            elif action.startswith('options:'):
+                if state.get('hover') == action:
+                    paint.rounded(shader,px,py,pw,ph,3*s,art.HOVER)
+                for offset in (-4,0,4):
+                    cy=py+ph/2+offset*s
+                    paint.line(shader,(px+pw/2-5*s,cy),(px+pw/2+5*s,cy),s,art.TEXT)
             elif action.startswith('variants:') or action=='close_variants':
                 back=action=='close_variants'
                 hot=state.get('hover')==action
@@ -399,6 +464,12 @@ def draw():
             if action.startswith('part:'):
                 part=action[5:];info=next((info for p,info in state['items'] if p==part),{})
                 lines=hints(part,info)
+            elif action.startswith('weight:'):
+                lines = asset_weights.lines(action[7:])
+            elif action == 'impact_legend':
+                lines = asset_weights.legend_lines()
+            elif action.startswith('options:'):
+                lines=[i18n.tooltip('Show more options')]
             elif action.startswith('variants:'):
                 part=action.partition(':')[2]
                 info=next((data for pid,data,_ in state['cards'] if pid==part),{})
@@ -447,16 +518,26 @@ class StripInput(bpy.types.Operator):
         from . import menu_surface
         return bool(state and state['enabled'] and visible(ctx) and ctx.area.as_pointer() not in menu_surface._sessions)
     def invoke(self,context,event):
-        self.state=_states[key(context)];self.drag=None
+        self.state=_states[key(context)];self.drag=None;self.menu_press=None
+        if event.type == 'RIGHTMOUSE':
+            bounds = self.state.get('bounds')
+            if not bounds or not inside(bounds,event.mouse_x-context.region.x,event.mouse_y-context.region.y):
+                return {'PASS_THROUGH'}
         result=self.handle(context,event)
-        if self.drag or self.state.get('choice') or self.state.get('editing'):
+        if self.menu_press or self.drag or self.state.get('choice') or self.state.get('editing'):
             context.window_manager.modal_handler_add(self);return {'RUNNING_MODAL'}
         return result
     def modal(self,context,event):
+        if self.menu_press:
+            if event.type in {'ESC','WINDOW_DEACTIVATE'}:
+                return {'CANCELLED'}
+            if event.type == self.menu_press[1] and event.value == 'RELEASE':
+                return self.handle(context,event)
+            return {'RUNNING_MODAL'}
         if event.type in {'ESC','RIGHTMOUSE'}:
             self.state['choice']=None;self.state['editing']=False;self.drag=None;cursor(context,self.state,False);context.area.tag_redraw();return {'CANCELLED'}
         result=self.handle(context,event)
-        if self.drag or self.state.get('choice') or self.state.get('editing'):return {'RUNNING_MODAL'}
+        if self.menu_press or self.drag or self.state.get('choice') or self.state.get('editing'):return {'RUNNING_MODAL'}
         return {'FINISHED','PASS_THROUGH'} if result=={'PASS_THROUGH'} else {'FINISHED'}
     def handle(self,context,event):
         state=geometry(context,self.state)
@@ -490,6 +571,17 @@ class StripInput(bpy.types.Operator):
         # window coordinates so a menu click never places an asset underneath.
         x,y=event.mouse_x-context.region.x,event.mouse_y-context.region.y;s=state['scale']
         hit=next((action for action,rect in reversed(state['targets']) if inside(rect,x,y)),None)
+        if (hit in (None, 'resize') and state.get('legend_height') and state.get('legend_bounds')
+                and inside(state['legend_bounds'],x,y)):
+            hit = 'impact_legend'
+        if self.menu_press:
+            part, button = self.menu_press
+            self.menu_press = None
+            action, _, hovered_part = (hit or '').partition(':')
+            if hovered_part == part and (action == 'options' or
+                    (button == 'RIGHTMOUSE' and action in {'part','weight','variants'})):
+                show_options(context,state,part)
+            return {'FINISHED'}
         if self.drag=='choice_thumb':
             if event.type=='MOUSEMOVE':
                 self.choice_scroll_to(y)
@@ -507,7 +599,7 @@ class StripInput(bpy.types.Operator):
             return {'PASS_THROUGH'}
         if event.type=='MOUSEMOVE':
             cursor(context,state,hit=='resize' or self.drag=='resize')
-            if self.drag=='resize':state['height']=max(96,min(268,(state['bounds'][1]+state['bounds'][3]-y)/s))
+            if self.drag=='resize':state['height']=max(96,min(268,(state['bounds'][1]+state['bounds'][3]-y-state.get('legend_height',0))/s))
             elif self.drag=='scroll':self.scroll_to(x)
             else:
                 if not hover(context,state,hit):return {'PASS_THROUGH'}
@@ -520,6 +612,11 @@ class StripInput(bpy.types.Operator):
             elif inside(state['bounds'],x,y):state['scroll']+=step*max(1,state['columns']//3)
             else:return {'PASS_THROUGH'}
             context.area.tag_redraw();return {'FINISHED'}
+        if event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
+            if not PLUS and hit and hit.startswith(('part:', 'options:', 'variants:', 'weight:')):
+                self.menu_press = (hit.partition(':')[2], event.type)
+                return {'RUNNING_MODAL'}
+            return {'PASS_THROUGH'}
         if event.type!='LEFTMOUSE' or event.value!='PRESS':return {'PASS_THROUGH'}
         state['editing']=hit=='search'
         if hit in {'choice_track','choice_thumb'}:
@@ -533,6 +630,11 @@ class StripInput(bpy.types.Operator):
             state['choice']=None;context.area.tag_redraw();return {'FINISHED'}
         if not hit:return {'PASS_THROUGH'}
         cursor(context,state,hit=='resize')
+        if hit.startswith('weight:') or hit == 'impact_legend':
+            return {'FINISHED'}
+        if hit.startswith('options:'):
+            self.menu_press = (hit.partition(':')[2], event.type)
+            return {'RUNNING_MODAL'}
         if hit.startswith('variants:'):
             part=hit.partition(':')[2]
             if not PLUS:
@@ -587,8 +689,9 @@ StripInput.__name__=('BBEPLUS' if PLUS else 'BBE')+'_OT_asset_strip_input'
 
 @persistent
 def reset(*_):
-    global _catalogue_cache
+    global _catalogue_cache, _search_cache
     _catalogue_cache = (None, None, None)
+    _search_cache = (None, None, ())
     for window in bpy.context.window_manager.windows:
         for (win,_),state in _states.items():
             if win==window.as_pointer() and state.get('resize_cursor'):window.cursor_set('DEFAULT')
@@ -603,6 +706,23 @@ def register():
         for event in ('LEFTMOUSE','MOUSEMOVE','WHEELUPMOUSE','WHEELDOWNMOUSE'):
             kmi=km.keymap_items.new(StripInput.bl_idname,event,'ANY' if event=='MOUSEMOVE' else 'PRESS',head=True)
             _keymaps.append((km,kmi))
+        if not PLUS:
+            # Mode-specific context menus run before the generic 3D View keymap.
+            mode_maps = {'Object Mode', 'Mesh'}
+            default = bpy.context.window_manager.keyconfigs.default
+            for keymap in default.keymaps:
+                if keymap.space_type == 'EMPTY' and any(
+                    item.idname in {'wm.call_menu', 'wm.call_panel'}
+                    and getattr(item.properties, 'name', '').startswith('VIEW3D_')
+                    and 'context_menu' in item.properties.name for item in keymap.keymap_items
+                ):
+                    mode_maps.add(keymap.name)
+            for name in sorted(mode_maps):
+                mode = config.keymaps.new(name=name, space_type='EMPTY', region_type='WINDOW')
+                item = mode.keymap_items.new(StripInput.bl_idname, 'RIGHTMOUSE', 'PRESS', head=True)
+                _keymaps.append((mode,item))
+            item = km.keymap_items.new(StripInput.bl_idname,'RIGHTMOUSE','PRESS',head=True)
+            _keymaps.append((km,item))
     bpy.app.handlers.load_pre.append(reset)
 
 def unregister():

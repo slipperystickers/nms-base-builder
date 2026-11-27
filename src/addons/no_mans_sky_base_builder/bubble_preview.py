@@ -39,6 +39,7 @@ _warning_draw_handle = None
 _elbow_lock_sessions = {}
 _elbow_gizmo_sessions = {}
 _draft_shading_sessions = {}
+_scene_has_draft = {}
 _highlight_selection = None
 _pending_group_refresh = set()
 _expansion_preview = {}
@@ -77,12 +78,31 @@ def _restore_draft_shading():
     _draft_shading_sessions.clear()
 
 
-def _sync_draft_shading():
+@persistent
+def _draft_scene_changed(_scene, graph):
+    # Meshes and collections may belong to more than one scene.
+    if _scene_has_draft and any(graph.id_type_updated(kind) for kind in ('OBJECT', 'MESH', 'COLLECTION', 'SCENE')):
+        _scene_has_draft.clear()
+
+
+@persistent
+def _reset_draft_cache(*_):
+    _scene_has_draft.clear()
+
+
+def _sync_draft_shading(*, cached=False):
     """Solid Single-color hides every draft material. Temporarily show materials."""
+    if not cached:
+        _scene_has_draft.clear()
     wanted = set()
     for window in bpy.context.window_manager.windows:
-        if not any(obj.type == 'MESH' and (obj.data.get('bbe_bubble_draft') or obj.data.get('bbe_bubble_target'))
-                   for obj in window.scene.objects):
+        scene = window.scene
+        key = scene.session_uid
+        if key not in _scene_has_draft:
+            _scene_has_draft[key] = any(
+                obj.type == 'MESH' and (obj.data.get('bbe_bubble_draft') or obj.data.get('bbe_bubble_target'))
+                for obj in scene.objects)
+        if not _scene_has_draft[key]:
             continue
         for area in window.screen.areas:
             if area.type != 'VIEW_3D':
@@ -739,7 +759,7 @@ def _sync_joint_rotation_guard():
     if scene.name in _pending_group_refresh:
         _pending_group_refresh.discard(scene.name)
         refresh(scene)
-    _sync_draft_shading()
+    _sync_draft_shading(cached=True)
     _sync_elbow_controls(context)
     selection = (context.active_object.as_pointer() if context.active_object else 0,
                  tuple(sorted(obj.as_pointer() for obj in context.selected_objects)))
@@ -803,6 +823,7 @@ def _joint_guard_save_post(_):
 @persistent
 def _joint_guard_load_pre(_):
     global _highlight_selection
+    _reset_draft_cache()
     _clear_direction_sessions()
     _restore_draft_shading()
     _joint_save_resume.clear()
@@ -2004,6 +2025,9 @@ def register():
     bpy.app.handlers.load_pre.append(_joint_guard_load_pre)
     bpy.app.handlers.undo_pre.append(_clear_direction_sessions)
     bpy.app.handlers.redo_pre.append(_clear_direction_sessions)
+    bpy.app.handlers.depsgraph_update_post.append(_draft_scene_changed)
+    bpy.app.handlers.undo_post.append(_reset_draft_cache)
+    bpy.app.handlers.redo_post.append(_reset_draft_cache)
     bpy.app.timers.register(_sync_joint_rotation_guard, first_interval=0.1, persistent=True)
     from . import bubble_controls
     bubble_controls.register()
@@ -2020,8 +2044,12 @@ def unregister():
         bpy.app.timers.unregister(_sync_joint_rotation_guard)
     _restore_joint_rotation_guard()
     _restore_draft_shading()
+    _reset_draft_cache()
     _joint_save_resume.clear()
     for handlers, callback in (
+            (bpy.app.handlers.depsgraph_update_post, _draft_scene_changed),
+            (bpy.app.handlers.undo_post, _reset_draft_cache),
+            (bpy.app.handlers.redo_post, _reset_draft_cache),
             (bpy.app.handlers.save_pre, _joint_guard_save_pre),
             (bpy.app.handlers.save_post, _joint_guard_save_post),
             (bpy.app.handlers.undo_pre, _clear_direction_sessions),

@@ -223,51 +223,53 @@ def remove_duplicate_faces(mesh, precision=5):
     if polygon_count < 2:
         return 0
 
-    # foreach_get rather than walking the collections: this runs over meshes of
-    # a few hundred thousand faces, where per element attribute access is the
-    # whole cost of the pass.
-    coords = [0.0] * (len(mesh.vertices) * 3)
-    mesh.vertices.foreach_get("co", coords)
-    normals = [0.0] * (polygon_count * 3)
-    mesh.polygons.foreach_get("normal", normals)
-    loop_starts = [0] * polygon_count
+    import numpy as np
+
+    # Compare packed rows in bulk. Quantize each vertex once, even when it is
+    # shared by many faces. Float64 preserves the old Python multiplication
+    # and truncation, including coordinates beyond the int64 range.
+    coords = np.empty((len(mesh.vertices), 3), dtype=np.float32)
+    mesh.vertices.foreach_get("co", coords.ravel())
+    positions = np.trunc(coords.astype(np.float64) * (10 ** precision))
+    positions[positions == 0] = 0.0  # canonicalize signed zero for byte comparison
+
+    def row_keys(rows):
+        return rows.view(np.dtype((np.void, rows.strides[0]))).ravel()
+
+    _, vertex_ids = np.unique(row_keys(positions), return_inverse=True)
+    loop_starts = np.empty(polygon_count, dtype=np.int32)
     mesh.polygons.foreach_get("loop_start", loop_starts)
-    loop_totals = [0] * polygon_count
+    loop_totals = np.empty_like(loop_starts)
     mesh.polygons.foreach_get("loop_total", loop_totals)
-    loop_vertices = [0] * len(mesh.loops)
+    loop_vertices = np.empty(len(mesh.loops), dtype=np.int32)
     mesh.loops.foreach_get("vertex_index", loop_vertices)
-
-    scale = 10 ** precision
-    seen = {}
+    loop_ids = vertex_ids.ravel()[loop_vertices]
+    normals = None
     doomed = []
-
-    for polygon in range(polygon_count):
-        start = loop_starts[polygon]
-        key = tuple(sorted(
-            (int(coords[vertex * 3] * scale),
-             int(coords[vertex * 3 + 1] * scale),
-             int(coords[vertex * 3 + 2] * scale))
-            for vertex in loop_vertices[start:start + loop_totals[polygon]]
-        ))
-
-        kept = seen.get(key)
-        if kept is None:
-            seen[key] = [polygon]
+    for size in np.unique(loop_totals):
+        faces = np.flatnonzero(loop_totals == size)
+        if len(faces) < 2:
             continue
-
-        offset = polygon * 3
-        normal = (normals[offset], normals[offset + 1], normals[offset + 2])
-        for other in kept:
-            other_offset = other * 3
-            facing = (normal[0] * normals[other_offset]
-                      + normal[1] * normals[other_offset + 1]
-                      + normal[2] * normals[other_offset + 2])
-            if facing > FACING_TOLERANCE:
-                doomed.append(polygon)
-                break
-        else:
-            # coincident but pointing elsewhere - a real back face, kept
-            kept.append(polygon)
+        corners = loop_starts[faces, None] + np.arange(size)
+        keys = row_keys(np.sort(loop_ids[corners], axis=1))
+        _, groups, counts = np.unique(keys, return_inverse=True, return_counts=True)
+        groups = groups.ravel()
+        repeated = np.flatnonzero(counts[groups] > 1)
+        if not len(repeated):
+            continue
+        if normals is None:
+            values = np.empty((polygon_count, 3), dtype=np.float32)
+            mesh.polygons.foreach_get("normal", values.ravel())
+            normals = values.astype(np.float64)
+        kept_normals = {}
+        for index in repeated:
+            face = int(faces[index])
+            kept = kept_normals.setdefault(groups[index], [])
+            normal = normals[face]
+            if any(normal @ other > FACING_TOLERANCE for other in kept):
+                doomed.append(face)
+            else:
+                kept.append(normal)
 
     if not doomed:
         return 0
@@ -277,7 +279,7 @@ def remove_duplicate_faces(mesh, precision=5):
     bm.faces.ensure_lookup_table()
     # 'FACES' takes the vertices and edges left behind with them, so the
     # duplicated halves stop costing memory as well as rendering wrong
-    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in doomed], context='FACES')
+    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in sorted(doomed)], context='FACES')
     bm.to_mesh(mesh)
     bm.free()
 

@@ -585,7 +585,16 @@ def resolve_sub_categories(categories_data, category, sub_category):
 
 # --- searching and slicing ---------------------------------------------------
 
-def filter_objects(categories_data, search_filter, localized_names=None):
+def iter_search_rows(categories_data, localized_names=None):
+    names = localized_names or {}
+    for category, groups in categories_data.items():
+        for parts in groups.values():
+            for part, info in parts.items():
+                localized = '' if info.get('is_preset') else names.get(part, '')
+                yield category, part, info, part.lower(), str(info.get('name', '')).lower(), localized.lower()
+
+
+def filter_objects(categories_data, search_filter, localized_names=None, *, rows=None):
     """Parts whose id or name contains `search_filter`, grouped by category.
 
     The ids and names are compared in lower case, so the query is lowered too -
@@ -604,16 +613,11 @@ def filter_objects(categories_data, search_filter, localized_names=None):
         return {}
 
     search_results = {}
-    for category, sub_categories in categories_data.items():
-        for _, objects_list in sub_categories.items():
-            for obj_id, obj_data in objects_list.items():
-
-                obj_id_lower = obj_id.lower()
-                name_lower = str(obj_data.get("name", "")).lower()
-
-                localized = (localized_names or {}).get(obj_id, "") if not obj_data.get("is_preset") else ""
-                if search_filter in obj_id_lower or search_filter in name_lower or search_filter in localized.lower():
-                    search_results.setdefault(category, {})[obj_id] = obj_data
+    if rows is None:
+        rows = iter_search_rows(categories_data, localized_names)
+    for category, part, info, identifier, name, localized in rows:
+        if search_filter in identifier or search_filter in name or search_filter in localized:
+            search_results.setdefault(category, {})[part] = info
     return search_results
 
 

@@ -4,7 +4,6 @@ The existing draw functions supply the controls and conditions. This small
 layout adapter skins those controls without duplicating the tools, changing
 Blender's theme, embedding a browser or running an always-on redraw loop.
 """
-from array import array
 from collections import OrderedDict
 from functools import lru_cache
 from types import SimpleNamespace
@@ -116,9 +115,10 @@ def outline_icon(name,tint=None):
     from . import menu_backend as workspace
     if tint is None:tint=tuple(bpy.context.preferences.themes[0].user_interface.wcol_menu_item.text[:3])
     key='menu-outline:'+name
-    path=Path(__file__).parent/'images/menu_outline'/(name+'.png')
-    if not path.exists():return 0
-    if key not in workspace._icons:workspace._icons.load(key,str(path),'IMAGE')
+    if key not in workspace._icons:
+        path=Path(__file__).parent/'images/menu_outline'/(name+'.png')
+        if not path.is_file():return 0
+        workspace._icons.load(key,str(path),'IMAGE')
     if tint:
         tinted=key+repr(tint)
         source=workspace._icons[key]
@@ -126,18 +126,25 @@ def outline_icon(name,tint=None):
         if tinted not in workspace._icons:
             preview=workspace._icons.new(tinted)
             preview.image_size=source.image_size
-            values=list(source.image_pixels_float)
-            for i in range(0,len(values),4):values[i:i+3]=tint[:3]
-            preview.image_pixels_float=values
+            values = _preview_pixels(source.image_pixels_float, tint)
+            preview.image_pixels_float.foreach_set(values)
             # Native UILayout uses the small, premultiplied icon buffer.
             # Our viewport renderer reads the separate straight-alpha image.
             preview.icon_size=source.icon_size
-            small=list(source.icon_pixels_float)
-            for i in range(0,len(small),4):
-                small[i:i+3]=[channel*small[i+3] for channel in tint[:3]]
-            preview.icon_pixels_float=small
+            small = _preview_pixels(source.icon_pixels_float, tint, premultiply=True)
+            preview.icon_pixels_float.foreach_set(small)
         return workspace._icons[tinted].icon_id
     return workspace._icons[key].icon_id
+
+
+def _preview_pixels(source, tint=None, *, premultiply=False):
+    import numpy as np
+    pixels = np.empty(len(source), dtype=np.float32)
+    source.foreach_get(pixels)
+    if tint is not None:
+        rgba = pixels.reshape(-1, 4)
+        rgba[:, :3] = rgba[:, 3:4] * tint[:3] if premultiply else tint[:3]
+    return pixels
 
 
 def operation(identifier):
@@ -417,9 +424,22 @@ def preview_icon(value):
     import sys
     from . import menu_backend
     from . import icons
-    primary = icons.preview_collections.get('ui_icons')
-    if primary:
-        for preview in primary.values():
+    # Look in the live owners first. Walking every module dictionary for each
+    # new menu icon also walks part catalogs and mesh metadata on large builds.
+    groups = [menu_backend._icons, icons.preview_collections.get('ui_icons')]
+    root = sys.modules[__package__]
+    groups.extend(getattr(root, 'preview_collections', {}).values())
+    for module_name, attribute in (('curve_icons', '_collection'), ('styled_ui', '_previews'),
+                                   ('workspace_controls', '_previews'), ('bbe_chat', '_badge_previews'),
+                                   ('community_prefabs', '_icons'), ('prefab_thumbnails', '_collection'),
+                                   ('tools.asset_browser_presentation', '_weight_icons')):
+        module = sys.modules.get(f'{__package__}.{module_name}')
+        groups.append(getattr(module, attribute, None))
+    groups.append(icons.preview_collections.get('asset_icons'))
+    for group in groups:
+        if not group:
+            continue
+        for preview in group.values():
             if preview.icon_id == value:
                 return preview
     previews=[menu_backend._icons]
@@ -448,11 +468,7 @@ def texture(value,white=False,tint=None,preview=None):
     if preview is None:preview=preview_icon(value)
     if preview is None or not preview.image_size[0]:return None
     w,h=preview.image_size
-    values=array('f',preview.image_pixels_float)
-    if white:
-        for i in range(0,len(values),4):values[i]=values[i+1]=values[i+2]=1
-    if tint:
-        for i in range(0,len(values),4):values[i:i+3]=array('f',tint[:3])
+    values = _preview_pixels(preview.image_pixels_float, tint or ((1, 1, 1) if white else None))
     result=gpu.types.GPUTexture((w,h),format='RGBA8',data=gpu.types.Buffer('FLOAT',len(values),values))
     _textures[key]=result
     if len(_textures)>100:_textures.popitem(last=False)

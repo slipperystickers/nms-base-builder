@@ -144,6 +144,9 @@ class NMS_PT_tools_panel(Panel):
             
             
 
+        from .. import build_analysis
+        mirroring_box_column.operator("bbe.analyze_build", text=build_analysis.button(context), icon="COLOR")
+
         # Set Snap Operator assignments.
         # Default
         snap_op.prev_source = False

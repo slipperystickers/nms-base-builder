@@ -33,20 +33,31 @@ def icon_id(kind,context):
             path=shape_path(key);low=[min(p[j] for p in path) for j in (0,1)];high=[max(p[j] for p in path) for j in (0,1)]
             scale=44/max(high[j]-low[j] for j in (0,1))
             path=[(32+(x-(low[0]+high[0])/2)*scale,32+(y-(low[1]+high[1])/2)*scale) for x,y in path]
-            alpha=[0.0]*4096
-            for x,y in path:
-                for iy in range(max(0,int(y)-3),min(64,int(y)+4)):
-                    for ix in range(max(0,int(x)-3),min(64,int(x)+4)):
-                        a=max(0,min(1,2.2-math.hypot(ix+.5-x,iy+.5-y)))
-                        n=iy*64+ix;alpha[n]=max(alpha[n],a)
             tint={'CIRCLE':(.35,.8,1.),'ELLIPSE':(.4,.9,.65),'HALF':(1.,.72,.25),
                   'ARC':(1.,.55,.3),'SPIRAL':(.7,.5,1.),'HELIX':(.95,.45,.7),
                   'WAVE':(.25,.85,.85)}.get(key,color)
-            pixels=[v for a in alpha for v in (*(c*a for c in tint),a)]
+            pixels = _stroke_pixels(path, tint)
             preview=_collection.get(key) or _collection.new(key)
-            preview.image_size=(64,64);preview.image_pixels_float=pixels
-            preview.icon_size=(64,64);preview.icon_pixels_float=pixels
+            preview.image_size=(64,64);preview.image_pixels_float.foreach_set(pixels)
+            preview.icon_size=(64,64);preview.icon_pixels_float.foreach_set(pixels)
     return _collection[kind].icon_id
+
+
+def _stroke_pixels(path, tint):
+    import numpy as np
+
+    x, y = np.asarray(path).T
+    dy, dx = np.mgrid[-3:4, -3:4]
+    ix = x.astype(int)[:, None] + dx.ravel()
+    iy = y.astype(int)[:, None] + dy.ravel()
+    distance = np.hypot(ix + .5 - x[:, None], iy + .5 - y[:, None])
+    inside = (ix >= 0) & (ix < 64) & (iy >= 0) & (iy < 64)
+    alpha = np.zeros(64 * 64)
+    np.maximum.at(alpha, (iy * 64 + ix)[inside], np.clip(2.2 - distance[inside], 0, 1))
+    pixels = np.empty((64 * 64, 4), dtype=np.float32)
+    pixels[:, :3] = alpha[:, None] * tint
+    pixels[:, 3] = alpha
+    return pixels.ravel()
 
 def unregister():
     global _collection,_color

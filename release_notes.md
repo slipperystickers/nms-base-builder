@@ -1,3 +1,19 @@
+# Base Builder Extended 18.3.4
+
+## New since 18.3.3
+
+- **Connected cable cleanup** — Delete one part or a selection and choose whether to remove its snapped electrical wires, supply pipes, teleport cables, and ByteBeat cables. Cleanup removes unused connection points and keeps junctions that still serve another cable.
+- **NMS performance impact** — Hover over the bar beneath an asset in any browser for its estimated cost. The score includes models, textures, animations, lights, and particle effects.
+- **Analyze Build** — In Builder Tools, select **Analyze Build** to colour the parts in your viewport by estimated game cost. Select **Exit Build Analysis** to return to your build colours.
+- **Horizontal asset options** — Click the upper-left menu or right-click an asset for placement, favourites, and replacement.
+- **ByteBeat cable thickness** — Scale a free-placed cable to change its thickness. Cables snapped to a device retain their socket width.
+
+## Performance and fixes
+
+- Faster startup, asset browsing, and large build imports. Idle viewports do less background work.
+- **Cables & Logic → Divide** splits a selected cable and creates a junction.
+- Placing a prefab no longer opens Curve Studio when its outline is selected.
+
 # Base Builder Extended 18.3.3
 
 ## New in 18.3.3

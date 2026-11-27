@@ -98,6 +98,7 @@ def set_palette_category(settings, index):
 
 
 BAKED_INDEX_COLOURS = {}
+_palette_rows = {}
 
 
 def get_all_colours():
@@ -110,6 +111,7 @@ def get_all_colours():
             rows.append(row)
 
             colour_id = row[3]
+            _palette_rows.setdefault((int(colour_id), int(row[4])), row)
             primary_colour = row[6]
             if isinstance(primary_colour, str):
                 primary_colour = [
@@ -119,19 +121,13 @@ def get_all_colours():
     return rows
 
 
+def palette_row(colour_index, material_index):
+    return _palette_rows.get((int(colour_index), int(material_index)))
+
+
 def get_nice_name_from_indicies(colour_index, material_index):
-    with open(COLOURS_CSV, "r") as csv_file:
-        csv_reader = csv.reader((x.replace("\0", "") for x in csv_file), delimiter=",")
-        for idx, row in enumerate(csv_reader):
-            if idx == 0:
-                continue
-            colour_id = row[3]
-            material_id = row[4]
-            if int(colour_index) == int(colour_id) and int(material_index) == int(
-                material_id
-            ):
-                return f"{row[2]}: {row[5]}"
-    return ""
+    row = palette_row(colour_index, material_index)
+    return f"{row[2]}: {row[5]}" if row else ""
 
 
 BAKED_COLOURS = get_all_colours()

@@ -150,8 +150,18 @@ class BBE_OT_asset_family(bpy.types.Operator):
     bl_idname = 'bbe.asset_family'
     bl_label = 'Browse Part Variants'
     part: bpy.props.StringProperty()
+    horizontal: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
 
     def execute(self, context):
+        if self.horizontal:
+            from . import asset_strip
+            state = asset_strip._states.get(asset_strip.key(context))
+            card = next((info for part, info, _ in state['cards'] if part == self.part), None) if state else None
+            if not card or not card.get('variants'):
+                return {'CANCELLED'}
+            asset_strip.open_variants(state, self.part, card)
+            context.area.tag_redraw()
+            return {'FINISHED'}
         surface = current(context)
         if surface is None:
             return {'CANCELLED'}

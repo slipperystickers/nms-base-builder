@@ -124,6 +124,8 @@ def style(root,key):
         label(right,'Mirror across');right.row().prop(tool,'mirror_direction',expand=True)
         right.prop(tool,'center_of_reflection',text='Pivot');right.prop(tool,'check_auto_duplicate',text='Auto duplicate')
         action(right,'object.nms_advanced_mirror','Mirror across '+tool.mirror_direction,'flip-horizontal-2')
+        from . import build_analysis
+        action(right, 'bbe.analyze_build', build_analysis.button(bpy.context), 'layers')
         root=result;nodes=list(walk(root))
     elif key=='RECOVERY':
         for n in nodes:

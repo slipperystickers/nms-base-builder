@@ -139,6 +139,22 @@ def endpoints(cable):
             end or bpy.data.objects.get(cable.get('end_control', '')))
 
 
+def bytebeat_width(cable):
+    # The game stores the cable cross-section in the magnitude of Up (local Y).
+    return abs(cable.scale.y)
+
+
+def free_bytebeat(cable):
+    return (cable is not None and cable.get('ObjectID') == BYTEBEAT
+            and all(end is not None and free_control(end) for end in endpoints(cable)))
+
+
+def set_bytebeat_width(cable, width):
+    if cable.get('ObjectID') == BYTEBEAT and math.isfinite(width) and width > 0:
+        if cable.scale.x != width or cable.scale.y != width:
+            cable.scale.x = cable.scale.y = width
+
+
 def bind(control, obj, key, kind):
     point = local_sockets(obj, kind)[key]
     control['snapped_to'] = obj.name
@@ -161,6 +177,12 @@ def bind(control, obj, key, kind):
             var.targets[0].data_path = f'matrix_world[{col}][{axis}]'
         driver.expression = '+'.join(f'm{col}*{float(value)!r}'
                                      for col, value in enumerate((*point, 1)))
+    if kind == BYTEBEAT and control.get('power_line'):
+        # A shared junction can drive several spans. Newly created controls
+        # acquire their first wire in build_rig, which also applies this rule.
+        for wire in bpy.data.user_map(subset={control}, value_types={'OBJECT'}).get(control, ()):
+            if wire.get('ObjectID') == BYTEBEAT and control in endpoints(wire):
+                set_bytebeat_width(wire, 1.0)
 
 
 def make_control(builder, name, kind):
@@ -200,6 +222,8 @@ def subdivide(cable, fractions, builder):
             extra.append(builder.add_part(kind, user_data=original.user_data, build_rigs=False))
         chain = [start, *points, end]
         for part, left, right in zip([original, *extra], chain, chain[1:]):
+            if kind == BYTEBEAT and part != original:
+                set_bytebeat_width(part.object, bytebeat_width(cable))
             part.build_rig(left, right)
         bpy.context.view_layer.update()
         return points
@@ -225,6 +249,10 @@ def style(cable):
         if mesh is not None:supply_preview.install(cable,mesh)
         return
     if kind == BYTEBEAT:
+        ends = endpoints(cable)
+        if all(ends):
+            width = 1.0 if any(attached_device(end) for end in ends) else bytebeat_width(cable)
+            set_bytebeat_width(cable, width)
         # Retain the native crossed ribbons and pink glow on detailed proxies.
         if any(abs(a-b) > 1e-6 for a,b in zip(cable.color, COLORS[kind])):
             cable.color = COLORS[kind]

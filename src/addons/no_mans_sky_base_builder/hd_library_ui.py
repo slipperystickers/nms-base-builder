@@ -2,6 +2,7 @@
 from . import i18n
 from .furby_errors import report_error
 import textwrap
+import time
 from pathlib import Path
 import bpy
 from bpy.app.handlers import persistent
@@ -12,11 +13,13 @@ _auto_update_checked = False
 _auto_update_version = None
 _auto_update_attempts = set()
 _auto_update_active = False
+_next_disk_check = 0.0
 
 
 def reset_update_check():
     """Run on enable/install and file load; failed attempts are not looped."""
-    global _auto_update_checked, _auto_update_version
+    global _auto_update_checked, _auto_update_version, _next_disk_check
+    _next_disk_check = 0.0
     _auto_update_checked = False
     _auto_update_version = None
     hd_library.invalidate_ready()
@@ -423,10 +426,15 @@ def finish_download():
 
 
 def redraw():
-    global _last_message
+    global _last_message, _next_disk_check
     finish_download()
-    check_installed_updates()
-    refresh_marker_proxies()
+    now = time.monotonic()
+    # Report downloads at the normal UI cadence. Recheck idle files less
+    # often, including packs installed by another Blender instance.
+    if not hd_library.STATE['busy'] and (hd_library.STATE['message'] != _last_message or now >= _next_disk_check):
+        check_installed_updates()
+        refresh_marker_proxies()
+        _next_disk_check = now + 10.0
     message = hd_library.STATE['message']
     changed = message != _last_message
     if changed and not hd_library.STATE['busy']:

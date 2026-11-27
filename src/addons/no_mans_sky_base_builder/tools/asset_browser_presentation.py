@@ -36,6 +36,67 @@ def _variant_button(layout, object_id, variants):
     button.variants = json.dumps([object_id, *variants])
 
 
+_weight_icons = None
+
+
+class BBE_OT_asset_weight_info(bpy.types.Operator):
+    bl_idname = "bbe.asset_weight_info"
+    bl_label = "NMS performance impact"
+    bl_translation_context = "BBEExtendedInterface"
+    part: bpy.props.StringProperty(options={'SKIP_SAVE'})
+
+    @classmethod
+    def description(cls, context, properties):
+        from .. import asset_weights
+        return "\n".join(asset_weights.lines(properties.part) if properties.part else asset_weights.legend_lines())
+
+    def execute(self, context):
+        return {"FINISHED"}
+
+
+def weight_icon(colour, fraction):
+    global _weight_icons
+    from bpy.utils import previews
+    if _weight_icons is None:
+        _weight_icons = previews.new()
+    if colour not in _weight_icons:
+        icon = _weight_icons.new(colour)
+        icon.icon_size = (32, 32)
+        rgb = tuple(int(colour[i:i+2], 16) for i in (1, 3, 5))
+        fill = int.from_bytes(bytes((*rgb, 255)), 'little', signed=True)
+        track = int.from_bytes(bytes((96, 96, 96, 160)), 'little', signed=True)
+        end = 2 + round(28 * fraction)
+        pixels = [(fill if x < end else track) if 2 <= x < 30 and 13 <= y <= 18 else 0
+                  for y in range(32) for x in range(32)]
+        icon.icon_pixels = pixels
+    return _weight_icons[colour].icon_id
+
+
+def weight_button(layout, part):
+    from .. import asset_weights
+    colour = asset_weights.band(asset_weights.record(part))[2]
+    icon = weight_icon(colour, asset_weights.fill_fraction(part))
+    layout.operator("bbe.asset_weight_info", text="", emboss=False, icon_value=icon).part = part
+
+
+def weight_key(layout):
+    from ..asset_weights import BANDS, TITLE
+    row = layout.row(align=True)
+    row.operator("bbe.asset_weight_info", text=i18n.interface(TITLE), emboss=False)
+    row.label(text=i18n.interface("Low"))
+    for i, (_, _, colour) in enumerate(BANDS):
+        row.operator("bbe.asset_weight_info", text="", emboss=False, icon_value=weight_icon(colour, (i+1)/len(BANDS)))
+    row.label(text=i18n.interface("High"))
+
+
+def release_weight_icons():
+    global _weight_icons
+    if _weight_icons is not None:
+        from bpy.utils import previews
+        previews.remove(_weight_icons)
+        _weight_icons = None
+
+
 def _more_options_button(layout, object_id, is_fav):
     button = layout.operator(OP_MORE_OPTIONS, text="", icon="COLLAPSEMENU", emboss=False)
     button.object_id = object_id
@@ -101,6 +162,7 @@ def draw_grid_element(
     left.alignment = 'LEFT'
     if not is_preset:
         _more_options_button(left, object_id, is_fav)
+        weight_button(left, object_id)
     else:
         left.label(text='')
     right = controls.row(align=True)
@@ -151,6 +213,7 @@ def draw_list_element(
     element_row = grid.box().row(align=True)
     if not is_preset:
         _more_options_button(element_row, object_id, is_fav)
+        weight_button(element_row, object_id)
     image = element_row.column(align=True)
     image.template_icon(icon_value=_preview_icon(asset_icon_value), scale=grid_icon_size)
     _place_button(element_row.row(align=True), object_id, is_preset, text=asset_name)
@@ -519,6 +582,10 @@ def draw_asset_browser_right_options(context,asset_browser_box, scene, grid_type
             icon_size = icon_size,
             grid_type = grid_type
         )
+
+    if display_what != "preset":
+        weight_key(asset_browser_box)
+
 
 class NMS_PT_asset_browser_panel(bpy.types.Panel):
     bl_translation_context = "BBEExtendedInterface"

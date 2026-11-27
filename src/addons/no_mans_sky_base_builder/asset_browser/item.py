@@ -5,6 +5,7 @@ from .icons import icons
 from .utils.qt import QtCore, QtGui, QtWidgets
 from ..utils.dictionary import PLACEMENT_HELP
 from ..utils import new_assets
+from .. import asset_weights, i18n
 
 THUMB_SIZE = 64
 ITEM_SIZE_X = 100
@@ -71,6 +72,16 @@ class Item(QtWidgets.QFrame):
         self.thumb_container_layout = QtWidgets.QHBoxLayout(self.thumb_container)
         self.thumb_container_layout.setContentsMargins(0, 0, 0, 0)
         self.thumb = Thumb(part_id=self.item_id, parent=self.thumb_container)
+        self.weight = badge = QtWidgets.QToolButton(self)
+        badge.setFixedSize(THUMB_SIZE, 5)
+        colour = asset_weights.band(asset_weights.record(self.item_id))[2]
+        badge.setStyleSheet("background: #666; border: 0;")
+        fill = QtWidgets.QWidget(badge)
+        fill.setGeometry(0, 0, round(THUMB_SIZE*asset_weights.fill_fraction(self.item_id)), 5)
+        fill.setStyleSheet(f"background: {colour}; border: 0;")
+        fill.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        badge.setToolTip("\n".join(asset_weights.lines(self.item_id)))
+        badge.setAccessibleName(i18n.interface(asset_weights.TITLE))
         self.label_widget = QtWidgets.QLabel(self.label, parent=self)
         self.label_widget.setAlignment(QtCore.Qt.AlignCenter)
         self.label_widget.setWordWrap(True)
@@ -93,6 +104,7 @@ class Item(QtWidgets.QFrame):
         self.thumb_container_layout.addStretch()
         self.main_layout.addWidget(self.thumb_container)
         self.main_layout.addWidget(self.label_widget, QtCore.Qt.AlignCenter)
+        self.main_layout.addWidget(self.weight, QtCore.Qt.AlignCenter)
 
     def _setup(self):
         self.variants_button.clicked.connect(self.open_context_menu)

@@ -10,12 +10,13 @@ import time
 from collections import OrderedDict
 
 import bpy
+from .. import asset_weights
 import gpu
 from bpy.app.handlers import persistent
 
 from .asset_browser_grid import (
     BBE_OT_asset_grid, _contains, _groups, grid_geometry, tile_action, browser_palette,
-    draw_switches, switch_event, switch_layout, draw_part_stats,
+    draw_switches, switch_event, switch_layout, draw_part_stats, hover_legend, show_asset_options,
 )
 from ..utils import new_assets
 from .. import i18n, asset_families
@@ -85,7 +86,6 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
     new_border = BBE_OT_asset_grid.new_border
     label = BBE_OT_asset_grid.label
     preview = BBE_OT_asset_grid.preview
-    show_options = BBE_OT_asset_grid.show_options
 
     def invoke(self, context, event):
         if context.area.type != 'VIEW_3D' or context.region.type != 'UI':
@@ -164,6 +164,12 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 return {'PASS_THROUGH'}
             x = event.mouse_x - region.x
             y = event.mouse_y - region.y
+            if event.type == 'MOUSEMOVE' and 0 <= x < region.width and 0 <= y < region.height:
+                # The strip's viewport keymap stops receiving moves over the sidebar.
+                from .. import asset_strip
+                asset_strip.clear_hover(self._window, self._area)
+            if hover_legend(self, x, y):
+                return {'PASS_THROUGH'}
             if asset_families.close_event(self, event, x, y):
                 return {'RUNNING_MODAL'}
             if switch_event(self,context,event,x,y):return {'RUNNING_MODAL'}
@@ -175,7 +181,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                               event.value == 'PRESS' and
                               _contains(scrollbar_bounds(self._bounds, self._scale), x, y)):
                 self._drag = True
-                self._offset = self._max_offset * min(1, max(0, (self._view_height-y) / max(1, self._view_height)))
+                self._offset = self._max_offset * min(1, max(0, (self._view_height-y) / max(1, self._bounds[3])))
                 self._area.tag_redraw()
                 return {'RUNNING_MODAL'}
             if not inside:
@@ -208,10 +214,12 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 pressed, self._pressed = self._pressed, None
                 if hit and pressed == (hover, event.type):
                     tile, action = hit
+                    if action == "weight":
+                        return {"RUNNING_MODAL"}
                     if not tile[5].get('is_preset'):
                         new_assets.record_click(context, tile[4])
                     if event.type == 'RIGHTMOUSE' or action == 'options':
-                        self.show_options(context, tile)
+                        show_asset_options(context, tile[4], tile[5])
                     elif action == 'variants':
                         asset_families.open_family(self, tile[4], tile[5])
                     else:
@@ -244,8 +252,9 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
         left, bottom, panel_width, top = grid_bounds(width, height, scale)
         inset = switch_layout(self,left+4*scale,left+panel_width-13*scale,top-scale,scale,compact_pair=True)
         self._view_height = top
-        self._bounds = (left,bottom,panel_width,self._view_height)
-        key = (width, height, scale, self._size, self._columns, self._signature)
+        key_height = 20*scale if panel_width >= 125*scale and top >= 50*scale and context.scene.nms_asset_browser.enum_asset_browser_what_to_display != 'preset' else 0
+        self._bounds = (left, bottom+key_height, panel_width, max(0,top-bottom-key_height))
+        key = (width, height, scale, self._size, self._columns, self._signature, key_height)
         if key != self._geometry_key:
             gutter = asset_families.ARROW_GUTTER * scale if self._family else 0
             titles, tiles, self._total = grid_geometry(
@@ -254,7 +263,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
             self._titles = [(x + left, top, title) for x, top, title in titles]
             self._tiles = [(x + left + gutter, top, w, h, object_id, data)
                            for x, top, w, h, object_id, data in tiles]
-            self._max_offset = max(0, self._total - self._view_height)
+            self._max_offset = max(0, self._total - self._bounds[3])
             self._offset = min(self._offset, self._max_offset)
             self._geometry_key = key
         # Partially visible tiles may pass behind the switches, up to the native controls.
@@ -287,6 +296,7 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                 name = data.get('variant_label') or (data['name'] if data.get('is_preset') else names.get(object_id, data['name']))
                 self.label(x+5*scale, y+8*scale, name, w-10*scale, 11, text_color)
                 if not data.get('is_preset'):
+                    asset_weights.draw_meter(*asset_weights.meter_bounds(x, y, w, scale), scale, object_id)
                     for line in range(3):
                         self.rectangle(x+8*scale, y+h-(8+line*4)*scale,
                                        11*scale, scale, text_color)
@@ -299,12 +309,17 @@ class BBE_OT_sidebar_asset_grid(bpy.types.Operator):
                            'No parts in this view.', panel_width-24*scale)
             if self._max_offset:
                 track_x, _bottom, _width, _height = scrollbar_bounds(self._bounds, scale)
-                thumb = max(30*scale, self._view_height**2 / max(self._total, 1))
-                top = self._offset / self._max_offset * (self._view_height-thumb)
+                track_height = self._bounds[3]
+                thumb = max(30*scale, track_height**2 / max(self._total, 1))
+                top = self._offset / self._max_offset * (track_height-thumb)
                 self.rectangle(track_x+4*scale, self._view_height-top-thumb,
                                4*scale, thumb, palette['accent'])
             asset_families.draw_back_arrow(self, self._view_height, scale)
             draw_switches(self,scale)
+            self._legend_bounds = None
+            if key_height:
+                self.rectangle(left, bottom, panel_width, key_height, palette['footer'])
+                self._legend_bounds = asset_weights.draw_key(left+7*scale, bottom+6*scale, panel_width-14*scale, scale, palette['text'])
             draw_part_stats(self,left,panel_width,self._view_height,scale)
         finally:
             gpu.state.scissor_set(*previous_clip)

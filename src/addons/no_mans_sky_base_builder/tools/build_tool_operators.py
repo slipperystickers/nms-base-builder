@@ -193,7 +193,32 @@ class Delete(bpy.types.Operator):
     bl_label = "Delete"
     bl_options = {"UNDO", "REGISTER"}
 
+    remove_cabling: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    def invoke(self, context, event):
+        from .. import cable_delete
+        plan = cable_delete.make_plan(context, 'BUILDER')
+        if plan and plan.attached:
+            return cable_delete.ask(self, context, plan)
+        return self._delete(context, plan)
+
+    def draw(self, context):
+        if hasattr(self, '_cables'):
+            from .. import cable_delete
+            cable_delete.draw(self)
+
     def execute(self, context):
+        from .. import cable_delete
+        plan = cable_delete.make_plan(context, 'BUILDER')
+        if not cable_delete.valid(self, context, plan):
+            self.report({'WARNING'}, "Selection or connections changed. Delete again to review.")
+            return {'CANCELLED'}
+        return self._delete(context, plan)
+
+    def _delete(self, context, plan):
+        if plan:
+            plan.apply(context, self.remove_cabling, global_delete=True)
+            return {'FINISHED'}
         scene = context.scene
         build_tool = scene.nms_build_tool
         deleted_count = build_tool.delete()
@@ -269,6 +294,8 @@ class CreateCurve(bpy.types.Operator):
             rotation=(0, 0, 0)
         )
         curve_obj = bpy.context.active_object
+        from ..curve_tools import open_viewport_controls
+        open_viewport_controls(context, curve_obj)
         self.report({'INFO'}, f"Created Bezier Curve ({curve_obj.name}) on 3d cursor")
         return {"FINISHED"}
     

@@ -156,7 +156,7 @@ class BuilderView(InlineView):
 
         actions = {node.options['identifier']: node for node in walk(common)
                    if node.kind == 'operator'}
-        auto_snap, snap, target, source, _, axes, pivot, auto_duplicate, mirror = snapping.children
+        auto_snap, snap, target, source, _, axes, pivot, auto_duplicate, mirror, analysis = snapping.children
         if width >= 470:
             columns = shell.row(equal=True, gap=15)
             settings, editing = columns.column(), columns.column()
@@ -218,6 +218,7 @@ class BuilderView(InlineView):
             choices = editing.column()
             for value, label, _ in ui.enum_items(pivot.options['data'], 'center_of_reflection', context):
                 choices.prop_enum(pivot.options['data'], 'center_of_reflection', value, text=label)
+        place(editing, analysis)
         footer = shell.row()
         footer.alignment = 'RIGHT'
         footer.operator('bbe.function_help', text='', outline='circle-help', width=28).topic = 'BUILDER'
