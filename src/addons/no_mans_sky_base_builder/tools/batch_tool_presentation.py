@@ -40,7 +40,6 @@ class NMS_PT_batch_tools_panel(Panel):
         select_col.label(text = "Select objects with")
         select_color_row = select_col.row(align = True)
         select_color_row.operator("object.nms_select_same_colors", text = "Same Colour", **icons.ui_icon("MOD_SOFT"))
-        select_color_row.operator("object.nms_select_all_same_colors", text = "", **icons.ui_icon("TEXTURE"))
         select_col.operator("object.nms_select_same_objects", text = "Same ObjectID", **icons.ui_icon("CON_SIZELIKE"))
         select_col.operator("object.nms_select_all_groups", text = "Select all Groups", **icons.ui_icon("OUTLINER_OB_GROUP_INSTANCE") )
         

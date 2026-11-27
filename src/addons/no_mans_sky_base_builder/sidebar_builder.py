@@ -63,10 +63,25 @@ def begin_header(owner, context, menu='builder'):
             view.visible = False
 
 
+def panel_body_visible(area, region, preferences):
+    if not area.spaces.active.show_region_ui or region.width <= 1:
+        return False
+    # Since 5.2 Blender keeps the UI region and active category alive when
+    # only vertical tabs are showing. Match ED_region_panels_draw's minimum
+    # width in View2D units, including compact tabs, UI scale and panel zoom.
+    if hasattr(preferences.system, 'show_panel_tabs_compact'):
+        tabs = 32 if preferences.system.show_panel_tabs_compact else 26
+        view = region.view2d
+        aspect = abs(view.region_to_view(0, 100)[1] - view.region_to_view(0, 0)[1]) / 100
+        return region.width * aspect >= (tabs + 20) * preferences.system.ui_scale
+    return True
+
+
 def active_views(context):
     if (not _views or not context.area or context.area.type != 'VIEW_3D' or not context.window
             or context.mode != 'OBJECT' or not context.region or context.region.type != 'UI'
-            or context.region.active_panel_category != CATEGORY):
+            or context.region.active_panel_category != CATEGORY
+            or not panel_body_visible(context.area, context.region, context.preferences)):
         return
     from .tools_menu.base_builder_menu import _preferences
     prefs = _preferences(context)
@@ -138,6 +153,8 @@ class InlineView(ui.MenuSurface):
 
 
 class BuilderView(InlineView):
+    menu = 'builder'
+
     def __init__(self):
         super().__init__()
         self.pivot_open = False
@@ -762,6 +779,8 @@ class ToolView(InlineView):
 def draw_inline(owner, context, menu='builder', contents=None):
     if not context.region or context.region.type != 'UI':
         return False
+    if not panel_body_visible(context.area, context.region, context.preferences):
+        return True
     panel = native_panel(owner)
     if panel is None:
         return False
@@ -886,15 +905,16 @@ class BBE_OT_sidebar_builder_input(bpy.types.Operator):
         mouse = (event.mouse_region_x, event.mouse_region_y)
         if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             for candidate in active_views(context):
-                if not isinstance(candidate, ToolView) or candidate.menu != 'parts' or not hasattr(candidate, 'top'):
+                if not isinstance(candidate, ToolView) or not hasattr(candidate, 'top'):
                     continue
                 for node, bounds in candidate.leaves:
-                    if node.kind == 'list_scroll' and ui.inside(candidate.rect(bounds), *mouse):
+                    if (node.kind == 'list_scroll' and ui.inside(candidate.rect(bounds), *mouse)
+                            and candidate.visible_list_point(candidate.rect(bounds), mouse[1])):
                         step = 1 if event.type == 'WHEELDOWNMOUSE' else -1
                         opts = node.options
                         offset = max(0, min(opts['total']-opts['rows'], opts['offset']+step))
                         if offset != opts['offset']:
-                            context.window_manager.bbe_prefab_offset = offset
+                            setattr(context.window_manager, opts['offset_key'], offset)
                             context.region.tag_redraw()
                             return {'FINISHED'}
             return {'PASS_THROUGH'}
@@ -902,7 +922,7 @@ class BBE_OT_sidebar_builder_input(bpy.types.Operator):
         for candidate in active_views(context):
             if not hasattr(candidate, 'top'):
                 continue
-            if (event.type == 'LEFTMOUSE' and isinstance(candidate,ToolView) and candidate.menu == 'parts'
+            if (event.type == 'LEFTMOUSE' and isinstance(candidate,ToolView)
                     and candidate.grab_list(*mouse)):
                 self.field_view = candidate
                 self.field_key = view_key(context, candidate.menu)
@@ -932,7 +952,8 @@ class BBE_OT_sidebar_builder_input(bpy.types.Operator):
             with context.temp_override(region=port):
                 bpy.ops.bbe.custom_menu('INVOKE_DEFAULT', menu=node.kind.upper()+':'+o['identifier'])
         elif node.kind == 'operator':
-            if getattr(view, 'menu', None) in {'io', 'recovery', 'proxies', 'support', 'transforms'}:
+            if (o['identifier'] == 'object.nms_group_objects' or
+                    getattr(view, 'menu', None) in {'io', 'recovery', 'proxies', 'support', 'transforms'}):
                 # Opening a confirmation on press would send the same click's release into it.
                 self.pending_action = (o['identifier'], vars(o['props']).copy())
                 self.field_view = view
@@ -993,6 +1014,7 @@ class BBE_OT_sidebar_builder_input(bpy.types.Operator):
         if (_views.get(self.field_key) is not view or not (pending or view.dropdown or view.edit or view.list_drag or view.number_drag) or not view.visible
                 or view.area not in context.window.screen.areas[:]
                 or view.region not in view.area.regions[:] or view.region.active_panel_category != CATEGORY
+                or not panel_body_visible(view.area, view.region, context.preferences)
                 or event.type == 'WINDOW_DEACTIVATE'):
             self.cancel(context)
             return {'CANCELLED'}

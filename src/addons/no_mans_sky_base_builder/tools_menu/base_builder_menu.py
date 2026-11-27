@@ -6,6 +6,7 @@ from types import FunctionType
 from bpy.app.handlers import persistent
 
 from .base_builder_menu_presentation import (
+    BBE_PG_quick_favourite, BBE_UL_quick_favourites, sync_native_favourites,
     VIEW3D_PT_nms_base_builder, VIEW3D_PT_nms_io_panel,
     VIEW3D_PT_bbe_project_recovery, TOOLBAR_GROUPS,
 )
@@ -383,6 +384,7 @@ def _load_toolbar(_dummy):
 
 
 classes = (
+    BBE_PG_quick_favourite, BBE_UL_quick_favourites,
     VIEW3D_PT_bbe_transform_values, VIEW3D_PT_bbe_transform_sidebar,
     VIEW3D_PT_nms_base_builder, VIEW3D_PT_nms_io_panel, VIEW3D_PT_bbe_project_recovery,
     *(panel for panel, _icon in TOOLBAR_GROUPS),
@@ -400,12 +402,16 @@ def register_menu():
     _layout_order_signature = None
     from .. import menu_hint
     menu_hint.register()
-    bpy.types.Scene.enum_assets_quick_access_view_mode = bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
+    wm = bpy.types.WindowManager
+    wm.bbe_quick_favourites = bpy.props.CollectionProperty(type=BBE_PG_quick_favourite, options={'SKIP_SAVE'})
+    wm.bbe_quick_favourite_active = bpy.props.IntProperty(default=0, options={'SKIP_SAVE'})
+    wm.bbe_quick_favourite_offset = bpy.props.IntProperty(default=0, min=0, options={'SKIP_SAVE'})
+    wm.enum_assets_quick_access_view_mode = bpy.props.EnumProperty(translation_context="BBEExtendedInterface", 
         name='View Mode', description='Quick access assets',
         items=[('fav', 'Favourites', 'Favourite parts', 'HEART', 0),
                ('recent', 'Recent', 'Recently used parts', 'MOD_TIME', 1),
                ('search', 'Search', 'Find a part', 'VIEWZOOM', 2)],
-        default='fav',
+        default='recent', options={'SKIP_SAVE'},
     )
     bpy.types.Scene.bbe_show_connectors=bpy.props.BoolProperty(name='Show Connectors',description='Show or hide snap and cable targets; starting a connection tool shows them again',default=True,update=connectors_changed)
     from .. import workspace_controls
@@ -454,5 +460,8 @@ def unregister_menu():
                 if previous is not None:
                     space.show_region_tool_header = previous
     _original_visibility.clear()
-    if hasattr(bpy.types.Scene, 'enum_assets_quick_access_view_mode'):
-        del bpy.types.Scene.enum_assets_quick_access_view_mode
+    if bpy.app.timers.is_registered(sync_native_favourites):
+        bpy.app.timers.unregister(sync_native_favourites)
+    for key in ('enum_assets_quick_access_view_mode', 'bbe_quick_favourite_offset',
+                'bbe_quick_favourite_active', 'bbe_quick_favourites'):
+        delattr(bpy.types.WindowManager, key)

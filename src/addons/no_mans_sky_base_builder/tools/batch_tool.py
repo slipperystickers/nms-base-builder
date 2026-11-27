@@ -3,7 +3,7 @@ from ..utils import mirror_utils
 import bpy
 import os
 import uuid
-from ..utils import blend_utils, curve, material, materials_v2, dictionary
+from ..utils import blend_utils, curve, material, materials_v2, dictionary, userdata
 from .. import builder, builder_v2, part
 from ..group import Group
 from ..utils.mirror_utils import ShowMessageBox
@@ -182,82 +182,36 @@ class BatchTool(bpy.types.PropertyGroup):
         return replaced_objects_list
 
 
-    def select_same_colored_objects(self, with_same_object_id = False):
-        """Selects objects with same UserData, for easy experimentation with colors"""
-
-        selected_objects = bpy.context.selected_objects
-
-        if not selected_objects:
-            ShowMessageBox(
-                message="Make sure you have an item selected.", title="Find Objects with same Color"
-            )
+    def select_same_colored_objects(self, with_same_object_id=False):
+        """Match the selected game paint swatches across selectable parts."""
+        context = bpy.context
+        selected = set(context.selected_objects)
+        if not selected:
+            ShowMessageBox(message="Make sure you have an item selected.", title="Find Objects with same Color")
             return 0
 
-        #Gather unique keys from selected obejcts
-        keys_to_find = []
-        for obj in selected_objects:
-            if "ObjectID" not in obj:
-                continue
+        def paint_key(obj):
+            if "ObjectID" not in obj or "UserData" not in obj:
+                return None
+            try:
+                colour = userdata.get_colour(int(obj["UserData"]))
+            except (ValueError, TypeError, OverflowError):
+                return None
+            return (obj["ObjectID"], colour) if with_same_object_id else colour
 
-            obj_id = obj["ObjectID"]
-            user_data = obj["UserData"]
-            if (obj_id,user_data) not in keys_to_find:
-                keys_to_find.append((obj_id,user_data))
-
-        #Iterate through all objects to collect matches with keys_to_find
-        found_matches = []
-        for obj in bpy.context.view_layer.objects:
-            if "ObjectID" not in obj:
-                continue
-
-            obj_id = obj["ObjectID"]
-            user_data = obj["UserData"]
-
-            new_key = (obj_id, user_data)
-            if new_key in keys_to_find:
-                found_matches.append(obj)
-
-        if len(found_matches) > 0:
-            blend_utils.select(found_matches)
-
-        return len(found_matches) - len(keys_to_find)
+        colours = {key for obj in selected if (key := paint_key(obj)) is not None}
+        if not colours:
+            return 0
+        matches = [obj for obj in context.selectable_objects if paint_key(obj) in colours]
+        if matches:
+            active = context.view_layer.objects.active
+            blend_utils.select(matches)
+            if active in selected and active in matches:
+                blend_utils.set_active_item(active)
+        return sum(obj not in selected for obj in matches)
 
     def select_all_same_colored_objects(self):
-        """Selects objects with same UserData, for easy experimentation with colors"""
-
-        selected_objects = bpy.context.selected_objects
-
-        if not selected_objects:
-            ShowMessageBox(
-                message="Make sure you have an item selected.", title="Find Objects with same Color"
-            )
-            return 0
-
-        #Gather unique keys from selected obejcts
-        keys_to_find = []
-        for obj in selected_objects:
-            if "ObjectID" not in obj:
-                continue
-
-            user_data = obj["UserData"]
-            if user_data not in keys_to_find:
-                keys_to_find.append(user_data)
-
-        #Iterate through all objects to collect matches with keys_to_find
-        found_matches = []
-        for obj in bpy.context.view_layer.objects:
-            if "ObjectID" not in obj:
-                continue
-
-            user_data = obj["UserData"]
-            if user_data in keys_to_find:
-                found_matches.append(obj)
-
-        if len(found_matches) > 0:
-            blend_utils.select(found_matches)
-
-        return len(found_matches) - len(keys_to_find)
-
+        return self.select_same_colored_objects()
 
     def select_same_objects(self):
         """Selects objects with same ObjectIDs"""

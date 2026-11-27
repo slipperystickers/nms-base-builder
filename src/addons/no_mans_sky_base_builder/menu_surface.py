@@ -209,6 +209,12 @@ class Layout:
     def operator_menu_enum(self,identifier,property,**kw):return self.child('operator_enum',identifier=identifier,key=property,**kw)
     def operator_enum(self,identifier,property,**kw):return self.operator_menu_enum(identifier,property,**kw)
     def template_icon(self,icon_value,scale=1,**kw):return self.child('image',icon_value=icon_value,scale=scale)
+    def list_window(self, offset_key, total, rows, row_height):
+        offset = min(getattr(bpy.context.window_manager, offset_key), max(0, total - rows))
+        box = self.child('listbox', total=total, offset=offset, rows=rows,
+                         row_height=row_height, offset_key=offset_key)
+        return box, offset
+
     def template_list(self,identifier,list_id,data,key,active_data,active_key,**kw):
         cls=bpy.types.UIList.bl_rna_get_subclass_py(identifier)
         if cls is None:raise ValueError('Unknown BBE+ list: '+identifier)
@@ -222,8 +228,7 @@ class Layout:
             query=getattr(bpy.context.window_manager,PREFIX+'_prefab_search','').casefold().strip()
             filtered=[(index,item) for index,item in enumerate(rows) if not query or query in ' '.join(str(getattr(item,k,'')) for k in ('name','description','title')).casefold()]
         size=max(3,min(12,kw.get('rows',6)))
-        start=min(getattr(bpy.context.window_manager,PREFIX+'_prefab_offset'),max(0,len(filtered)-size))
-        box=self.child('listbox',total=len(filtered),offset=start,rows=size,row_height=26 if sidebar_filter else 34)
+        box, start = self.list_window(PREFIX+'_prefab_offset', len(filtered), size, 26 if sidebar_filter else 34)
         for index,item in filtered[start:start+size]:
             args=(SimpleNamespace(layout_type='DEFAULT'),bpy.context,box.column(),data,item,0,active_data,active_key,index)
             cls.draw_item(*args[:len(inspect.signature(cls.draw_item).parameters)])
@@ -556,7 +561,7 @@ class MenuSurface:
             track, thumb, last = self.scrollbar_geometry(node, rect)
             if inside(track,x,y) and self.visible_list_point(rect,y):
                 grab = thumb[1]+thumb[3]-y if inside(thumb,x,y) else thumb[3]/2
-                self.list_drag = (track[1]+track[3], track[3]-thumb[3], last, grab)
+                self.list_drag = (track[1]+track[3], track[3]-thumb[3], last, grab, node.options['offset_key'])
                 return True
         return False
 
@@ -571,9 +576,8 @@ class MenuSurface:
         return bottom <= y <= bottom+height and height > 0
 
     def scroll_list_to(self, context, y):
-        top, travel, last, grab = self.list_drag
+        top, travel, last, grab, key = self.list_drag
         value = max(0,min(last,round((top-y-grab)*last/max(1,travel))))
-        key = PREFIX+'_prefab_offset'
         if getattr(context.window_manager,key) != value:
             setattr(context.window_manager,key,value)
             return True
@@ -1172,7 +1176,7 @@ class MenuSurface:
                 step=-1 if event.type=='WHEELUPMOUSE' else 1
                 offset=max(0,min(listing.options['total']-listing.options['rows'],listing.options['offset']+step))
                 if offset != listing.options['offset']:
-                    setattr(context.window_manager,PREFIX+'_prefab_offset',offset)
+                    setattr(context.window_manager,listing.options['offset_key'],offset)
                     self.rebuild(context);return {'RUNNING_MODAL'}
         if event.ctrl and event.type in {'Z','Y'} and event.value=='PRESS':
             self.finish();return {'PASS_THROUGH'}
@@ -1206,14 +1210,17 @@ class MenuSurface:
             self.hover=self.hit_test(x,y);self.last_hover=time.monotonic()
             self.area.tag_redraw();return {'RUNNING_MODAL'}
         hit=self.hit_test(x,y)
-        if self.menu == 'MENU:BBE_MT_recovery' and event.type == 'LEFTMOUSE':
-            # Finish the selection click before Blender opens the file-replacement confirmation.
-            target = hit if hit and hit.options.get('identifier') == 'bbe.open_recovery' else None
+        if event.type == 'LEFTMOUSE':
+            # Blender puts a dialog's confirmation button under the pointer. Open it after release.
+            identifier = hit.options.get('identifier') if hit else None
+            opens_dialog = identifier == 'object.nms_group_objects' or (
+                self.menu == 'MENU:BBE_MT_recovery' and identifier == 'bbe.open_recovery')
+            target = hit if opens_dialog else None
             if event.value == 'PRESS' and target:
-                self.pressed_recovery = target
+                self.pressed_dialog_button = target
                 return {'RUNNING_MODAL'}
-            if event.value == 'RELEASE' and getattr(self, 'pressed_recovery', None):
-                pressed, self.pressed_recovery = self.pressed_recovery, None
+            if event.value == 'RELEASE' and getattr(self, 'pressed_dialog_button', None):
+                pressed, self.pressed_dialog_button = self.pressed_dialog_button, None
                 if target is pressed:
                     return self.activate(target, context)
                 return {'RUNNING_MODAL'}

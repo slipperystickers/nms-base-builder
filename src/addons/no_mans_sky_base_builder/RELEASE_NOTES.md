@@ -10,6 +10,10 @@
 
 ## Performance and fixes
 
+- **Group** now waits for you to choose a pivot and confirm in the Builder and Prefabs menus.
+- **Batch → Same Colour** now selects matching paint across part IDs and material finishes. **Object ID** still selects by part type.
+- Collapsing the sidebar to its vertical tabs now hides BBE’s panel icons and controls.
+- **Sidebar Quick Access** opens on Recent. Favourites shows up to five parts at a time. Use the mouse wheel or drag the scrollbar to reach the rest.
 - Faster startup, asset browsing, and large build imports. Idle viewports do less background work.
 - **Cables & Logic → Divide** splits a selected cable and creates a junction.
 - Placing a prefab no longer opens Curve Studio when its outline is selected.

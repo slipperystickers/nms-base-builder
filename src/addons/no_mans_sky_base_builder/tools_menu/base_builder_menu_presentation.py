@@ -2,6 +2,7 @@
 from .. import i18n
 
 import bpy
+from itertools import islice
 from ..tools import asset_browser_presentation
 from ..save_editor import save_editor_presentation
 from .. import icons, hd_library, hd_library_ui, project_recovery, wasd_navigation
@@ -109,16 +110,75 @@ def draw_proxy_controls(layout, context):
         update_row.operator('bbe.hd_library', text='Update Detailed Proxy Pack', icon='IMPORT')
 
 
+QUICK_ACCESS_ROWS = 5
+_native_favourite_source = None
+
+
+class BBE_PG_quick_favourite(bpy.types.PropertyGroup):
+    """Native list row. Its name is the catalogue part ID."""
+
+
+class BBE_UL_quick_favourites(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        parts = context.scene.nms_asset_browser.get_favourite_objects_data()
+        part = parts.get(item.name)
+        if part:
+            draw_quick_part(i18n.localized_layout(layout), item.name, part, icons.get_asset_icons_pcoll())
+
+
+def sync_native_favourites():
+    # Blender disallows changing RNA collections in a panel draw callback.
+    global _native_favourite_source
+    wm = bpy.context.window_manager
+    parts = bpy.context.scene.nms_asset_browser.get_favourite_objects_data()
+    wm.bbe_quick_favourites.clear()
+    for part_id in parts:
+        wm.bbe_quick_favourites.add().name = part_id
+    wm.bbe_quick_favourite_active = min(wm.bbe_quick_favourite_active, max(0, len(parts) - 1))
+    _native_favourite_source = parts
+    for window in wm.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+
+def draw_quick_part(layout, object_id, part_data, pcoll):
+    asset_browser_presentation.draw_quick_access_element(
+        layout, object_id, part_data, pcoll[object_id].icon_id if object_id in pcoll else None)
+
+
+def draw_quick_favourites(layout, wm, parts, pcoll):
+    if len(parts) <= QUICK_ACCESS_ROWS:
+        for part_id, part in parts.items():
+            draw_quick_part(layout, part_id, part, pcoll)
+        return
+
+    list_window = getattr(layout, 'list_window', None)
+    if list_window:
+        box, start = list_window('bbe_quick_favourite_offset', len(parts), QUICK_ACCESS_ROWS, 26)
+        for part_id, part in islice(parts.items(), start, start + QUICK_ACCESS_ROWS):
+            draw_quick_part(box, part_id, part, pcoll)
+    else:
+        # The catalogue replaces its favourites dictionary on each edit.
+        stale = parts is not _native_favourite_source or len(wm.bbe_quick_favourites) != len(parts)
+        if stale and not bpy.app.timers.is_registered(sync_native_favourites):
+            bpy.app.timers.register(sync_native_favourites, first_interval=0)
+        layout.template_list('BBE_UL_quick_favourites', 'quick_access', wm, 'bbe_quick_favourites',
+                             wm, 'bbe_quick_favourite_active', rows=QUICK_ACCESS_ROWS,
+                             maxrows=QUICK_ACCESS_ROWS, type='DEFAULT')
+
+
 def draw_quick_access(layout, context, *, compact=False):
     asset_browser = context.scene.nms_asset_browser
-    enum_assets_quick_access_view_mode = context.scene.enum_assets_quick_access_view_mode
+    wm = context.window_manager
+    mode = wm.enum_assets_quick_access_view_mode
     pcoll = icons.get_asset_icons_pcoll()
     quick_access_column = layout.column(align = True)
     quick_access_column.label(text = "Quick Access")
     if compact:
-        quick_access_column.prop(context.scene, "enum_assets_quick_access_view_mode", text="Parts")
+        quick_access_column.prop(wm, "enum_assets_quick_access_view_mode", text="Parts")
     else:
-        quick_access_column.row(align=True).prop(context.scene, "enum_assets_quick_access_view_mode", expand=True)
+        quick_access_column.row(align=True).prop(wm, "enum_assets_quick_access_view_mode", expand=True)
     quick_access_column.separator()
 
 
@@ -128,21 +188,19 @@ def draw_quick_access(layout, context, *, compact=False):
             # search categories) side by side shrink to unusable slivers.
             for object_ids in asset_data.values():
                 for object_id, part_data in object_ids.items():
-                    asset_browser_presentation.draw_quick_access_element(
-                        quick_access_column, object_id, part_data,
-                        pcoll[object_id].icon_id if object_id in pcoll else None)
+                    draw_quick_part(quick_access_column, object_id, part_data, pcoll)
 
 
-    if enum_assets_quick_access_view_mode == "recent":
+    if mode == "recent":
         recent_data = asset_browser.get_recent_objects_data()
         if recent_data:
-            draw_assets({"Recent Objects": dict(list(recent_data.items())[:5])})
+            draw_assets({"Recent Objects": dict(islice(recent_data.items(), QUICK_ACCESS_ROWS))})
         else:
             quick_access_column.label(text="No recent parts yet.", **icons.ui_icon('INFO'))
-    elif enum_assets_quick_access_view_mode == "fav":
+    elif mode == "fav":
         fav_data = asset_browser.get_favourite_objects_data()
         if fav_data:
-            draw_assets({"Favourite Objects": fav_data})
+            draw_quick_favourites(quick_access_column, wm, fav_data, pcoll)
         else:
             quick_access_column.label(text="No favourite parts yet.", **icons.ui_icon('INFO'))
     else:

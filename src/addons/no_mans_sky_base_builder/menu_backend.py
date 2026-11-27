@@ -154,7 +154,6 @@ def style(root,key):
             if n.kind=='label' and n.options.get('text')==i18n.interface('Select objects with'):n.options['text']=i18n.interface('Select Matching')
             if n.kind=='label' and n.options.get('text') in {i18n.interface('Select Matching'),i18n.interface('Selection Tools')}:n.options['section']=True
             if n.kind=='label' and n.options.get('text')==i18n.interface('Batch Replace'):detach(n)
-            if n.options.get('identifier')=='object.nms_select_all_same_colors':detach(n)
             if n.kind=='row' and len(n.children)==2 and all(c.kind=='box' for c in n.children):n.options.update(gap=12,factor=.52,decor='columns')
             if n.options.get('identifier')=='object.nms_batch_replace_target':n.options.update(primary=True,top_rule=True)
     elif key=='COLOR':

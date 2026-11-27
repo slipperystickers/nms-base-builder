@@ -11,7 +11,7 @@ PATTERN_PRESETS = {
 }
 
 class SelectSameColoredObjects(bpy.types.Operator):
-    """Select objects with similar colors for easy experimentation."""
+    """Select parts painted with the same colour across object IDs and material finishes."""
 
     bl_idname = "object.nms_select_same_colors"
     bl_translation_context = "BBEExtendedInterface"
@@ -27,7 +27,7 @@ class SelectSameColoredObjects(bpy.types.Operator):
         return {"FINISHED"}
     
 class SelectAllSameColoredObjects(bpy.types.Operator):
-    """Select objects with similar colors for easy experimentation."""
+    """Select parts painted with the same colour across object IDs and material finishes."""
 
     bl_idname = "object.nms_select_all_same_colors"
     bl_translation_context = "BBEExtendedInterface"
@@ -44,11 +44,11 @@ class SelectAllSameColoredObjects(bpy.types.Operator):
     
 
 class SelectSameObjects(bpy.types.Operator):
-    """Select objects with similar colors for easy experimentation."""
+    """Select parts with the same object ID, in any colour."""
 
     bl_idname = "object.nms_select_same_objects"
     bl_translation_context = "BBEExtendedInterface"
-    bl_label = "Select same colors"
+    bl_label = "Select Same Object ID"
     bl_options = {"UNDO", "REGISTER"}
 
     def execute(self, context):
