@@ -1,8 +1,5 @@
-"""Station references: selective native geometry, local appearance profiles, cutaways.
-
-PlayerSpaceStationBase has no resolved descriptor choices. Profiles are manually
-matched and never represented as decoded game seeds. This module never writes saves.
-"""
+"""Station references from galactic addresses and locally remembered manual choices."""
+from .station_address import read_address
 from ..furby_errors import report_error
 from pathlib import Path
 from functools import lru_cache
@@ -59,9 +56,9 @@ def load_profiles():
         return data if isinstance(data,dict) else {}
     except (FileNotFoundError,ValueError,OSError): return {}
 
-def remember_profile(key,choices,visibility=None):
+def remember_profile(key,choices,visibility=None,prefer_manual=True):
     profiles=load_profiles()
-    profiles[key]={'choices':valid_choices(choices),'source':'manual','version':2}
+    profiles[key]={'choices':valid_choices(choices),'source':'manual','version':2,'preferManual':prefer_manual}
     if visibility is not None: profiles[key]['visibility']=visibility
     file=profile_file(); temp=file.with_suffix('.tmp')
     temp.write_text(json.dumps(profiles,indent=2),encoding='utf-8'); temp.replace(file)
@@ -70,7 +67,17 @@ def current_choices(manager):
     try: return valid_choices(json.loads(manager.station_choices_json))
     except (ValueError,TypeError): return defaults()
 
+def cleanup_palette():
+    for material in list(bpy.data.materials):
+        if (material.get('station_reference_palette') or material.get('bbe_station_surface') or material.get('bbe_station_slot')) and material.users == 0:
+            bpy.data.materials.remove(material)
+    for image in list(bpy.data.images):
+        if image.get('bbe_station_image') and image.users == 0:
+            bpy.data.images.remove(image)
+
+
 def remove_tree(collection,legacy=False):
+    is_root = bool(collection.get('appearance_source'))
     for child in list(collection.children): remove_tree(child,legacy)
     for obj in list(collection.objects):
         # Only tagged reference objects belong to this module.
@@ -81,6 +88,7 @@ def remove_tree(collection,legacy=False):
     bpy.data.collections.remove(collection)
     from .station_cached_reference import cleanup_geometry
     cleanup_geometry()
+    if is_root: cleanup_palette()
 
 def clear_reference(scene):
     legacy_roots=[]
@@ -169,13 +177,17 @@ def split_inside(mesh,destination):
             bmesh.ops.delete(bm,geom=[v for v in bm.verts if not v.link_faces],context='VERTS')
         if section.faces:
             area+=sum(f.calc_area() for f in section.faces)
-            part=bpy.data.meshes.new(name); section.to_mesh(part)
+            part=bpy.data.meshes.new(name)
+            for mat in mesh.materials: part.materials.append(mat)
+            section.to_mesh(part)
             obj=make_object(part,name,destination)
             counts[name]=len(part.polygons)
             if name.startswith('Roof'): obj.hide_set(True)
         section.free()
     area+=sum(f.calc_area() for f in remainder.faces)
-    part=bpy.data.meshes.new('Floors and fixtures'); remainder.to_mesh(part); remainder.free()
+    part=bpy.data.meshes.new('Floors and fixtures')
+    for mat in mesh.materials: part.materials.append(mat)
+    remainder.to_mesh(part); remainder.free()
     make_object(part,'Floors and fixtures',destination)
     counts['Floors and fixtures']=len(part.polygons)
     bpy.data.meshes.remove(mesh)
@@ -217,7 +229,8 @@ def imported_station(context,base,parts,transfer=False):
     address=base.get('GalacticAddress')
     # A partial station record can still load the reference, but must not borrow
     # another unidentified station's saved appearance.
-    if address is None or not str(address).strip():
+    seed=read_address(address)
+    if seed is None:
         from uuid import uuid4
         key='unidentified:'+uuid4().hex
     else:
@@ -231,7 +244,18 @@ def imported_station(context,base,parts,transfer=False):
     manager.station_group=catalog()['familyGroup']
     manager.station_status='Saved station visibility' if profile else 'Choose a hull and big parts with the Outliner eyes'
     organise_parts(context,parts)
-    assemble(context,choices,profile.get('visibility'))
+    if seed is not None and not profile.get('preferManual'):
+        try:
+            from .station_address_reference import assemble as match_station
+            manager.station_status = match_station(context,seed)
+        except Exception as exc:
+            print('BBE station address match failed:',exc)
+            assemble(context,choices,profile.get('visibility'))
+            manager.station_status = 'Address match unavailable · using manual reference'
+    else:
+        assemble(context,choices,profile.get('visibility'))
+        if seed is None:
+            manager.station_status = 'No station address · choose a manual reference'
     for window in context.window_manager.windows:
         if window.scene != context.scene:
             continue
@@ -302,6 +326,34 @@ class ApplyStationReference(bpy.types.Operator):
         self.report({'INFO'},'Reference updated; player parts kept in place')
         return {'FINISHED'}
 
+class SwitchStationReference(bpy.types.Operator):
+    bl_idname='object.nms_switch_station_reference'
+    bl_label='Switch Station Reference'
+    bl_translation_context = "BBEExtendedInterface"
+    bl_options={'REGISTER','UNDO'}
+    manual: bpy.props.BoolProperty(default=False)
+
+    def execute(self,context):
+        manager=context.scene.nms_save_data
+        seed=read_address(manager.station_key)
+        if seed is None: return {'CANCELLED'}
+        profile=load_profiles().get(manager.station_key,{})
+        if not isinstance(profile,dict): profile={}
+        choices=current_choices(manager)
+        try:
+            if self.manual:
+                assemble(context,choices,profile.get('visibility'))
+                manager.station_status='Choose a hull and big parts with the Outliner eyes'
+            else:
+                from .station_address_reference import assemble as match_station
+                manager.station_status=match_station(context,seed)
+                if profile.get('preferManual'):
+                    remember_profile(manager.station_key,choices,profile.get('visibility'),prefer_manual=False)
+        except Exception as exc:
+            report_error(self,{'ERROR'},str(exc)); return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class RememberStationVisibility(bpy.types.Operator):
     bl_idname='object.nms_remember_station_visibility'
     bl_translation_context = "BBEExtendedInterface"
@@ -320,10 +372,20 @@ def draw(layout,context):
     if not manager.station_key or not any(c.get(TAG) for c in context.scene.collection.children): return
     box=layout.box(); box.label(text='Station Reference')
     box.label(text=manager.station_status,icon='INFO')
+    if read_address(manager.station_key) is not None:
+        automatic=any(c.get('appearance_source')=='GalacticAddress' for c in context.scene.collection.children if c.get(TAG))
+        op=box.operator(SwitchStationReference.bl_idname,text='Use Manual Reference' if automatic else 'Match Station Address')
+        op.manual=automatic
+        if automatic:
+            if any(c.get('appearance_source') == 'GalacticAddress' and not c.get('station_surface_version')
+                   for c in context.scene.collection.children):
+                box.operator(SwitchStationReference.bl_idname, text='Refresh Station Materials', icon='FILE_REFRESH').manual=False
+            box.label(text='Show Outside in the Outliner to see the hull')
+            return
     box.label(text='Outside: use the eyes to choose one hull')
     box.label(text='Expand that hull for bodies and big parts')
     box.operator(RememberStationVisibility.bl_idname,icon='BOOKMARKS')
     box.operator(ApplyStationReference.bl_idname,icon='FILE_REFRESH')
     box.label(text='Outliner eyes: Outside, roof, and walls')
 
-classes=(ApplyStationReference,RememberStationVisibility)
+classes=(ApplyStationReference,RememberStationVisibility,SwitchStationReference)

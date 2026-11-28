@@ -32,6 +32,14 @@ def assemble(context,choices,visibility=None):
         root=target.collections[0]
         if root is None:raise ValueError('Could not load the prebuilt station reference')
         context.scene.collection.children.link(root)
+        from .station_surfaces import attach
+        meshes = set()
+        for obj in root.all_objects:
+            if obj.type == 'MESH':
+                meshes.add(obj.data)
+            if obj.instance_collection:
+                meshes.update(child.data for child in obj.instance_collection.objects if child.type == 'MESH')
+        attach(meshes, ref.ASSETS / 'station_surfaces.blend')
         # Appended objects need view-layer bases before their eye state can be set.
         context.view_layer.update()
         outside=next(c for c in root.children if c.get('station_collection_label')=='Outside')

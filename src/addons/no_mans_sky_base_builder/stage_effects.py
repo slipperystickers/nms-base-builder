@@ -101,13 +101,9 @@ def freighter_profiles():
     return json.loads((Path(__file__).parent / 'resources/freighter_lighting.json').read_text())
 
 
-def display_effect(part, collection):
+def display_effect(part, collection, root):
     pid = part.get('ObjectID', '').lstrip('^')
-    root = hd_library.scenes_root()
-    _, effect_lights = effect_data(root)
     fire = pid == 'BLD_FIREPIT'
-    if pid not in effect_lights and not fire:
-        return
     name = ('BBE Effect 18.1.21 / ' if fire else 'BBE Effect 18.1.9 / ') + pid
     mesh = bpy.data.meshes.get(name)
     if mesh is None:
@@ -140,7 +136,9 @@ def material_nodes(tree, seen=None):
 
 
 def restore_object_materials(obj):
-    saved = json.loads(obj.get(LINKS, '{}'))
+    if LINKS not in obj:
+        return
+    saved = json.loads(obj[LINKS])
     for index, link in saved.items():
         if int(index) >= len(obj.material_slots):
             continue
@@ -257,10 +255,13 @@ def budget_lights(candidates, budget):
             spatial = (a[4] - b[4]).length_squared
             colour = sum((a[2][j] - b[2][j])**2 for j in range(3))
             return spatial + colour * min(a[6], b[6])**2
+        nearest = [distance(c, anchors[0]) for c in remaining]
         while remaining and len(anchors) < slots:
-            index = max(range(len(remaining)), key=lambda i:
-                        min(distance(remaining[i], a) for a in anchors))
-            anchors.append(remaining.pop(index))
+            index = max(range(len(remaining)), key=nearest.__getitem__)
+            anchor = remaining.pop(index)
+            nearest.pop(index)
+            anchors.append(anchor)
+            nearest = [min(previous, distance(c, anchor)) for previous, c in zip(nearest, remaining)]
         clusters = [[a] for a in anchors]
         for c in remaining:
             index = min(range(len(anchors)), key=lambda i: distance(c, anchors[i]))
@@ -293,6 +294,9 @@ def build(scene, progress=None):
         return
     profiles, effect_lights = effect_data(root)
     copies, candidates = {}, []
+    material_info = {}
+    emission_geometry = {}
+    detailed = getattr(scene, 'bbe_detailed_proxies', True)
     objects = list(scene.objects)
     total = len(objects)
     for index, obj in enumerate(objects):
@@ -301,8 +305,8 @@ def build(scene, progress=None):
         pid = obj.get('ObjectID', '').lstrip('^')
         if not pid or obj.type != 'MESH' or obj.hide_render or obj.hide_get():
             continue
-        if getattr(scene, 'bbe_detailed_proxies', True):
-            display_effect(obj, settings.collection)
+        if detailed and (pid in effect_lights or pid == 'BLD_FIREPIT'):
+            display_effect(obj, settings.collection, root)
         freighter = pid in freighter_profiles()
         profile = freighter_profiles()[pid] if freighter else profiles.get(pid, {})
         fire = pid == 'BLD_FIREPIT'
@@ -317,14 +321,17 @@ def build(scene, progress=None):
             original = slot.material
             if not original or not original.node_tree:
                 continue
-            nodes = [n for n in original.node_tree.nodes if n.type == 'BSDF_PRINCIPLED']
+            if original not in material_info:
+                nodes = [n for n in original.node_tree.nodes if n.type == 'BSDF_PRINCIPLED']
+                material_info[original] = nodes, any(emissive(n) for n in material_nodes(original.node_tree))
+            nodes, authored_emission = material_info[original]
             name = original.name.lower()
             station_pill = 'clasp_glow_mat' in name
             if station_pill:
                 pill_slots.append(index)
             native_unlit = re.sub(r'\.\d{3}$', '', original.name) in profile.get('unlit', ())
             force = native_unlit or (pid.startswith('WALLLIGHT') and ('lightoff' in name or 'pulselight' in name))
-            emits = force or any(emissive(n) for n in material_nodes(original.node_tree))
+            emits = force or authored_emission
             water = pid == 'SET_FISHPOND' and 'fishpondwatermat' in name
             embedded = pid == 'S_CEMENTBAG' or water
             seep = (hull or embedded) and nodes and not emits and all(
@@ -335,8 +342,12 @@ def build(scene, progress=None):
                 continue
             if emits:
                 lit_slots.append(index)
-            if not nodes:
-                continue  # Preserve authored emission/group/hologram shaders.
+            door = pid == 'BUILDDOOR_WATER' and 'hologramdisplacement_mat' in name
+            power_glow = pid in POWER_PARTS and ('biggslight' in name or 'glowscroll' in name)
+            if not nodes or not (seep or force or fixture or freighter or fire or station_pill or power_glow or door):
+                # The authored material already emits. Its faces still contribute lights
+                # below, and Blender can reuse its existing compiled shader and textures.
+                continue
             # Leave the independent hologram shaders alone; they already emit.
             key = (original.as_pointer(), colour, fixture, pid in POWER_PARTS, force, bool(seep), embedded, freighter, fire)
             if key not in copies:
@@ -348,7 +359,6 @@ def build(scene, progress=None):
                     if n.type != 'BSDF_PRINCIPLED' or not (force or emissive(n)):
                         continue
                     strength = n.inputs['Emission Strength']
-                    power_glow = pid in POWER_PARTS and ('biggslight' in name or 'glowscroll' in name)
                     if not strength.is_linked:
                         # Decorative trim is not a lamp. Retain its authored
                         # intensity instead of making every hull seam neon.
@@ -364,7 +374,7 @@ def build(scene, progress=None):
                         for link in list(socket.links):
                             mat.node_tree.links.remove(link)
                         socket.default_value = (*colour, 1)
-                if pid == 'BUILDDOOR_WATER' and 'hologramdisplacement_mat' in name:
+                if door:
                     soften_door(mat)
                 if seep:
                     hull_seep(mat, next(n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), embedded, water)
@@ -378,16 +388,20 @@ def build(scene, progress=None):
         # Core and wall lamps use their known hue; other lamps use warm white.
         if not lit_slots and not colour:
             continue
-        faces = [p for p in obj.data.polygons if p.material_index in lit_slots]
-        area = sum(p.area for p in faces)
-        center = sum((p.center * p.area for p in faces), Vector()) / area if area > 1e-9 else Vector()
-        if pid.startswith('B_GEN_') and faces:
-            # An average of opposite emitter faces lies inside the housing.
-            # Place the spill just above the native Y-up luminous surfaces.
-            points = [obj.data.vertices[i].co for face in faces for i in face.vertices]
-            top = max(p.y for p in points)
-            bottom = min(p.y for p in points)
-            center.y = top + max(.08, (top-bottom)*.08)
+        geometry_key = (obj.data, tuple(lit_slots), pid.startswith('B_GEN_'))
+        if geometry_key not in emission_geometry:
+            faces = [p for p in obj.data.polygons if p.material_index in lit_slots]
+            area = sum(p.area for p in faces)
+            center = sum((p.center * p.area for p in faces), Vector()) / area if area > 1e-9 else Vector()
+            if pid.startswith('B_GEN_') and faces:
+                # An average of opposite emitter faces lies inside the housing.
+                # Place the spill just above the native Y-up luminous surfaces.
+                points = [obj.data.vertices[i].co for face in faces for i in face.vertices]
+                top = max(p.y for p in points)
+                bottom = min(p.y for p in points)
+                center.y = top + max(.08, (top-bottom)*.08)
+            emission_geometry[geometry_key] = faces, center
+        faces, center = emission_geometry[geometry_key]
         if pid.startswith('SET_CLASS_') or pid == 'U_BYTEBEATLINE':
             continue  # Holograms glow in the image; they are not floodlights.
         scale = max(abs(v) for v in obj.matrix_world.to_scale())

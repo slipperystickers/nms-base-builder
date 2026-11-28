@@ -89,6 +89,7 @@ class Builder(object):
     def clear_caches(self):
         """Clear all the caches we use in this class."""
         self.__part_cache.clear()
+        self.__preset_cache.clear()
 
     def add_to_part_cache(self, object_id, bpy_object):
         """Add item to part cache."""
@@ -96,7 +97,7 @@ class Builder(object):
 
     def add_to_preset_cache(self, object_id, bpy_object):
         """Add item to preset cache."""
-        self.__part_cache[object_id] = bpy_object.name
+        self.__preset_cache[object_id] = bpy_object.name
 
     def find_object_by_id(self, object_id):
         """Get the item from the part cache."""
@@ -137,19 +138,12 @@ class Builder(object):
         )
 
     def find_preset_by_id(self, preset_id):
-        """Get the item from the part cache."""
-        preset_name = self.__part_cache.get(preset_id, None)
-        # Return None if not found.
-        if not preset_name:
+        """Reuse an instance only while it still belongs to the current scene."""
+        name = self.__preset_cache.get(preset_id)
+        control = bpy.context.scene.objects.get(name) if name else None
+        if control is None or control.get("PresetID") != preset_id:
             return None
-        # If something is found, we need to check if it still exists.
-        if preset_name in bpy.data.objects:
-            bpy_object = bpy.data.objects[preset_name]
-            return preset.Preset.deserialise_from_object(
-                bpy_object=bpy_object, builder_object=self
-            )
-        # If all fails, return None.
-        return None
+        return preset.Preset.deserialise_from_object(bpy_object=control, builder_object=self)
 
     def get_all_parts(
         self, exclude_presets=False, skip_object_type=None, include_lines=False, include_groups = False
@@ -615,8 +609,9 @@ class Builder(object):
                     controls.setdefault(control, set()).add(obj.get('ObjectID'))
         unique = {}
         replacements = {}
+        multiple_scenes = len(bpy.data.scenes) > 1
         for control, kinds in controls.items():
-            if len(kinds) != 1 or len(control.users_scene) > 1:
+            if len(kinds) != 1 or (multiple_scenes and len(control.users_scene) > 1):
                 continue
             position = tuple(round(v, 3) for v in control.matrix_world.translation)
             owner = cables.control_owner(control) if control.get('bbe_socket_key') else None
@@ -630,10 +625,10 @@ class Builder(object):
             new_start, new_end = replacements.get(start, start), replacements.get(end, end)
             if new_start != start or new_end != end:
                 self.get_builder_object_from_bpy_object(cable).build_rig(new_start, new_end)
-        for old in replacements:
-            # Other drivers, parents or constraints may also use this object.
-            if old.users <= len(old.users_collection):
-                bpy.data.objects.remove(old, do_unlink=True)
+        # Keep any endpoint still used by an external driver, parent or constraint.
+        unused = [old for old in replacements if old.users <= len(old.users_collection)]
+        if unused:
+            bpy.data.batch_remove(ids=unused)
 
 
 # Public integration hook used by companion add-ons such as Charon Forge.

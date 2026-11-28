@@ -626,13 +626,17 @@ def select_parent_curve(object):
             
 # select all children of curve present
 # make all children linked to curve selectable and make curve unselectable
+def follows_guide(obj, guide):
+    return any(c.type == 'FOLLOW_PATH' and c.target == guide for c in obj.constraints)
+
+
 def select_children_of_curve(curve):
     if not is_bezier_or_nurbs_path(curve):
         return
     
     children = []
     for obj in bpy.context.scene.objects:
-        if curve_links.parent_name(obj) == curve.name:
+        if curve_links.parent_name(obj) == curve.name and follows_guide(obj, curve):
             obj.hide_select = False
             children.append(obj)
             

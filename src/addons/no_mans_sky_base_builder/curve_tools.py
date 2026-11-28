@@ -17,6 +17,7 @@ _drawing = {}
 _anchors = {}
 # Window-local editing intent. Do not store this in a project or in preferences.
 _viewport_sessions = {}
+_hidden_sessions = {}
 _selection_owner = object()
 
 # Keep existing stored enum values: Side was 3 before Rear was introduced.
@@ -28,7 +29,7 @@ DRAW_PLANES=[('VIEW','Current View','Draw facing your current view through the 3
 
 
 def selected_guide(obj, scene, view_layer):
-    from .utils.curve import is_guide_object
+    from .utils.curve import is_guide_object, follows_guide
     if obj is None or not obj.select_get(view_layer=view_layer):
         return None
     if obj.type == 'CURVE':
@@ -36,13 +37,24 @@ def selected_guide(obj, scene, view_layer):
     name = curve_links.parent_name(obj)
     guide = scene.objects.get(name) if name else None
     # Older cached parts can retain a follower's tag after losing its constraint.
-    if is_guide_object(guide) and any(c.type == 'FOLLOW_PATH' and c.target == guide for c in obj.constraints):
+    if is_guide_object(guide) and follows_guide(obj, guide):
         return guide
     return None
 
 
 def active_curve(context):
-    return selected_guide(context.active_object, context.scene, context.view_layer)
+    obj = context.active_object
+    guide = selected_guide(obj, context.scene, context.view_layer)
+    if guide is not None:
+        return guide
+    if (obj is None or obj.type != 'MESH' or not obj.select_get(view_layer=context.view_layer)
+            or not (obj.get('ObjectID') or obj.get('GroupID'))):
+        return None
+    # Shift-selecting the part last leaves it active. Use the same guide/parts
+    # rules as Duplicate Along Curve, without changing Blender's selection.
+    from .utils.curve import duplication_selection
+    guide, seeds = duplication_selection(context.selected_objects)
+    return guide if seeds else None
 
 
 def _session_key(window, guide_id):
@@ -54,7 +66,12 @@ def viewport_session_matches(window, guide_id):
 
 
 def open_viewport_controls(context, guide):
-    _viewport_sessions[context.window.as_pointer()] = _session_key(context.window, guide.session_uid)
+    key = context.window.as_pointer()
+    _hidden_sessions.pop(key, None)
+    _viewport_sessions[key] = _session_key(context.window, guide.session_uid)
+    # Native paths explicitly adopted through Curve Tools have no preset marker.
+    if editable(guide) and not guide.get('bbe_easy_curve') and not guide.get('bbe_studio_guide'):
+        guide['bbe_studio_guide'] = True
     context.scene.bbe_curve_helper = True
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
@@ -68,36 +85,52 @@ def viewport_curve(context):
         return None
     key = window.as_pointer()
     session = _viewport_sessions.get(key)
-    if session is None:
-        return None
     guide = active_curve(context)
-    if guide is not None and _session_key(context.window, guide.session_uid) == session:
-        return guide
+    if guide is not None:
+        selected = _session_key(window, guide.session_uid)
+        if session == selected:
+            return guide
+        if _hidden_sessions.get(key) == selected:
+            return None
+        if (guide.select_get(view_layer=context.view_layer) and
+                (guide.get('bbe_easy_curve') or guide.get('bbe_studio_guide') or guide.get('bbe_curve_id'))):
+            _hidden_sessions.pop(key, None)
+            _viewport_sessions[key] = selected
+            return guide
     _viewport_sessions.pop(key, None)
+    _hidden_sessions.pop(key, None)
     return None
 
 
 def _selection_changed():
     # Also end a session when the user changes selection with gizmos hidden.
-    if not _viewport_sessions:
+    if not (_viewport_sessions or _hidden_sessions):
         return
     windows = {w.as_pointer(): w for w in bpy.context.window_manager.windows}
-    for key in tuple(_viewport_sessions):
+    for key in _viewport_sessions.keys() | _hidden_sessions.keys():
         window = windows.get(key)
         if window is None:
-            _viewport_sessions.pop(key)
+            _viewport_sessions.pop(key, None)
+            _hidden_sessions.pop(key, None)
         else:
             with bpy.context.temp_override(window=window):
                 viewport_curve(bpy.context)
 
 
 @persistent
-def _reset_viewport_sessions(*_):
+def _reset_viewport_sessions(loaded_file=None):
     _viewport_sessions.clear()
+    _hidden_sessions.clear()
     bpy.msgbus.clear_by_owner(_selection_owner)
     for key in ((bpy.types.LayerObjects, 'active'), (bpy.types.Window, 'scene'),
                 (bpy.types.Window, 'workspace'), (bpy.types.Window, 'view_layer')):
         bpy.msgbus.subscribe_rna(key=key, owner=_selection_owner, args=(), notify=_selection_changed)
+    if loaded_file is not None:  # Loading a file restores selection without starting an editing session.
+        for window in bpy.context.window_manager.windows:
+            with bpy.context.temp_override(window=window):
+                guide = active_curve(bpy.context)
+                if guide is not None:
+                    _hidden_sessions[window.as_pointer()] = _session_key(window, guide.session_uid)
 
 
 def editable(obj):
@@ -652,7 +685,9 @@ class BBE_OT_curve_action(bpy.types.Operator):
             open_viewport_controls(context, obj)
             return {'FINISHED'}
         if self.action == 'HIDE_CONTROLS':
-            _viewport_sessions.pop(context.window.as_pointer(), None)
+            key = context.window.as_pointer()
+            _viewport_sessions.pop(key, None)
+            _hidden_sessions[key] = _session_key(context.window, obj.session_uid)
             from . import curve_studio
             curve_studio.restore_if_left(context.scene)
             for area in context.screen.areas:
@@ -1165,6 +1200,7 @@ def unregister():
     reset()
     bpy.msgbus.clear_by_owner(_selection_owner)
     _viewport_sessions.clear()
+    _hidden_sessions.clear()
     bpy.app.handlers.load_post.remove(_reset_viewport_sessions)
     if reset in bpy.app.handlers.load_post:bpy.app.handlers.load_post.remove(reset)
     del bpy.types.Object.bbe_curve;del bpy.types.Scene.bbe_curve_helper;del bpy.types.Scene.bbe_curve_plane

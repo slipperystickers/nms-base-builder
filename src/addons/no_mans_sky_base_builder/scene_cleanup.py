@@ -25,17 +25,15 @@ def clear(scene):
         unused = [c for c in collections if c.users == 0 and c.library is None]
         if not unused:
             break
-        for collection in unused:
-            collections.remove(collection)
-            bpy.data.collections.remove(collection)
+        collections.difference_update(unused)
+        bpy.data.batch_remove(ids=unused)
     remaining = set(objects)
     while remaining:
         unused = [obj for obj in remaining if obj.users == 0 and obj.library is None]
         if not unused:
             break
-        for obj in unused:
-            remaining.remove(obj)
-            bpy.data.objects.remove(obj)
+        remaining.difference_update(unused)
+        bpy.data.batch_remove(ids=unused)
 
     # Keep a clean destination for manual building as well as the next import.
     from .utils.collection_utils import get_collection

@@ -82,6 +82,7 @@ TOPICS.update({
     'IO': ('Import and export', (
         ('Work with a file', 'Use Import Build from File to open a build. Save BBE Project JSON keeps an editable project. Export Corvette or Export Base writes a standalone file.'),
         ('Copy objects', 'Copy Objects to Clipboard copies the current build as an Objects JSON array for pasting into a save editor. Import from Clipboard loads a copied build or replaces its parts from an Objects array.'),
+        ('Update Current Build', 'Beside Clear Build Scene, choose Update Current Build. Compare the selected Save Manager build, a file, or clipboard JSON with the open scene. Review the counts, then apply. In the Outliner, Added in Game holds new, moved and edited parts. Deleted in Game keeps hidden visual references excluded from export. Needs Review identifies linked objects that require manual editing. Use Undo to reverse an update.'),
         ('Clear the scene', 'Choose Clear Build Scene and confirm to remove objects and collections from the current Blender scene. Undo restores the build.'),
         ('Work with a game save', 'Choose an account and save slot, then a base type and a ship or base. Import from Save loads that build into Blender. Under Corvette, Add Minimal Corvette creates a starter ship in the chosen save.'),
         ('Save changes', 'Export to Save checks for changes on disk. If the game saved since you chose a base, BBE refreshes the list and keeps the same destination when it can identify it.'),
@@ -120,7 +121,8 @@ TOPICS.update({
     )),
     'LIGHTING': ('Lighting and scenes', (
         ('Set the scene', 'Install the detailed proxy pack if prompted, then enable the scene preview. Choose an environment and quality level.'),
-        ('Adjust the lighting', 'Set the brightness, sun direction and height. Turn on ship lights or glow as needed. Click Refresh Scene Preview to apply slider changes.'),
+        ('Choose a location', 'In Lighting & Scenes, enable Scene Preview and choose a Scene. Station Hangar opens inside Dock 5. Orbit or fly through the roof, floor or walls to see the ship from outside. Fixed station lamps illuminate the pad. Outdoor scenes use a single adjustable sun. Station Pad Only gives you the open pad. Deep-Space Outpost adds the outpost hub and starfield. Frozen Valley and Barren Mesas leave a level landing area at the origin. Choose Smooth for editing.'),
+        ('Adjust the lighting', 'In an outdoor scene, choose an NMS sky and palette. Drag Sun Direction or Sun Height for live lighting, or choose Point Sun in Viewport and click in the sky. Esc restores the previous angle. Refresh Scene Preview applies brightness and light spill.'),
     )),
     'TOOLBAR': ('Toolbar settings', (
         ('Show and arrange menus', 'Open Workspace Settings in BBE. Choose Top Bar or Sidebar, drag menu handles to set their order, and use each switch to show or hide its menu. Display controls the Part Count and Active Object Properties overlays.'),

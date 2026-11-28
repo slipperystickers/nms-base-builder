@@ -34,12 +34,16 @@ def draw_build_files(layout, context):
     from .. import menu_contract
     from ..save_editor.function_help import corner_help
     layout.prop(context.scene.nms_base_tool, 'string_base', text='Build Name')
+    def scene_actions(row):
+        row.operator('bbe.update_build', text='Update Current Build...', icon='FILE_REFRESH')
+        corner_help(row, 'IO')
+
     menu_contract.files(layout, {
       'clear':('object.nms_new_file',{}), 'import':('bbe.import_build_file',{}),
       'json':('object.nms_save_data',{}), 'ship':('bbe.export_ship_file',{}),
       'base':('bbe.export_base_file',{}), 'paste':('object.nms_import_nms_data',{}),
       'copy_all':('object.nms_export_nms_data',{}), 'copy_objects':('object.nms_export_nms_data_objects',{})
-    },lambda row:corner_help(row,'IO'))
+    }, scene_actions)
 
 
 class VIEW3D_PT_nms_base_builder(bpy.types.Panel):

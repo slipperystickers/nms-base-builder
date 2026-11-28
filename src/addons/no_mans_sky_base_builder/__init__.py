@@ -1189,6 +1189,9 @@ class RefreshPrefabCatalogue(bpy.types.Operator):
 
 # Operators ---
 # File Operators ---
+from .build_update import ChooseUpdate, PreviewUpdate
+
+
 class NewFile(bpy.types.Operator):
     bl_idname = "object.nms_new_file"
     bl_translation_context = "BBEExtendedInterface"
@@ -2508,7 +2511,7 @@ classes = (
     VisitPrefabDiscord,
     VisitGitHubRepo,
     OpenPresetFolder,
-    NewFile,
+    NewFile, ChooseUpdate, PreviewUpdate,
     SaveData,
     LoadData,
     ImportBuildFile,

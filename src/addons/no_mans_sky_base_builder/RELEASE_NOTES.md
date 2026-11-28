@@ -1,3 +1,13 @@
+# Base Builder Extended 18.3.5
+
+## Changes since 18.3.4
+
+- **Faster Save Manager imports.** A 2,979-part base with 646 cables loaded in 4.7–5.2 seconds with Simple proxies, down from 20.4–25.8 seconds in local Blender 5.1.2 tests. Switching from that base to a 1,237-part Corvette with Detailed proxies went from 33–40 seconds to about 20 seconds. Timings cover scene import and exclude the first shaded frame.
+- **Update Current Build.** Use the I/O menu to compare an open Blender project with a full build from the game. Review the changes before applying them. BBE groups new, moved and edited parts under **Added in Game** and archives missing parts under **Deleted in Game**.
+- **Station references from the system address.** Save Manager, full station files and clipboard imports can use the galactic address to select the station exterior and hull colours. Material Preview adds game textures inside and out. Manual references remain available for builds without a usable address.
+- **Scene Preview.** Build or take photos in a station hangar, at a deep-space outpost, or on a frost or mesa landscape. The hangar has fixed lighting and camera cutaways. The outpost has a translucent landing deck, pad lighting and underside effects. Position the sun interactively in outdoor scenes. Scene Preview starts off when a project opens.
+- **Curve and prefab fixes.** Reselecting a BBE curve with another part brings Curve Studio back. Selecting a prefab outline keeps Curve Studio closed. Deleting a selected prefab removes its parts and outline together.
+
 # Base Builder Extended 18.3.4
 
 ## New since 18.3.3

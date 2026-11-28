@@ -6,7 +6,7 @@ Per usare BBE in italiano, scegli **Italiano** nelle preferenze di traduzione di
 
 Additional languages use UTF-8 message catalogues under the add-on’s `locales/` folder. Copy `it_IT.json` to a Blender locale name, translate the values, and preserve the English keys and fields in braces. Optional game part names go in `locales/parts/<locale>.json` keyed by ObjectID.
 
-Current standalone release: **18.3.4** for Windows x64. Target Blender versions include
+Current standalone release: **18.3.5** for Windows x64. Target Blender versions include
 5.1.2, 5.2.0 LTS, 5.2.4 LTS, and 5.3.0.
 
 Build bubble tube routes with nearby part icons, rotation controls and all eight

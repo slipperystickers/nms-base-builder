@@ -1,4 +1,13 @@
-# Station references 6.5.8 - faster, smaller references
+# Station references
+
+BBE reads the GalacticAddress field when you import a station through Save Manager, Import Build File, or the clipboard. The system address selects the native hull, entrance tube, structural branches and exterior hull colours. Open **Outside** with its Outliner eye to inspect the hull. The exterior and the interior roof start hidden for building. Material Preview displays packed game textures on the interior cutaways and exterior hull. The system colours tint the exterior panels. To update an older station scene, use Refresh Station Materials under Station Reference, or Refresh Reference Library for a manual reference.
+
+A station file carries its own address, so sharing a full station base export also shares its reference. For a parts-only file, choose **Station Base** under **Fallback build type** in the import dialog. An identified station with a missing or invalid address opens the manual library. Raw clipboard lists have no build type to identify them as stations.
+
+Under **Station Reference**, **Use Manual Reference** opens the hull and module choices. **Remember Station Visibility** keeps that manual choice for the next import. **Match Station Address** restores automatic matching for an addressed station. Reference geometry stays in Blender. Game exports contain the player's placed build parts.
+
+## Manual library and earlier versions
+
 
 The reference now loads prebuilt interior cutaways and shares repeated exterior meshes. All six hull families, large-part toggles, native geometry and placement stay the same. In the local Blender 5.1.2 benchmark, reference creation dropped from 23.15 seconds to about 0.6 seconds. A saved reference dropped from 219 MB to 55 MB; stored unique vertices dropped from 10.38 million to 2.51 million. Player building-part import takes additional time and varies with the build. These changes reduce repeated geometry and preparation work; they do not decimate the visible surfaces.
 

@@ -21,9 +21,25 @@ def selection(context, source):
 
 def deletion_targets(scene, selected, source, hierarchy):
     targets = set(selected)
+    prefabs = {obj for obj in selected if obj.get('PresetID')}
+    if prefabs:
+        # Each placement has its own control, even when multiple copies have
+        # the same PresetID. Locked members are intentionally not selected.
+        children = defaultdict(list)
+        for obj in scene.objects:
+            if obj.parent and obj.is_editable and (
+                    obj.get('belongs_to_preset') or obj.get('bbe_preset_part')
+                    or obj.get('bbe_stage_owned') or obj.get('PresetID')):
+                children[obj.parent].append(obj)
+        pending = list(prefabs)
+        while pending:
+            owned = children.pop(pending.pop(), ())
+            targets.update(owned)
+            pending.extend(owned)
     if source == 'BUILDER':
-        guides = {obj.name for obj in selected if curve.is_bezier_or_nurbs_path(obj)}
-        parents = {obj for obj in selected if obj.name not in guides}
+        ordinary = selected - prefabs
+        guides = {obj.name for obj in ordinary if curve.is_bezier_or_nurbs_path(obj)}
+        parents = {obj for obj in ordinary if obj.name not in guides}
         # Object.children scans all Blender objects. Walk the scene once for a
         # batch of floor tiles instead of repeating that scan for each tile.
         if parents:
@@ -163,10 +179,11 @@ def make_plan(context, source, hierarchy=False):
     if not selected:
         return None
     targets = deletion_targets(context.scene, selected, source, hierarchy)
-    if not any(obj.get('ObjectID') or is_point(obj) for obj in targets):
+    has_prefab = any(obj.get('PresetID') for obj in selected)
+    if not has_prefab and not any(obj.get('ObjectID') or is_point(obj) for obj in targets):
         return None
     plan = DeletePlan(context.scene, targets)
-    return plan if plan.relevant else None
+    return plan if has_prefab or plan.relevant else None
 
 
 def ask(operator, context, plan):
@@ -265,7 +282,7 @@ def wrap_menu(original, native_id):
     def wrapper(menu, context):
         source = 'OUTLINER' if native_id == 'outliner.delete' else 'VIEWPORT'
         if context.mode == 'OBJECT' and any(
-                obj.get('ObjectID') or is_point(obj) for obj in selection(context, source)):
+                obj.get('ObjectID') or obj.get('PresetID') or is_point(obj) for obj in selection(context, source)):
             menu = SimpleNamespace(layout=_DeleteLayout(menu.layout, native_id))
         return original(menu, context)
     return wrapper

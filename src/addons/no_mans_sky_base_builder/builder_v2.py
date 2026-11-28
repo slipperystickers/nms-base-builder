@@ -156,9 +156,21 @@ def _deserialise_from_data(data, progress):
 
         objects_data = data.get("Objects", [])
         total = len(objects_data)
+        placement_start = .06
+        if not getattr(bpy.context.scene, "bbe_detailed_proxies", True):
+            # Blender's FBX importer updates the scene. Resolve each distinct
+            # simple mesh before the scene fills up with placements and rigs.
+            model_ids = dict.fromkeys(row[Part.PROP_OBJECT_ID].replace("^", "")
+                                      for row in objects_data if row.get(Part.PROP_OBJECT_ID))
+            for index, key in enumerate(model_ids):
+                override = classes_dict.get(key)
+                if override is None or getattr(override, "HIGH_RES_COMPATIBLE", False):
+                    progress.batch(index, len(model_ids), .06, .40, 'Loading simple models')
+                    load_proxy_mesh(key)
+            placement_start = .40
         for order, part_data in enumerate(objects_data):
             if order % 16 == 0:
-                progress.batch(order, total, .06, .87, 'Models')
+                progress.batch(order, total, placement_start, .87, 'Models')
             raw_object_id = part_data.get(Part.PROP_OBJECT_ID, None)
             if raw_object_id is None:
                 continue
@@ -210,7 +222,7 @@ def _deserialise_from_data(data, progress):
             # provide order
             bpy_object[Part.PROP_ORDER] = order
 
-        progress.batch(total, total, .06, .87, 'Models')
+        progress.batch(total, total, placement_start, .87, 'Models')
         progress.update(.89, 'Applying materials')
         # colour every high res part in one pass, so each distinct UserData is
         materials_v2.apply_many(to_colour)

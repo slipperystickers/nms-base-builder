@@ -205,7 +205,11 @@ def prepare_frame(obj):
         if key in obj:del obj[key]
     return True
 
-def child_mode(context,obj):return bool(obj and curve_links.has_followers(obj) and context.active_object!=obj)
+def child_mode(context,obj):
+    from .curve_tools import selected_guide
+    active = context.active_object
+    return bool(obj and active != obj and active and selected_guide(active, context.scene, context.view_layer) == obj)
+
 
 def choose(context,objects):
     for item in context.selected_objects:item.select_set(False)

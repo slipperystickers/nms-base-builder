@@ -35,8 +35,8 @@ GROUP_FIELDS = {} if PLUS else {
                           'category_expanded'),
     'nms_save_data': ('check_plugin_enabled', 'nms_base_type', 'check_also_update_name'),
 }
-STAGE_FIELDS = ('environment', 'quality', 'ray_tracing', 'ship_lights', 'light_strength',
-                'glow', 'pad_radius', 'brightness', 'sun_azimuth', 'sun_elevation', 'enabled')
+STAGE_FIELDS = ('environment', 'sky', 'sky_biome', 'sky_palette', 'quality', 'ray_tracing', 'ship_lights', 'light_strength',
+                'glow', 'pad_radius', 'brightness', 'sun_azimuth', 'sun_elevation')
 GROUP_FIELDS['bbeplus_stage' if PLUS else 'bbe_stage'] = STAGE_FIELDS
 _state = {}
 _baseline = None
@@ -168,7 +168,7 @@ def restore(scene_only=False, reset_connectors=False):
             assign(obj, fields, saved.get(group, {}))
             if previous is not None:
                 stage_changed = previous != values(obj, fields)
-        if stage_changed:
+        if stage_changed and getattr(scene, PREFIX + '_stage').enabled:
             from . import stages
             stages.apply(scene, show_progress=False)
         if reset_connectors:
@@ -236,6 +236,10 @@ def register():
         _state = {k: data[k] for k in ('preferences', 'scene') if isinstance(data.get(k), dict)}
     except (OSError, ValueError, TypeError, AttributeError):
         _state = {}
+    saved_stage = _state.get('scene', {}).get(PREFIX + '_stage')
+    if isinstance(saved_stage, dict) and 'enabled' in saved_stage:
+        del saved_stage['enabled']
+        write()
     _baseline = None
     _scene = None
     _ready = _loading = False
